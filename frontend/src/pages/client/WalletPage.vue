@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowDownLeft, ArrowUpRight, Check, CircleHelp, Coins, CreditCard, Gift, History } from 'lucide-vue-next'
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { rechargeProducts, transactions } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -9,13 +10,17 @@ import S2VChoice from '@/shared/ui/S2VChoice.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 
+const router = useRouter()
 const app = useAppStore()
 const selected = ref(rechargeProducts[1].id)
 const code = ref('')
 
 function recharge() {
   const product = rechargeProducts.find((item) => item.id === selected.value)
-  if (product) app.recharge(product.amount + product.bonus)
+  if (!product) return
+  const amount = product.amount + product.bonus
+  app.recharge(amount)
+  void router.push({ path: '/auth/payment-result', query: { amount: String(amount) } })
 }
 </script>
 

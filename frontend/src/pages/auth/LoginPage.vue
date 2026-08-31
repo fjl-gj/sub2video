@@ -38,7 +38,7 @@ function login() {
         </S2VInput>
         <div class="flex items-center justify-between text-xs">
           <label class="flex items-center gap-2 text-s2v-muted"><input type="checkbox" checked class="h-3.5 w-3.5 accent-s2v-primary" />记住我</label>
-          <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/verify-email')">忘记密码？</button>
+          <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/forgot-password')">忘记密码？</button>
         </div>
         <S2VButton variant="primary" size="lg" :loading="loading" :block="true" @click="login">登录</S2VButton>
       </div>
@@ -46,6 +46,7 @@ function login() {
       <S2VButton :block="true" @click="router.push('/auth/register')">创建新账号</S2VButton>
     </S2VCard>
     <div class="flex items-center justify-center gap-1.5 text-[11px] text-s2v-muted"><ShieldCheck class="h-3.5 w-3.5" />邮箱验证后才能开始创作</div>
-    <p class="text-center text-[11px] text-s2v-muted">登录即表示同意服务条款和隐私政策</p>
+    <p class="text-center text-[11px] text-s2v-muted">登录即表示同意 <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/terms')">服务条款</button> 和 <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/privacy')">隐私政策</button></p>
+    <p class="text-center text-[11px] text-s2v-muted">演示入口：<button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/frozen')">账号冻结</button> · <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/maintenance')">维护页</button></p>
   </div>
 </template>

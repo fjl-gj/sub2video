@@ -47,7 +47,7 @@ function register() {
         </S2VInput>
         <label class="flex items-start gap-2 text-[11px] leading-5 text-s2v-muted">
           <input v-model="agree" type="checkbox" class="mt-1 h-3.5 w-3.5 accent-s2v-primary" />
-          <span>我已阅读并同意服务条款与隐私政策</span>
+          <span>我已阅读并同意 <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/terms')">服务条款</button> 与 <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/privacy')">隐私政策</button></span>
         </label>
         <S2VButton variant="primary" size="lg" :loading="loading" :block="true" @click="register"><Check class="h-4 w-4" />注册并验证邮箱</S2VButton>
       </div>

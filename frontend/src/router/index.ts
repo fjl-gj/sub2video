@@ -10,6 +10,14 @@ const router = createRouter({
       { path: 'login', component: () => import('@/pages/auth/LoginPage.vue') },
       { path: 'register', component: () => import('@/pages/auth/RegisterPage.vue') },
       { path: 'verify-email', component: () => import('@/pages/auth/VerifyEmailPage.vue') },
+      { path: 'forgot-password', component: () => import('@/pages/auth/ForgotPasswordPage.vue') },
+      { path: 'reset-password', component: () => import('@/pages/auth/ResetPasswordPage.vue') },
+      { path: 'payment-result', component: () => import('@/pages/auth/PaymentResultPage.vue') },
+      { path: 'terms', component: () => import('@/pages/auth/TermsPage.vue') },
+      { path: 'privacy', component: () => import('@/pages/auth/PrivacyPage.vue') },
+      { path: 'frozen', component: () => import('@/pages/auth/FrozenPage.vue') },
+      { path: 'maintenance', component: () => import('@/pages/auth/MaintenancePage.vue') },
+      { path: '404', component: () => import('@/pages/auth/NotFoundPage.vue') },
     ] },
     { path: '/app', component: () => import('@/layouts/ClientLayout.vue'), redirect: '/app/overview', children: [
       { path: 'overview', component: () => import('@/pages/client/OverviewPage.vue'), meta: { surface: 'client', title: '首页概览' } },
@@ -36,7 +44,7 @@ const router = createRouter({
       { path: 'audit-log', component: () => import('@/pages/admin/AuditLogPage.vue'), meta: { surface: 'admin', title: '操作日志' } },
       { path: 'settings', component: () => import('@/pages/admin/SettingsPage.vue'), meta: { surface: 'admin', title: '系统设置' } },
     ] },
-    { path: '/:pathMatch(.*)*', redirect: '/app/overview' },
+    { path: '/:pathMatch(.*)*', redirect: '/auth/404' },
   ],
 })
 
