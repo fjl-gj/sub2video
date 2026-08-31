@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Search, ShieldBan, UserRoundCheck } from 'lucide-vue-next'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VDialog from '@/shared/ui/S2VDialog.vue'
@@ -40,7 +41,7 @@ function confirmToggle() {
       </S2VInput>
     </div>
 
-    <div class="s2v-table-wrap">
+    <div class="s2v-table-wrap hidden md:block">
       <table class="s2v-table">
         <thead>
           <tr>
@@ -75,6 +76,18 @@ function confirmToggle() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="grid gap-3 md:hidden">
+      <MobileRecordCard v-for="user in list" :key="user.id" :title="user.name" :meta="user.id">
+        <template #badge>
+          <S2VBadge :tone="user.status === '正常' ? 'success' : user.status === '已冻结' ? 'danger' : 'warning'">{{ user.status }}</S2VBadge>
+        </template>
+        <template #body>{{ user.email }} · ¥{{ user.balance.toFixed(2) }} · {{ user.tasks }} 个任务</template>
+        <template #actions>
+          <S2VIconButton :label="user.status === '已冻结' ? '解冻账号' : '冻结账号'" @click="askToggle(user)"><ShieldBan class="h-4 w-4" /></S2VIconButton>
+        </template>
+      </MobileRecordCard>
     </div>
 
     <S2VDialog

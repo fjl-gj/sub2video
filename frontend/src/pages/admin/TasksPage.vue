@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Ban, Download, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VDialog from '@/shared/ui/S2VDialog.vue'
@@ -43,7 +44,7 @@ function confirmStop() {
       </S2VInput>
     </div>
 
-    <div class="s2v-table-wrap">
+    <div class="s2v-table-wrap hidden md:block">
       <table class="s2v-table">
         <thead>
           <tr>
@@ -77,6 +78,20 @@ function confirmStop() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="grid gap-3 md:hidden">
+      <MobileRecordCard v-for="task in list" :key="task.id" :title="task.title" :meta="task.id">
+        <template #badge>
+          <S2VBadge :tone="task.status === '失败' ? 'danger' : task.status === '已完成' ? 'success' : 'primary'">{{ task.status }}</S2VBadge>
+        </template>
+        <template #body>{{ task.user }} · {{ task.provider }} · ¥{{ task.cost.toFixed(2) }} · {{ task.time }}</template>
+        <template #actions>
+          <S2VIconButton label="重新调度" @click="task.status === '失败' ? app.retryTask(task.id) : app.notify(`已重新调度 ${task.id}`)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton v-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askStop(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton label="导出任务记录" @click="app.notify('已生成任务记录（原型）')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+        </template>
+      </MobileRecordCard>
     </div>
 
     <S2VDialog

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Download, FileText, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
@@ -27,7 +28,7 @@ const list = computed(() => app.transactions.filter((row) => !search.value || `$
       </S2VInput>
     </div>
 
-    <div class="s2v-table-wrap">
+    <div class="s2v-table-wrap hidden md:block">
       <table class="s2v-table">
         <thead>
           <tr>
@@ -52,6 +53,16 @@ const list = computed(() => app.transactions.filter((row) => !search.value || `$
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="grid gap-3 md:hidden">
+      <MobileRecordCard v-for="item in list" :key="item.id" :title="item.type" :meta="item.id">
+        <template #badge><S2VBadge tone="success">已完成</S2VBadge></template>
+        <template #body>{{ item.desc }} · {{ item.amount > 0 ? '+' : '' }}¥{{ item.amount.toFixed(2) }}</template>
+        <template #actions>
+          <button class="flex items-center gap-1 text-xs text-s2v-primary" type="button" @click="app.notify(`${item.id} 凭证：${item.type}`)"><FileText class="h-3.5 w-3.5" />查看</button>
+        </template>
+      </MobileRecordCard>
     </div>
   </section>
 </template>

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { FileClock, ShieldCheck } from 'lucide-vue-next'
-import { auditLogs } from '@/data/mock'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
+import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+
+const app = useAppStore()
 </script>
 
 <template>
@@ -23,7 +26,7 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
         </div>
         <FileClock class="h-4 w-4 text-s2v-muted" />
       </div>
-      <div class="overflow-x-auto">
+      <div class="hidden overflow-x-auto md:block">
         <table class="s2v-table">
           <thead>
             <tr>
@@ -35,7 +38,7 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in auditLogs" :key="item.time">
+            <tr v-for="item in app.auditLogs" :key="item.time + item.target">
               <td class="font-mono">{{ item.time }}</td>
               <td>{{ item.operator }}</td>
               <td>{{ item.action }}</td>
@@ -44,6 +47,12 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="grid gap-3 px-4 pb-4 md:hidden">
+        <MobileRecordCard v-for="item in app.auditLogs" :key="item.time + item.target" :title="item.action" :meta="item.time">
+          <template #badge><S2VBadge tone="success">{{ item.result }}</S2VBadge></template>
+          <template #body>{{ item.operator }} · {{ item.target }}</template>
+        </MobileRecordCard>
       </div>
     </S2VCard>
   </section>

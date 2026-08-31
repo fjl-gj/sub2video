@@ -2,6 +2,7 @@
 import { Ban, BookmarkPlus, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -51,7 +52,7 @@ function confirmRefund() {
       <button class="hidden items-center gap-1 text-xs text-s2v-muted sm:flex" type="button"><Filter class="h-3.5 w-3.5" />筛选</button>
     </div>
 
-    <div class="s2v-table-wrap">
+    <div class="s2v-table-wrap hidden md:block">
       <table class="s2v-table">
         <thead>
           <tr>
@@ -98,6 +99,26 @@ function confirmRefund() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="grid gap-3 md:hidden">
+      <MobileRecordCard v-for="task in list" :key="task.id" :title="task.title" :meta="task.id">
+        <template #badge>
+          <S2VBadge :tone="task.status === '失败' ? 'danger' : task.status === '已完成' ? 'success' : 'primary'">
+            {{ task.status }}<span v-if="task.status === '生成中'" class="ml-1">{{ task.progress }}%</span>
+          </S2VBadge>
+        </template>
+        <template #body>{{ task.workflow }} · {{ task.resolution }} · {{ task.duration }} · ¥ {{ task.cost.toFixed(2) }}</template>
+        <template #actions>
+          <S2VIconButton v-if="task.status === '失败'" label="重新生成" @click="retry(task.id)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
+          <template v-else>
+            <S2VIconButton label="下载作品" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+            <S2VIconButton :label="app.isWorkSaved(task.id) ? '已保存到资产' : '保存到资产'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
+          </template>
+          <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
+        </template>
+      </MobileRecordCard>
     </div>
 
     <S2VCard v-if="!list.length" variant="padded" class="mt-4 grid place-items-center text-center">

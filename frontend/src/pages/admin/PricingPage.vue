@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Coins, Edit3, History, Plus } from 'lucide-vue-next'
+import { Coins, History, Plus } from 'lucide-vue-next'
 import { ref } from 'vue'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -10,15 +11,10 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 
 const app = useAppStore()
 const changed = ref(false)
-const rules = ref([
-  { name: 'H3 图生视频 / 768P', cost: '0.02', price: '0.50', duration: '按秒', status: '生效中', version: 'v1.2' },
-  { name: 'H3 图生视频 / 2K', cost: '0.04', price: '0.80', duration: '按秒', status: '生效中', version: 'v1.0' },
-  { name: 'H3 再生成 / 768P → 2K', cost: '0.03', price: '0.30', duration: '按秒', status: '草稿', version: 'v0.1' },
-])
 
 function save() {
   changed.value = false
-  app.notify('定价规则已保存，后续新任务将使用新版本')
+  app.savePricing()
 }
 </script>
 
@@ -27,8 +23,8 @@ function save() {
     <S2VPageHeader badge="Pricing" title="定价规则">
       <template #description>成本价和销售价分开维护，任务创建时会固化价格快照。</template>
       <template #actions>
-        <S2VButton @click="app.notify('价格版本记录已打开')"><History class="h-3.5 w-3.5" />版本记录</S2VButton>
-        <S2VButton variant="primary" @click="changed = true"><Plus class="h-3.5 w-3.5" />新增规则</S2VButton>
+        <S2VButton @click="app.notify(`当前 ${app.pricingRules.length} 条规则`)"><History class="h-3.5 w-3.5" />版本记录</S2VButton>
+        <S2VButton variant="primary" @click="app.addPricingRule(); changed = true"><Plus class="h-3.5 w-3.5" />新增规则</S2VButton>
       </template>
     </S2VPageHeader>
 
@@ -40,7 +36,7 @@ function save() {
         </div>
         <Coins class="h-4 w-4 text-s2v-primary" />
       </div>
-      <div class="overflow-x-auto">
+      <div class="hidden overflow-x-auto md:block">
         <table class="s2v-table">
           <thead>
             <tr>
@@ -50,11 +46,10 @@ function save() {
               <th>计费规则</th>
               <th>状态</th>
               <th>版本</th>
-              <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="rule in rules" :key="rule.name">
+            <tr v-for="rule in app.pricingRules" :key="rule.id">
               <td class="font-semibold text-s2v-ink">{{ rule.name }}</td>
               <td class="font-mono">{{ rule.cost }}</td>
               <td>
@@ -63,10 +58,20 @@ function save() {
               <td>{{ rule.duration }}</td>
               <td><S2VBadge :tone="rule.status === '生效中' ? 'success' : 'warning'">{{ rule.status }}</S2VBadge></td>
               <td class="font-mono">{{ rule.version }}</td>
-              <td><button class="flex items-center gap-1 text-xs font-semibold text-s2v-primary" type="button" @click="changed = true"><Edit3 class="h-3.5 w-3.5" />编辑</button></td>
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="grid gap-3 px-4 pb-4 md:hidden">
+        <MobileRecordCard v-for="rule in app.pricingRules" :key="rule.id" :title="rule.name" :meta="rule.version">
+          <template #badge>
+            <S2VBadge :tone="rule.status === '生效中' ? 'success' : 'warning'">{{ rule.status }}</S2VBadge>
+          </template>
+          <template #body>成本 ¥{{ rule.cost }}/秒 · {{ rule.duration }}</template>
+          <template #actions>
+            <S2VInput v-model="rule.price" class="max-w-28" size="sm" @update:model-value="changed = true" />
+          </template>
+        </MobileRecordCard>
       </div>
       <div v-if="changed" class="flex items-center justify-between border-t border-s2v-line bg-s2v-warning/10 px-4 py-3 text-xs text-s2v-warning">
         <span>有未保存的价格调整</span>

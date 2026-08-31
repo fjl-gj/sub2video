@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Activity, Bot, KeyRound, Plus, RefreshCw, Server } from 'lucide-vue-next'
-import { providers } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -8,11 +8,11 @@ import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 
 const app = useAppStore()
-const metrics = [
-  { label: '已接入供应商', value: '2', icon: Server },
-  { label: '可用模型', value: '3', icon: Bot },
+const metrics = computed(() => [
+  { label: '已接入供应商', value: String(app.providers.filter((item) => item.status !== '未启用').length), icon: Server },
+  { label: '可用模型', value: String(app.workflows.length), icon: Bot },
   { label: '平均延迟', value: '15.7s', icon: Activity },
-]
+])
 </script>
 
 <template>
@@ -20,7 +20,7 @@ const metrics = [
     <S2VPageHeader badge="Providers" title="模型与供应商">
       <template #description>供应商凭据只在管理端使用，为工作流提供健康的生成能力。</template>
       <template #actions>
-        <S2VButton variant="primary" @click="app.notify('供应商接入表单将在后端接入后开放')">
+        <S2VButton variant="primary" @click="app.checkProvider('备用供应商')">
           <template #icon><Plus class="h-4 w-4" /></template>
           添加供应商
         </S2VButton>
@@ -38,7 +38,7 @@ const metrics = [
     </div>
 
     <div class="grid gap-4 lg:grid-cols-3">
-      <S2VCard v-for="provider in providers" :key="provider.name" variant="padded">
+      <S2VCard v-for="provider in app.providers" :key="provider.name" variant="padded">
         <div class="flex items-start justify-between">
           <div class="flex items-center gap-2">
             <span class="s2v-icon-well"><Bot class="h-4 w-4" /></span>
@@ -55,7 +55,7 @@ const metrics = [
           <div class="flex justify-between text-s2v-muted"><span>成本</span><strong class="font-mono text-s2v-ink">{{ provider.cost }}</strong></div>
         </div>
         <div class="mt-4 flex gap-2">
-          <S2VButton size="sm" class="flex-1" @click="app.notify(`已刷新 ${provider.name} 健康状态`)"><RefreshCw class="h-3.5 w-3.5" />健康检查</S2VButton>
+          <S2VButton size="sm" class="flex-1" @click="app.checkProvider(provider.name)"><RefreshCw class="h-3.5 w-3.5" />健康检查</S2VButton>
           <S2VButton size="sm" aria-label="凭据设置" @click="app.notify('凭据由管理端安全存储')"><KeyRound class="h-3.5 w-3.5" /></S2VButton>
         </div>
       </S2VCard>

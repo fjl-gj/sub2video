@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Check, CircleAlert, MessageSquare, RotateCcw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
+import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VDialog from '@/shared/ui/S2VDialog.vue'
@@ -40,7 +41,7 @@ function confirmRefund() {
       </S2VInput>
     </div>
 
-    <div class="s2v-table-wrap">
+    <div class="s2v-table-wrap hidden md:block">
       <table class="s2v-table">
         <thead>
           <tr>
@@ -74,6 +75,20 @@ function confirmRefund() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="grid gap-3 md:hidden">
+      <MobileRecordCard v-for="item in list" :key="item.id" :title="item.title" :meta="item.id">
+        <template #badge>
+          <S2VBadge :tone="item.status === '已解决' ? 'success' : item.status === '待处理' ? 'warning' : 'primary'">{{ item.status }}</S2VBadge>
+        </template>
+        <template #body>{{ item.user }} · {{ item.type }} · {{ item.amount ? `¥${item.amount.toFixed(2)}` : '无金额' }}</template>
+        <template #actions>
+          <S2VIconButton label="回复工单" @click="app.notify(`已打开 ${item.id} 对话`)"><MessageSquare class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton v-if="item.amount && item.status !== '已解决'" label="核准退款" @click="askRefund(item)"><RotateCcw class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton v-else-if="item.status !== '已解决'" label="标记已解决" @click="app.resolveTicket(item.id)"><Check class="h-3.5 w-3.5" /></S2VIconButton>
+        </template>
+      </MobileRecordCard>
     </div>
 
     <S2VDialog

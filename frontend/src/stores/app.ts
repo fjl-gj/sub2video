@@ -3,12 +3,19 @@ import { defineStore } from 'pinia'
 import {
   adminTasks as seedAdminTasks,
   adminTickets as seedAdminTickets,
+  announcements as seedAnnouncements,
   assets as seedAssets,
+  auditLogs as seedAuditLogs,
   initialTasks,
+  platformSettings as seedSettings,
+  pricingRules as seedPricingRules,
+  providers as seedProviders,
+  rechargeProducts as seedProducts,
   redeemCodes,
   tickets as seedTickets,
   transactions as seedTransactions,
   users as seedUsers,
+  workflows as seedWorkflows,
   type Asset,
   type ClientTicket,
   type LedgerEntry,
@@ -43,6 +50,14 @@ export const useAppStore = defineStore('app', () => {
     { id: 'dev-1', name: 'Windows · Chrome', meta: '当前设备 · 今天 09:42', current: true },
     { id: 'dev-2', name: 'iPhone 15', meta: '上海 · 昨天 21:18', current: false },
   ])
+  const workflows = ref(seedWorkflows.map((item) => ({ ...item })))
+  const providers = ref(seedProviders.map((item) => ({ ...item })))
+  const products = ref(seedProducts.map((item) => ({ ...item })))
+  const pricingRules = ref(seedPricingRules.map((item) => ({ ...item })))
+  const announcements = ref(seedAnnouncements.map((item) => ({ ...item })))
+  const settings = ref({ ...seedSettings })
+  const auditLogs = ref(seedAuditLogs.map((item) => ({ ...item })))
+  const openTicketCount = computed(() => adminTickets.value.filter((item) => item.status !== '已解决').length)
   const toast = ref('')
   let toastTimer: ReturnType<typeof setTimeout> | undefined
   let assetSeq = seedAssets.length + 1
@@ -268,6 +283,7 @@ export const useAppStore = defineStore('app', () => {
       pushLedger('工单退款', ticket.amount, `${id} ${ticket.title}`)
     }
     notify(`已核准 ${id} 退款${ticket.amount ? `，¥${ticket.amount.toFixed(2)} 已退回钱包` : ''}`)
+    pushAudit('处理工单退款', id)
     return true
   }
 
@@ -283,6 +299,7 @@ export const useAppStore = defineStore('app', () => {
     const user = users.value.find((item) => item.id === id)
     if (!user) return false
     user.status = user.status === '已冻结' ? '正常' : '已冻结'
+    pushAudit(user.status === '已冻结' ? '冻结用户' : '解冻用户', user.name)
     notify(`${user.name} 已${user.status === '已冻结' ? '冻结' : '解冻'}`)
     return true
   }
@@ -300,6 +317,122 @@ export const useAppStore = defineStore('app', () => {
 
   function saveProfile() {
     notify('个人资料已保存')
+    return true
+  }
+
+  function pushAudit(action: string, target: string) {
+    auditLogs.value.unshift({ time: '刚刚', operator: 'admin', action, target, result: '成功' })
+  }
+
+  function toggleWorkflow(id: string) {
+    const item = workflows.value.find((row) => row.id === id)
+    if (!item || item.status === '未开放') {
+      notify('该工作流尚未开放')
+      return false
+    }
+    item.status = item.status === '已上架' ? '草稿' : '已上架'
+    item.updated = '刚刚'
+    pushAudit(item.status === '已上架' ? '发布工作流' : '下架工作流', item.name)
+    notify(`${item.name} 已${item.status === '已上架' ? '上架' : '改为草稿'}`)
+    return true
+  }
+
+  function createWorkflow() {
+    const id = `wf-draft-${workflows.value.length + 1}`
+    workflows.value.unshift({
+      id,
+      name: '未命名工作流',
+      description: '草稿工作流，确认供应商能力后再上架。',
+      status: '草稿',
+      provider: 'MiniMax H3',
+      price: '待定',
+      updated: '刚刚',
+    })
+    pushAudit('新建工作流', id)
+    notify('已创建草稿工作流')
+    return true
+  }
+
+  function checkProvider(name: string) {
+    const provider = providers.value.find((item) => item.name === name)
+    if (!provider) return false
+    if (provider.status === '未启用') {
+      provider.status = '健康'
+      provider.latency = '20.0 s'
+      provider.concurrency = '1 / 8'
+      provider.cost = '0.02 元/秒'
+      provider.channel = '备用节点'
+    }
+    pushAudit('健康检查', name)
+    notify(`已刷新 ${name} 健康状态`)
+    return true
+  }
+
+  function addProduct() {
+    const amount = 1000
+    products.value.push({ id: `p-${products.value.length + 1}`, amount, bonus: 120, price: amount })
+    pushAudit('新增充值商品', `¥${amount}`)
+    notify('已新增 ¥1000 档位（赠 ¥120）')
+    return true
+  }
+
+  function savePricing() {
+    pricingRules.value.forEach((rule) => {
+      if (rule.status === '生效中') {
+        const current = Number(rule.version.replace('v', ''))
+        rule.version = `v${(current + 0.1).toFixed(1)}`
+      }
+    })
+    pushAudit('调整定价规则', pricingRules.value[0]?.name || '费率矩阵')
+    notify('定价规则已保存，后续新任务将使用新版本')
+    return true
+  }
+
+  function addPricingRule() {
+    pricingRules.value.push({
+      id: `pr-${pricingRules.value.length + 1}`,
+      name: '未命名规则',
+      cost: '0.02',
+      price: '0.50',
+      duration: '按秒',
+      status: '草稿',
+      version: 'v0.1',
+    })
+    notify('已新增草稿定价规则')
+    return true
+  }
+
+  function publishAnnouncement(id: string) {
+    const item = announcements.value.find((row) => row.id === id)
+    if (!item) return false
+    item.status = item.status === '已发布' ? '草稿' : '已发布'
+    item.date = '刚刚'
+    pushAudit(item.status === '已发布' ? '发布公告' : '撤回公告', item.title)
+    notify(`「${item.title}」已${item.status === '已发布' ? '发布' : '改回草稿'}`)
+    return true
+  }
+
+  function createAnnouncement() {
+    announcements.value.unshift({
+      id: `n-${announcements.value.length + 1}`,
+      title: '未命名公告',
+      desc: '草稿公告，确认文案后再发布给创作者。',
+      status: '草稿',
+      date: '刚刚',
+    })
+    notify('已创建草稿公告')
+    return true
+  }
+
+  function saveSettings() {
+    pushAudit('保存系统设置', `输入 ${settings.value.inputRetention} 天 / 结果 ${settings.value.resultRetention} 天`)
+    notify('系统设置已保存')
+    return true
+  }
+
+  function refreshMonitoring() {
+    pushAudit('刷新监控', '供应商健康')
+    notify('监控数据已刷新')
     return true
   }
 
@@ -338,5 +471,23 @@ export const useAppStore = defineStore('app', () => {
     toggleUserStatus,
     revokeDevice,
     saveProfile,
+    workflows,
+    providers,
+    products,
+    pricingRules,
+    announcements,
+    settings,
+    auditLogs,
+    openTicketCount,
+    toggleWorkflow,
+    createWorkflow,
+    checkProvider,
+    addProduct,
+    savePricing,
+    addPricingRule,
+    publishAnnouncement,
+    createAnnouncement,
+    saveSettings,
+    refreshMonitoring,
   }
 })

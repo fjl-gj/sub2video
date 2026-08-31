@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Coins, Edit3, Gift, Plus } from 'lucide-vue-next'
-import { rechargeProducts, redeemCodes } from '@/data/mock'
+import { redeemCodes } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -15,12 +15,12 @@ const app = useAppStore()
     <S2VPageHeader badge="Catalog" title="充值商品">
       <template #description>配置用户可以买到的余额档位，不在这里直接修改用户余额。</template>
       <template #actions>
-        <S2VButton variant="primary" @click="app.notify('充值商品编辑器将在支付接入后开放')"><Plus class="h-3.5 w-3.5" />新增商品</S2VButton>
+        <S2VButton variant="primary" @click="app.addProduct()"><Plus class="h-3.5 w-3.5" />新增商品</S2VButton>
       </template>
     </S2VPageHeader>
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <S2VCard v-for="product in rechargeProducts" :key="product.id" variant="padded">
+      <S2VCard v-for="product in app.products" :key="product.id" variant="padded">
         <div class="flex items-start justify-between">
           <span class="s2v-icon-well"><Coins class="h-4 w-4" /></span>
           <S2VBadge tone="success">上架中</S2VBadge>

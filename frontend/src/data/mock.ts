@@ -125,3 +125,21 @@ export const auditLogs = [
   { time: '今天 17:40:09', operator: 'ops', action: '重新调度任务', target: 'tsk_88921', result: '成功' },
   { time: '今天 16:05:17', operator: 'admin', action: '发布工作流', target: 'H3 图生视频', result: '成功' },
 ]
+
+export const pricingRules = [
+  { id: 'pr-1', name: 'H3 图生视频 / 768P', cost: '0.02', price: '0.50', duration: '按秒', status: '生效中', version: 'v1.2' },
+  { id: 'pr-2', name: 'H3 图生视频 / 2K', cost: '0.04', price: '0.80', duration: '按秒', status: '生效中', version: 'v1.0' },
+  { id: 'pr-3', name: 'H3 再生成 / 768P → 2K', cost: '0.03', price: '0.30', duration: '按秒', status: '草稿', version: 'v0.1' },
+]
+
+export const announcements = [
+  { id: 'n-1', title: 'H3 图生视频限时价格活动', desc: '活动期间 768P 价格低至 0.02 元/秒，具体以创作页报价为准。', status: '已发布', date: '今天 09:00' },
+  { id: 'n-2', title: '服务条款更新说明', desc: '我们更新了视频内容使用规范和素材留存策略。', status: '草稿', date: '昨天 16:30' },
+]
+
+export const platformSettings = {
+  inputRetention: '7',
+  resultRetention: '30',
+  notify: true,
+  audit: true,
+}

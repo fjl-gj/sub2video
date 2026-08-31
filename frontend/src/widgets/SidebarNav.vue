@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Megaphone, PanelsTopLeft, ReceiptText, Settings2, Sparkles, Ticket, UsersRound, WalletCards, Workflow } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import S2VNavItem from '@/shared/ui/S2VNavItem.vue'
+import S2VProgress from '@/shared/ui/S2VProgress.vue'
 import { cn } from '@/shared/lib/cn'
 
 interface NavItem { label: string; to: string; icon: string; badge?: string; trailing?: string }
@@ -27,7 +28,7 @@ const clientGroups = computed<NavGroup[]>(() => [
   ] },
 ])
 
-const adminGroups: NavGroup[] = [
+const adminGroups = computed<NavGroup[]>(() => [
   { label: '', items: [{ label: '首页概览', to: '/admin/overview', icon: 'LayoutDashboard', badge: 'BI' }] },
   { label: '创作管理', items: [
     { label: '工作流', to: '/admin/workflows', icon: 'Workflow', trailing: 'Pipeline' },
@@ -43,7 +44,7 @@ const adminGroups: NavGroup[] = [
   ] },
   { label: '运营管理', items: [
     { label: '用户管理', to: '/admin/users', icon: 'UsersRound', trailing: '租户' },
-    { label: '工单中心', to: '/admin/tickets', icon: 'Ticket', badge: '2 待办' },
+    { label: '工单中心', to: '/admin/tickets', icon: 'Ticket', badge: app.openTicketCount ? `${app.openTicketCount} 待办` : undefined },
     { label: '公告', to: '/admin/announcements', icon: 'Megaphone' },
   ] },
   { label: '系统', items: [
@@ -51,9 +52,9 @@ const adminGroups: NavGroup[] = [
     { label: '操作日志', to: '/admin/audit-log', icon: 'FileClock' },
     { label: '系统设置', to: '/admin/settings', icon: 'Settings2' },
   ] },
-]
+])
 
-const groups = computed(() => props.surface === 'client' ? clientGroups.value : adminGroups)
+const groups = computed(() => props.surface === 'client' ? clientGroups.value : adminGroups.value)
 function active(to: string) { return route.path === to }
 </script>
 
@@ -72,9 +73,9 @@ function active(to: string) { return route.path === to }
       </div>
     </nav>
     <div v-if="props.surface === 'client'" class="mt-auto space-y-2 border-t border-s2v-line/80 bg-s2v-canvas/50 p-3">
-      <div class="flex items-center justify-between text-[11px]"><span class="font-medium text-s2v-muted">空间资源占用</span><span class="s2v-mono font-semibold text-s2v-ink">1.9 / 5 GB</span></div>
-      <div class="h-1.5 overflow-hidden rounded-full bg-s2v-line"><span class="block h-full w-[38%] rounded-full bg-s2v-primary" /></div>
-      <div class="s2v-mono flex justify-between text-[10px] text-s2v-muted"><span>已保存 6 个资产</span></div>
+      <div class="flex items-center justify-between text-[11px]"><span class="font-medium text-s2v-muted">空间资源占用</span><span class="s2v-mono font-semibold text-s2v-ink">{{ app.storageUsed }} / {{ app.storageQuota }} GB</span></div>
+      <S2VProgress :value="app.storagePercent" />
+      <div class="s2v-mono flex justify-between text-[10px] text-s2v-muted"><span>已保存 {{ app.assets.length }} 个资产</span></div>
     </div>
     <div v-else class="mt-auto flex items-center justify-between border-t border-s2v-line/80 bg-s2v-canvas/50 px-3 py-3 text-[11px] text-s2v-muted">
       <span>Admin Console</span><span class="s2v-mono">v1.5</span>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Activity, Cpu, Gauge, HardDrive, RefreshCw, Server, Wifi } from 'lucide-vue-next'
-import { providers } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -27,7 +26,7 @@ const trends = [
   <section class="s2v-page">
     <S2VPageHeader badge="GPU Clusters" kicker="监控全网智算节点显存占用与实时执行队列" title="运维监控">
       <template #actions>
-        <S2VButton @click="app.notify('监控数据已刷新')"><RefreshCw class="h-3.5 w-3.5" />刷新数据</S2VButton>
+        <S2VButton @click="app.refreshMonitoring()"><RefreshCw class="h-3.5 w-3.5" />刷新数据</S2VButton>
       </template>
     </S2VPageHeader>
 
@@ -52,8 +51,8 @@ const trends = [
           <Wifi class="h-4 w-4 text-s2v-primary" />
         </div>
         <div class="divide-y divide-s2v-line/70 px-4">
-          <div v-for="provider in providers" :key="provider.name" class="flex items-center gap-3 py-4">
-            <span class="s2v-icon-well s2v-icon-well-success"><Server class="h-4 w-4" /></span>
+          <div v-for="provider in app.providers" :key="provider.name" class="flex items-center gap-3 py-4">
+            <span :class="provider.status === '健康' ? 's2v-icon-well s2v-icon-well-success' : 's2v-icon-well s2v-icon-well-muted'"><Server class="h-4 w-4" /></span>
             <div class="min-w-0 flex-1">
               <strong class="block text-xs">{{ provider.name }}</strong>
               <span class="mt-1 block text-[11px] text-s2v-muted">延迟 {{ provider.latency }} · 并发 {{ provider.concurrency }}</span>
