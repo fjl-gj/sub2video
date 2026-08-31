@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Folder, Search, Upload } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
-import { assets } from '@/data/mock'
 import AssetCard from '@/features/assets/AssetCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
@@ -16,7 +15,7 @@ const app = useAppStore()
 const search = ref('')
 const selectedFolder = ref('全部')
 const folders = ['全部', '场景', '人物', '产品', '视频', '品牌', '音频']
-const filtered = computed(() => assets.filter((item) => (selectedFolder.value === '全部' || item.folder === selectedFolder.value) && (!search.value || item.name.includes(search.value))))
+const filtered = computed(() => app.assets.filter((item) => (selectedFolder.value === '全部' || item.folder === selectedFolder.value) && (!search.value || item.name.includes(search.value))))
 </script>
 
 <template>
@@ -24,7 +23,7 @@ const filtered = computed(() => assets.filter((item) => (selectedFolder.value ==
     <S2VPageHeader badge="Assets" title="资产库">
       <template #description>只保存你主动留下的素材，任务临时文件不会无限占用空间。</template>
       <template #actions>
-        <S2VButton variant="primary" @click="app.notify('已模拟打开文件选择器')">
+        <S2VButton variant="primary" @click="app.uploadAsset()">
           <template #icon><Upload class="h-4 w-4" /></template>
           上传资产
         </S2VButton>
@@ -37,9 +36,9 @@ const filtered = computed(() => assets.filter((item) => (selectedFolder.value ==
           <div class="flex items-center gap-2">
             <Folder class="h-4 w-4 text-s2v-primary" />
             <strong class="text-xs">存储空间</strong>
-            <S2VBadge tone="primary">1.9 / 5 GB</S2VBadge>
+            <S2VBadge tone="primary">{{ app.storageUsed }} / {{ app.storageQuota }} GB</S2VBadge>
           </div>
-          <S2VProgress class="mt-3" :value="38" />
+          <S2VProgress class="mt-3" :value="app.storagePercent" />
         </div>
         <span class="text-[11px] text-s2v-muted">任务输入 7 天自动清理 · 结果 30 天自动清理</span>
       </div>
@@ -53,7 +52,7 @@ const filtered = computed(() => assets.filter((item) => (selectedFolder.value ==
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <AssetCard v-for="item in filtered" :key="item.id" :item="item" @dismiss="app.notify(`已忽略 ${item.name}`)" />
+      <AssetCard v-for="item in filtered" :key="item.id" :item="item" @dismiss="app.removeAsset(item.id)" />
     </div>
 
     <S2VCard v-if="!filtered.length" variant="padded" class="mt-4 grid place-items-center text-center">

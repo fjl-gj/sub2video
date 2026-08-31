@@ -19,8 +19,12 @@ const title = ref('')
 const ratio = ref('16:9')
 const duration = ref('15 秒')
 const uploaded = ref(false)
+const picking = ref(false)
+const selectedAssetId = ref('')
 const loading = ref(false)
 const cost = computed(() => duration.value === '10 秒' ? 5 : 7.5)
+const imageAssets = computed(() => app.assets.filter((item) => item.type === '图片'))
+const selectedAsset = computed(() => app.assets.find((item) => item.id === selectedAssetId.value))
 const workflows = [
   { id: 'image', name: '图生视频', desc: '一张图片 + 文字描述', enabled: true },
   { id: 'text', name: '文生视频', desc: '纯文字生成画面', enabled: false },
@@ -29,6 +33,12 @@ const workflows = [
 
 function chooseTemplate(text: string) {
   prompt.value = prompt.value ? `${prompt.value}，${text}` : text
+}
+
+function pickAsset(id: string) {
+  selectedAssetId.value = id
+  uploaded.value = true
+  picking.value = false
 }
 
 function submit() {
@@ -82,7 +92,7 @@ function submit() {
             <S2VBadge tone="primary">最多 5 张免费</S2VBadge>
           </div>
           <div class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-            <button class="s2v-dropzone" type="button" @click="uploaded = true">
+            <button class="s2v-dropzone" type="button" @click="uploaded = true; selectedAssetId = ''">
               <template v-if="!uploaded">
                 <Upload class="h-6 w-6 text-s2v-primary" />
                 <strong class="text-xs">上传首帧图片</strong>
@@ -90,15 +100,21 @@ function submit() {
               </template>
               <template v-else>
                 <Check class="h-7 w-7 text-s2v-success" />
-                <strong class="text-xs">首帧图片已选择</strong>
+                <strong class="text-xs">{{ selectedAsset ? selectedAsset.name : '首帧图片已选择' }}</strong>
                 <span class="text-[11px] text-s2v-muted">点击重新选择</span>
               </template>
             </button>
-            <button class="s2v-dropzone" type="button" @click="app.notify('资产选择器将在下一步接入')">
+            <button class="s2v-dropzone" type="button" @click="picking = !picking">
               <FolderOpen class="h-6 w-6 text-s2v-primary" />
               <strong class="text-xs">从资产中选择</strong>
-              <span class="text-[11px] text-s2v-muted">使用已保存的图片素材</span>
+              <span class="text-[11px] text-s2v-muted">{{ picking ? '选择一张已保存的图片' : '使用已保存的图片素材' }}</span>
             </button>
+            <div v-if="picking" class="grid gap-2 sm:col-span-2">
+              <S2VChoice v-for="item in imageAssets" :key="item.id" :selected="selectedAssetId === item.id" @click="pickAsset(item.id)">
+                {{ item.name }} · {{ item.folder }}
+              </S2VChoice>
+              <p v-if="!imageAssets.length" class="text-[11px] text-s2v-muted">资产库里还没有图片</p>
+            </div>
           </div>
         </S2VCard>
 

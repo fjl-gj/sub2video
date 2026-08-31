@@ -1,15 +1,28 @@
 <script setup lang="ts">
-import { MoreHorizontal, Search, UserRoundCheck } from 'lucide-vue-next'
-import { ref } from 'vue'
-import { users } from '@/data/mock'
+import { computed, ref } from 'vue'
+import { Search, ShieldBan, UserRoundCheck } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
+import S2VDialog from '@/shared/ui/S2VDialog.vue'
 import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 
 const app = useAppStore()
 const search = ref('')
+const confirmOpen = ref(false)
+const pending = ref<(typeof app.users)[number] | null>(null)
+const list = computed(() => app.users.filter((row) => !search.value || `${row.id}${row.name}${row.email}`.includes(search.value)))
+const activeCount = computed(() => app.users.filter((user) => user.status === '正常').length)
+
+function askToggle(user: (typeof app.users)[number]) {
+  pending.value = user
+  confirmOpen.value = true
+}
+
+function confirmToggle() {
+  if (pending.value) app.toggleUserStatus(pending.value.id)
+}
 </script>
 
 <template>
@@ -17,7 +30,7 @@ const search = ref('')
     <S2VPageHeader badge="Users" title="用户管理">
       <template #description>查看账户状态、余额、任务和订单，处理需要人工介入的账户。</template>
       <template #actions>
-        <S2VBadge tone="success"><UserRoundCheck class="h-3 w-3" />{{ users.filter((u) => u.status === '正常').length }} 个正常账户</S2VBadge>
+        <S2VBadge tone="success"><UserRoundCheck class="h-3 w-3" />{{ activeCount }} 个正常账户</S2VBadge>
       </template>
     </S2VPageHeader>
 
@@ -41,7 +54,7 @@ const search = ref('')
           </tr>
         </thead>
         <tbody>
-          <tr v-for="user in users.filter((row) => !search || `${row.id}${row.name}${row.email}`.includes(search))" :key="user.id">
+          <tr v-for="user in list" :key="user.id">
             <td>
               <div class="flex items-center gap-2">
                 <span class="s2v-avatar">{{ user.name.slice(0, 1) }}</span>
@@ -56,10 +69,21 @@ const search = ref('')
             <td class="font-mono">¥{{ user.balance.toFixed(2) }}</td>
             <td>{{ user.tasks }}</td>
             <td>{{ user.joined }}</td>
-            <td><S2VIconButton label="查看用户详情" @click="app.notify(`已打开 ${user.name} 详情`)"><MoreHorizontal class="h-4 w-4" /></S2VIconButton></td>
+            <td>
+              <S2VIconButton :label="user.status === '已冻结' ? '解冻账号' : '冻结账号'" @click="askToggle(user)"><ShieldBan class="h-4 w-4" /></S2VIconButton>
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <S2VDialog
+      v-model:open="confirmOpen"
+      tone="danger"
+      title="变更账户状态"
+      :description="pending ? `确认将 ${pending.name} ${pending.status === '已冻结' ? '解冻' : '冻结'}？冻结后不能创建任务或使用余额。` : ''"
+      :confirm-label="pending?.status === '已冻结' ? '解冻' : '冻结'"
+      @confirm="confirmToggle"
+    />
   </section>
 </template>

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { FileImage, FileMusic, FileVideo, Plus } from 'lucide-vue-next'
-import { assets } from '@/data/mock'
+import type { Asset } from '@/data/mock'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 
-const props = defineProps<{ item: (typeof assets)[number] }>()
+const props = defineProps<{ item: Asset }>()
 defineEmits<{ dismiss: [] }>()
 
 const icon = computed(() => props.item.type === '视频' ? FileVideo : props.item.type === '音频' ? FileMusic : FileImage)

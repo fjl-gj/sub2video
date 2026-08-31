@@ -22,7 +22,7 @@ const metrics = computed(() => [
   { label: '累计支出 (RMB)', value: '¥ 148.00', note: '本月消耗 ¥36.00' },
   { label: '可用余额 (RMB)', value: `¥ ${app.balance.toFixed(2)}`, note: '立即充值 →', tone: 'success' as const, to: '/app/wallet' },
   { label: '每秒视频均价', value: '¥ 0.20', unit: '/s', note: '768P/1080P 套餐按秒计' },
-  { label: '空间资源占用', value: '1.9', unit: '/ 5GB', note: '已保存 6 个资产' },
+  { label: '空间资源占用', value: String(app.storageUsed), unit: `/ ${app.storageQuota}GB`, note: `已保存 ${app.assets.length} 个资产` },
   { label: '活跃渲染任务', value: String(app.activeTasks.length), note: '查看队列 →', tone: 'warning' as const, to: '/app/works' },
 ])
 </script>

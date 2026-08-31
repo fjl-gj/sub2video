@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw } from 'lucide-vue-next'
+import { Ban, BookmarkPlus, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -14,7 +14,7 @@ import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
 const router = useRouter()
 const app = useAppStore()
 const filter = ref('全部')
-const tabs = ['全部', '生成中', '已完成', '失败']
+const tabs = ['全部', '排队中', '生成中', '已完成', '失败']
 const refundOpen = ref(false)
 const refundTask = ref<(typeof app.tasks)[number] | null>(null)
 const list = computed(() => filter.value === '全部' ? app.tasks : app.tasks.filter((task) => task.status === filter.value))
@@ -88,8 +88,11 @@ function confirmRefund() {
               <div class="flex items-center gap-1">
                 <S2VIconButton v-if="task.status === '失败'" label="重新生成" @click="retry(task.id)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
                 <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton v-else label="下载作品" @click="app.notify('原型阶段仅模拟下载')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton label="查看详情" @click="app.notify(`已打开 ${task.id} 详情`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
+                <template v-else>
+                  <S2VIconButton label="下载作品" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+                  <S2VIconButton :label="app.isWorkSaved(task.id) ? '已保存到资产' : '保存到资产'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
+                </template>
+                <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
               </div>
             </td>
           </tr>

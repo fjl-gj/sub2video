@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ArrowDownLeft, ArrowUpRight, Check, CircleHelp, Coins, CreditCard, Gift, History } from 'lucide-vue-next'
+import { ArrowDownLeft, ArrowUpRight, Check, Coins, CreditCard, Gift, History } from 'lucide-vue-next'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { rechargeProducts, transactions } from '@/data/mock'
+import { rechargeProducts } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
@@ -68,8 +68,8 @@ function recharge() {
             <Gift class="h-4 w-4 text-s2v-primary" />
           </div>
           <div class="s2v-panel-body grid gap-3">
-            <S2VInput v-model="code" placeholder="例如 S2V-XXXX-XXXX" />
-            <S2VButton :disabled="!code" @click="app.notify('兑换码校验成功（原型）')">确认兑换</S2VButton>
+            <S2VInput v-model="code" placeholder="例如 S2V-WELCOME-20" />
+            <S2VButton :disabled="!code" @click="app.redeem(code) && (code = '')">确认兑换</S2VButton>
           </div>
         </S2VCard>
 
@@ -82,7 +82,7 @@ function recharge() {
             <History class="h-4 w-4 text-s2v-muted" />
           </div>
           <div class="divide-y divide-s2v-line/70 px-4">
-            <div v-for="item in transactions" :key="item.id" class="flex items-center gap-3 py-3">
+            <div v-for="item in app.transactions" :key="item.id" class="flex items-center gap-3 py-3">
               <span :class="item.amount > 0 ? 's2v-icon-well s2v-icon-well-success' : 's2v-icon-well s2v-icon-well-muted'">
                 <ArrowDownLeft v-if="item.amount > 0" class="h-3.5 w-3.5" />
                 <ArrowUpRight v-else class="h-3.5 w-3.5" />
@@ -98,7 +98,7 @@ function recharge() {
             </div>
           </div>
           <div class="border-t border-s2v-line px-4 py-3">
-            <button class="flex items-center gap-1 text-xs font-semibold text-s2v-primary" type="button" @click="app.notify('流水详情将在后端接入后开放')"><CircleHelp class="h-3.5 w-3.5" />了解余额扣费规则</button>
+            <button class="flex items-center gap-1 text-xs font-semibold text-s2v-primary" type="button" @click="app.notify('生成任务提交时预扣费用，失败或主动终止后原路退回钱包。')">了解余额扣费规则</button>
           </div>
         </S2VCard>
       </div>

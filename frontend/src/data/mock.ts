@@ -1,4 +1,6 @@
 export type TaskStatus = '排队中' | '生成中' | '已完成' | '失败'
+export type AssetType = '图片' | '视频' | '音频'
+export type TicketStatus = '待处理' | '处理中' | '已解决'
 
 export interface Task {
   id: string
@@ -11,6 +13,35 @@ export interface Task {
   cost: number
   time: string
   thumb: string
+}
+
+export interface Asset {
+  id: string
+  name: string
+  type: AssetType
+  size: string
+  folder: string
+  color: string
+  accent: string
+  updated: string
+  sourceTask?: string
+}
+
+export interface LedgerEntry {
+  id: string
+  type: string
+  amount: number
+  desc: string
+  time: string
+}
+
+export interface ClientTicket {
+  id: string
+  title: string
+  category: string
+  status: TicketStatus
+  updated: string
+  task: string
 }
 
 export const sceneTemplates = [
@@ -29,7 +60,7 @@ export const initialTasks: Task[] = [
   { id: 'tsk_88812', title: '咖啡店窗边人物', workflow: 'H3 图生视频', status: '已完成', progress: 100, duration: '15 秒', resolution: '768P', cost: 4.5, time: '昨天 15:31', thumb: 'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=480&q=80' },
 ]
 
-export const assets = [
+export const assets: Asset[] = [
   { id: 'ast-1', name: '雨夜街景参考', type: '图片', size: '2.4 MB', folder: '场景', color: '1e293b', accent: '818cf8', updated: '今天 14:18' },
   { id: 'ast-2', name: '产品主视觉', type: '图片', size: '1.8 MB', folder: '产品', color: '3f3f46', accent: 'fbbf24', updated: '今天 13:36' },
   { id: 'ast-3', name: '人物侧脸素材', type: '图片', size: '3.1 MB', folder: '人物', color: '7f1d1d', accent: 'fca5a5', updated: '昨天 19:22' },
@@ -38,7 +69,7 @@ export const assets = [
   { id: 'ast-6', name: '咖啡店环境音', type: '音频', size: '4.2 MB', folder: '音频', color: '713f12', accent: 'fde68a', updated: '8 月 27 日' },
 ]
 
-export const transactions = [
+export const transactions: LedgerEntry[] = [
   { id: 'TX_90182', type: '任务消费', amount: -4.5, desc: 'tsk_88921 雨夜街道霓虹漫步', time: '今天 14:20' },
   { id: 'TX_90177', type: '充值到账', amount: 100, desc: '余额充值 · 微信支付', time: '今天 13:10' },
   { id: 'TX_90120', type: '任务退款', amount: 4.5, desc: 'tsk_88840 生成失败退款', time: '昨天 18:12' },
@@ -52,9 +83,13 @@ export const rechargeProducts = [
   { id: 'p-4', amount: 500, bonus: 50, price: 500 },
 ]
 
-export const tickets = [
+export const tickets: ClientTicket[] = [
   { id: 'TKT-1028', title: '任务生成失败，如何申请退款？', category: '售后支持', status: '处理中', updated: '今天 18:12', task: 'tsk_88840' },
   { id: 'TKT-1019', title: '想了解 2K 分辨率的开放时间', category: '售前咨询', status: '已解决', updated: '8 月 28 日', task: '-' },
+]
+
+export const redeemCodes = [
+  { code: 'S2V-WELCOME-20', amount: 20, label: '新用户体验金' },
 ]
 
 export const workflows = [

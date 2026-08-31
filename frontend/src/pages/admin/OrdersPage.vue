@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Download, FileText, Search } from 'lucide-vue-next'
-import { ref } from 'vue'
-import { transactions } from '@/data/mock'
+import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
@@ -10,6 +9,7 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 
 const app = useAppStore()
 const search = ref('')
+const list = computed(() => app.transactions.filter((row) => !search.value || `${row.id}${row.desc}${row.type}`.includes(search.value)))
 </script>
 
 <template>
@@ -41,14 +41,14 @@ const search = ref('')
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in transactions.filter((row) => !search || `${row.id}${row.desc}`.includes(search))" :key="item.id">
+          <tr v-for="item in list" :key="item.id">
             <td class="font-mono text-s2v-ink">{{ item.id }}</td>
             <td>{{ item.type }}</td>
             <td>{{ item.desc }}</td>
             <td :class="item.amount > 0 ? 'font-mono text-s2v-success' : 'font-mono'">{{ item.amount > 0 ? '+' : '' }}¥{{ item.amount.toFixed(2) }}</td>
             <td><S2VBadge tone="success">已完成</S2VBadge></td>
             <td>{{ item.time }}</td>
-            <td><button class="flex items-center gap-1 text-xs text-s2v-primary" type="button" @click="app.notify('凭证详情已打开')"><FileText class="h-3.5 w-3.5" />查看</button></td>
+            <td><button class="flex items-center gap-1 text-xs text-s2v-primary" type="button" @click="app.notify(`${item.id} 凭证：${item.type}`)"><FileText class="h-3.5 w-3.5" />查看</button></td>
           </tr>
         </tbody>
       </table>
