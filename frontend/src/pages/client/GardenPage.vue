@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ArrowRight, Filter, Search, Sparkles } from 'lucide-vue-next'
+import { Filter, Search, Sparkles } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
 import { sceneTemplates } from '@/data/mock'
+import SceneCard from '@/features/garden/SceneCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
-import S2VButton from '@/shared/ui/S2VButton.vue'
-import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
@@ -43,19 +42,7 @@ function useScene(item: (typeof sceneTemplates)[number]) {
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <S2VCard v-for="item in filtered" :key="item.id" variant="media">
-        <div class="grid aspect-video place-items-center text-xs font-mono text-white" :style="{ background: `linear-gradient(135deg, #${item.color}, #${item.accent})` }">
-          <span class="s2v-media-tag text-xs font-mono text-white">{{ item.category }} · H3</span>
-        </div>
-        <div class="s2v-panel-body">
-          <h2 class="text-sm font-bold">{{ item.title }}</h2>
-          <p class="mt-1.5 min-h-10 text-xs leading-5 text-s2v-muted">{{ item.description }}</p>
-          <div class="mt-3 flex items-center justify-between">
-            <span class="text-[11px] text-s2v-muted">768P · 15 秒</span>
-            <S2VButton size="sm" @click="useScene(item)">套用 <ArrowRight class="h-3.5 w-3.5" /></S2VButton>
-          </div>
-        </div>
-      </S2VCard>
+      <SceneCard v-for="item in filtered" :key="item.id" :item="item" @apply="useScene(item)" />
     </div>
   </section>
 </template>
