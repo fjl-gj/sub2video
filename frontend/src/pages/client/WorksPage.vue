@@ -20,8 +20,8 @@ const refundTask = ref<(typeof app.tasks)[number] | null>(null)
 const list = computed(() => filter.value === '全部' ? app.tasks : app.tasks.filter((task) => task.status === filter.value))
 const counts = computed(() => Object.fromEntries(tabs.map((tab) => [tab, tab === '全部' ? app.tasks.length : app.tasks.filter((task) => task.status === tab).length])))
 
-function retry() {
-  app.notify('任务已重新排队，费用不会重复扣除')
+function retry(id: string) {
+  app.retryTask(id)
 }
 
 function askRefund(task: (typeof app.tasks)[number]) {
@@ -30,7 +30,7 @@ function askRefund(task: (typeof app.tasks)[number]) {
 }
 
 function confirmRefund() {
-  if (refundTask.value) app.notify(`已终止 ${refundTask.value.id}，预扣费用将退回钱包`)
+  if (refundTask.value) app.cancelTask(refundTask.value.id)
 }
 </script>
 
@@ -86,8 +86,8 @@ function confirmRefund() {
             <td>{{ task.time }}</td>
             <td>
               <div class="flex items-center gap-1">
-                <S2VIconButton v-if="task.status === '失败'" label="重新生成" @click="retry"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton v-else-if="task.status === '生成中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton v-if="task.status === '失败'" label="重新生成" @click="retry(task.id)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
                 <S2VIconButton v-else label="下载作品" @click="app.notify('原型阶段仅模拟下载')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
                 <S2VIconButton label="查看详情" @click="app.notify(`已打开 ${task.id} 详情`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
               </div>

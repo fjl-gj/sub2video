@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Check, CircleAlert, MessageSquare, RotateCcw, Search } from 'lucide-vue-next'
-import { ref } from 'vue'
-import { adminTickets } from '@/data/mock'
+import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VDialog from '@/shared/ui/S2VDialog.vue'
@@ -12,15 +11,17 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 const app = useAppStore()
 const search = ref('')
 const refundOpen = ref(false)
-const pending = ref<(typeof adminTickets)[number] | null>(null)
+const pending = ref<(typeof app.adminTickets)[number] | null>(null)
+const openCount = computed(() => app.adminTickets.filter((item) => item.status !== '已解决').length)
+const list = computed(() => app.adminTickets.filter((row) => !search.value || `${row.id}${row.user}${row.title}`.includes(search.value)))
 
-function askRefund(item: (typeof adminTickets)[number]) {
+function askRefund(item: (typeof app.adminTickets)[number]) {
   pending.value = item
   refundOpen.value = true
 }
 
 function confirmRefund() {
-  if (pending.value) app.notify(`已核准 ${pending.value.id} 退款`)
+  if (pending.value) app.approveTicketRefund(pending.value.id)
 }
 </script>
 
@@ -29,7 +30,7 @@ function confirmRefund() {
     <S2VPageHeader badge="Tickets" title="工单中心">
       <template #description>处理退款、生成异常和售前咨询，支持关联任务后再执行操作。</template>
       <template #actions>
-        <S2VBadge tone="warning"><CircleAlert class="h-3 w-3" />2 条待处理</S2VBadge>
+        <S2VBadge tone="warning"><CircleAlert class="h-3 w-3" />{{ openCount }} 条待处理</S2VBadge>
       </template>
     </S2VPageHeader>
 
@@ -53,7 +54,7 @@ function confirmRefund() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in adminTickets.filter((row) => !search || `${row.id}${row.user}${row.title}`.includes(search))" :key="item.id">
+          <tr v-for="item in list" :key="item.id">
             <td>
               <strong class="block text-xs text-s2v-ink">{{ item.title }}</strong>
               <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ item.id }}</span>
@@ -66,8 +67,8 @@ function confirmRefund() {
             <td>
               <div class="flex items-center gap-1">
                 <S2VIconButton label="回复工单" @click="app.notify(`已打开 ${item.id} 对话`)"><MessageSquare class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton v-if="item.amount" label="核准退款" @click="askRefund(item)"><RotateCcw class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton v-else label="标记已解决" @click="app.notify(`${item.id} 已标记为已解决`)"><Check class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton v-if="item.amount && item.status !== '已解决'" label="核准退款" @click="askRefund(item)"><RotateCcw class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton v-else-if="item.status !== '已解决'" label="标记已解决" @click="app.resolveTicket(item.id)"><Check class="h-3.5 w-3.5" /></S2VIconButton>
               </div>
             </td>
           </tr>
