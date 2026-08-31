@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test'
 const cases = [
   { name: 'client-overview', path: '/app/overview', heading: '欢迎回来，李维工作室' },
   { name: 'client-create', path: '/app/create', heading: '创建视频生成任务' },
+  { name: 'client-works', path: '/app/works', heading: '我的作品' },
+  { name: 'client-wallet', path: '/app/wallet', heading: 'RMB 钱包中心' },
   { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘' },
   { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心' },
 ]
