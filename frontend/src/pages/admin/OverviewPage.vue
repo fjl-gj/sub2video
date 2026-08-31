@@ -31,7 +31,7 @@ const metrics = [
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <S2VCard v-for="item in metrics" :key="item.label" variant="metric">
         <div class="text-xs font-medium text-s2v-muted">{{ item.label }}</div>
-        <strong :class="['s2v-mono mt-2 block text-2xl font-bold tabular-nums', item.tone === 'success' ? 'text-s2v-success' : item.tone === 'primary' ? 'text-indigo-600' : 'text-s2v-ink']">
+        <strong :class="['s2v-mono mt-2 block text-2xl font-bold tabular-nums', item.tone === 'success' ? 'text-s2v-success' : item.tone === 'primary' ? 'text-s2v-primary' : 'text-s2v-ink']">
           {{ item.value }} <span v-if="item.unit" class="text-xs font-normal text-s2v-muted">{{ item.unit }}</span>
         </strong>
         <span class="mt-1 block text-[10px] text-s2v-muted">{{ item.note }}</span>

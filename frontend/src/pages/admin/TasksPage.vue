@@ -1,11 +1,92 @@
 <script setup lang="ts">
-import { Ban, Download, Filter, RefreshCw, Search } from 'lucide-vue-next'
+import { Ban, Download, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 import { adminTasks } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
+import S2VDialog from '@/shared/ui/S2VDialog.vue'
 import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
-const app = useAppStore(); const filter = ref('全部'); const search = ref(''); const tabs = ['全部','排队中','生成中','已完成','失败']
+import S2VInput from '@/shared/ui/S2VInput.vue'
+import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
+
+const app = useAppStore()
+const filter = ref('全部')
+const search = ref('')
+const tabs = ['全部', '排队中', '生成中', '已完成', '失败']
+const confirmOpen = ref(false)
+const pending = ref<(typeof adminTasks)[number] | null>(null)
 const list = computed(() => adminTasks.filter((task) => (filter.value === '全部' || task.status === filter.value) && (!search.value || `${task.id}${task.title}${task.user}`.includes(search.value))))
+
+function askStop(task: (typeof adminTasks)[number]) {
+  pending.value = task
+  confirmOpen.value = true
+}
+
+function confirmStop() {
+  if (pending.value) app.notify(`已终止 ${pending.value.id} 并发起退款`)
+}
 </script>
-<template><section class="s2v-page"><header class="s2v-page-header"><div><p class="s2v-eyebrow">任务管理 / 任务中心</p><h1 class="s2v-page-title">任务中心</h1><p class="s2v-subcopy">查看全站生成任务，处理卡住、失败和退款任务。</p></div><S2VBadge tone="primary">{{ adminTasks.length }} 条任务</S2VBadge></header><div class="mb-4 flex flex-wrap items-center gap-2"><div class="flex max-w-full items-center gap-1 overflow-x-auto rounded-[7px] border border-s2v-line bg-s2v-surface p-1"><button v-for="tab in tabs" :key="tab" :class="['whitespace-nowrap rounded px-2.5 py-1.5 text-xs font-semibold', filter === tab ? 'bg-s2v-primary-soft text-s2v-primary' : 'text-s2v-muted']" @click="filter = tab">{{ tab }}</button></div><label class="ml-auto flex min-w-[190px] items-center gap-2 rounded-[7px] border border-s2v-line bg-s2v-surface px-2.5 py-1.5"><Search class="h-3.5 w-3.5 text-s2v-muted" /><input v-model="search" class="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="任务 ID / 用户" /><Filter class="h-3.5 w-3.5 text-s2v-muted" /></label></div><div class="s2v-table-wrap"><table class="s2v-table"><thead><tr><th>任务</th><th>用户</th><th>供应商</th><th>状态</th><th>费用</th><th>提交时间</th><th>操作</th></tr></thead><tbody><tr v-for="task in list" :key="task.id"><td><strong class="block text-xs text-s2v-ink">{{ task.title }}</strong><span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ task.id }}</span></td><td>{{ task.user }}</td><td>{{ task.provider }}</td><td><S2VBadge :tone="task.status === '失败' ? 'danger' : task.status === '已完成' ? 'success' : 'primary'">{{ task.status }}</S2VBadge></td><td class="font-mono">¥{{ task.cost.toFixed(2) }}</td><td>{{ task.time }}</td><td><div class="flex items-center gap-1"><S2VIconButton label="重新调度" @click="app.notify(`已重新调度 ${task.id}`)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton><S2VIconButton label="终止任务并退款" @click="app.notify(`已终止 ${task.id} 并发起退款`)"><Ban class="h-3.5 w-3.5" /></S2VIconButton><S2VIconButton label="导出任务记录" @click="app.notify('已生成任务记录（原型）')"><Download class="h-3.5 w-3.5" /></S2VIconButton></div></td></tr></tbody></table></div></section></template>
+
+<template>
+  <section class="s2v-page">
+    <S2VPageHeader badge="Task Hub" title="任务中心">
+      <template #description>查看全站生成任务，处理卡住、失败和退款任务。</template>
+      <template #actions>
+        <S2VBadge tone="primary">{{ adminTasks.length }} 条任务</S2VBadge>
+      </template>
+    </S2VPageHeader>
+
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <S2VSegmented v-model="filter" :options="tabs" />
+      <S2VInput v-model="search" class="ml-auto max-w-xs flex-1" size="sm" placeholder="任务 ID / 用户">
+        <template #prefix><Search class="h-3.5 w-3.5 text-s2v-muted" /></template>
+      </S2VInput>
+    </div>
+
+    <div class="s2v-table-wrap">
+      <table class="s2v-table">
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>用户</th>
+            <th>供应商</th>
+            <th>状态</th>
+            <th>费用</th>
+            <th>提交时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="task in list" :key="task.id">
+            <td>
+              <strong class="block text-xs text-s2v-ink">{{ task.title }}</strong>
+              <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ task.id }}</span>
+            </td>
+            <td>{{ task.user }}</td>
+            <td>{{ task.provider }}</td>
+            <td><S2VBadge :tone="task.status === '失败' ? 'danger' : task.status === '已完成' ? 'success' : 'primary'">{{ task.status }}</S2VBadge></td>
+            <td class="font-mono">¥{{ task.cost.toFixed(2) }}</td>
+            <td>{{ task.time }}</td>
+            <td>
+              <div class="flex items-center gap-1">
+                <S2VIconButton label="重新调度" @click="app.notify(`已重新调度 ${task.id}`)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton label="终止任务并退款" @click="askStop(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton label="导出任务记录" @click="app.notify('已生成任务记录（原型）')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <S2VDialog
+      v-model:open="confirmOpen"
+      tone="danger"
+      title="终止任务并退款"
+      :description="pending ? `确定终止 ${pending.id} 吗？预扣费用将原路退回用户钱包。` : ''"
+      confirm-label="终止并退款"
+      @confirm="confirmStop"
+    />
+  </section>
+</template>

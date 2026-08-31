@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { cn } from '@/shared/lib/cn'
 
 const props = withDefaults(defineProps<{
-  variant?: 'default' | 'metric' | 'padded' | 'muted' | 'highlight'
+  variant?: 'default' | 'metric' | 'padded' | 'muted' | 'highlight' | 'media'
   class?: string
 }>(), { variant: 'default' })
 
@@ -13,6 +13,7 @@ const classes = computed(() => cn(
   props.variant === 'padded' && 'p-5',
   props.variant === 'muted' && 'bg-s2v-canvas/70',
   props.variant === 'highlight' && 'border-s2v-primary/30 bg-s2v-primary-soft/25',
+  props.variant === 'media' && 'overflow-hidden',
   props.class,
 ))
 </script>

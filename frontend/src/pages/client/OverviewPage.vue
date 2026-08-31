@@ -40,7 +40,7 @@ const metrics = [
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
       <S2VCard v-for="item in metrics" :key="item.label" variant="metric">
         <div class="text-[11px] font-medium text-s2v-muted">{{ item.label }}</div>
-        <strong :class="['s2v-mono mt-2 block text-xl font-bold tabular-nums', item.tone === 'success' ? 'text-s2v-success' : item.tone === 'warning' ? 'text-amber-600' : 'text-s2v-ink']">
+        <strong :class="['s2v-mono mt-2 block text-xl font-bold tabular-nums', item.tone === 'success' ? 'text-s2v-success' : item.tone === 'warning' ? 'text-s2v-warning' : 'text-s2v-ink']">
           {{ item.value }}<span v-if="item.unit" class="ml-1 text-xs font-normal text-s2v-muted">{{ item.unit }}</span>
         </strong>
         <button v-if="item.to" type="button" class="mt-1 block text-[10px] font-medium text-s2v-primary hover:underline" @click="router.push(item.to)">{{ item.note }}</button>
@@ -51,12 +51,12 @@ const metrics = [
     <S2VCard variant="padded" class="mt-6">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-s2v-ink">
-          <span class="h-2.5 w-2.5 rounded-full bg-amber-500" />正在执行的渲染流水 (预扣款机制)
+          <span class="h-2.5 w-2.5 rounded-full bg-s2v-warning" />正在执行的渲染流水 (预扣款机制)
         </div>
         <button type="button" class="text-[11px] font-semibold text-s2v-primary hover:underline" @click="router.push('/app/works')">进入完整任务中心 →</button>
       </div>
       <div v-if="activeTask" class="mt-3 flex flex-col gap-3 rounded-xl border border-s2v-line/60 bg-s2v-canvas p-3.5 sm:flex-row sm:items-center">
-        <div class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-900 text-indigo-200"><Clock3 class="h-5 w-5" /></div>
+        <div class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-900 text-s2v-primary-soft"><Clock3 class="h-5 w-5" /></div>
         <div class="min-w-0 flex-1">
           <strong class="block truncate text-xs">{{ activeTask.title }} · {{ activeTask.resolution }} / {{ activeTask.duration }} (含音频)</strong>
           <span class="mt-1 block truncate text-[11px] text-s2v-muted">已预扣 ¥ {{ activeTask.cost.toFixed(2) }} · {{ activeTask.workflow }} · 进度 {{ activeTask.progress }}%</span>

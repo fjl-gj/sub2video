@@ -135,7 +135,9 @@ semantic state. One-off visual exceptions belong in a feature component.
 | `S2VBadge` | Small rounded square (`rounded`), not a full pill, except status dots. Use semantic tones. |
 | `S2VDialog` | Reka UI headless + frosted center modal. Destructive actions use this, not toast. |
 | `S2VToast` | Bottom-right system toast with success / warning / danger tones. |
-| `S2VInput` / `S2VSelect` | Shared control radius. Pages must not draw raw inputs. |
+| `S2VInput` / `S2VSelect` / `S2VTextarea` | Shared control radius. Prefix/suffix slots for search. Pages must not draw raw inputs. |
+| `S2VSegmented` | Toolbar tab row (works / garden / tasks). |
+| `S2VChoice` | Selected option chip or recharge/ratio tile. |
 
 Preferred usage:
 
