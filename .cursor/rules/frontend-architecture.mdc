@@ -1,0 +1,13 @@
+---
+description: Sub2Video frontend architecture and routing
+globs: ["frontend/src/**/*.vue", "frontend/src/**/*.ts"]
+alwaysApply: true
+---
+
+- Use Vue 3 Composition API and TypeScript.
+- Keep client and admin in separate layouts and route namespaces.
+- Keep API access in `src/api`, state in `src/stores`, and domain types in
+  `src/entities`.
+- Keep mock data deterministic and isolated under `src/data` (move to `src/mocks` when the mock layer grows beyond the prototype).
+- Do not put provider keys, OSS credentials, or payment secrets in the client.
+- Prefer small feature components over page-local duplicated markup.

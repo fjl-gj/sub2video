@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>Sub2Video H3 MVP Prototype</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --canvas: #f8fafc;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --brand: #4f46e5;
+      --brand-dark: #4338ca;
+      --brand-soft: #eef2ff;
+      --info: #2563eb;
+      --info-soft: #eff6ff;
+      --amber: #b45309;
+      --amber-soft: #fffbeb;
+      --danger: #e11d48;
+      --danger-soft: #fff1f2;
+      --shadow: 0 3px 10px rgba(15, 23, 42, 0.045), 0 1px 3px rgba(15, 23, 42, 0.035);
+      --radius: 8px;
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; color: var(--ink); background: var(--canvas); font-size: 14px; }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid rgba(8, 123, 102, 0.22); outline-offset: 2px; }
+    .hidden { display: none !important; }
+    .app { min-height: 100vh; }
+    .topbar { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; min-width: max-content; font-weight: 750; font-size: 18px; color: var(--ink); text-decoration: none; }
+    .brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--brand); color: #fff; box-shadow: 0 3px 8px rgba(79, 70, 229, 0.22); }
+    .brand-mark i { width: 17px; height: 17px; }
+    .topbar-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .balance { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .balance strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+    .avatar { display: grid; place-items: center; width: 30px; height: 30px; color: #fff; border: 0; border-radius: 50%; background: #34433d; font-size: 12px; font-weight: 700; }
+    .icon-button { position: relative; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--surface); }
+    .icon-button:hover { color: var(--brand); border-color: var(--brand); background: var(--brand-soft); }
+    .icon-button i { width: 17px; height: 17px; }
+    .icon-button[data-tip]::after { content: attr(data-tip); position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; display: none; padding: 5px 7px; border-radius: 5px; color: #fff; background: var(--ink); font-size: 11px; white-space: nowrap; }
+    .icon-button[data-tip]:hover::after { display: block; }
+
+    .shell { min-height: calc(100vh - 56px); display: grid; grid-template-columns: 224px minmax(0, 1fr); }
+    .sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--line); }
+    .nav { padding: 14px 12px; display: grid; gap: 4px; }
+    .nav-label { padding: 6px 10px; color: #89938f; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; }
+    .nav-button { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid transparent; border-radius: 7px; color: #52605a; background: transparent; text-align: left; font-size: 13px; font-weight: 600; }
+    .nav-button:hover { color: var(--ink); background: var(--surface-muted); }
+    .nav-button.active { color: var(--brand-dark); background: var(--brand-soft); border-color: #c7d2fe; }
+    .nav-button i { width: 17px; height: 17px; }
+    .nav-button .nav-count { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .nav-divider { height: 1px; margin: 7px 10px; background: #eef2f5; }
+    .sidebar-bottom { margin-top: auto; padding: 14px; border-top: 1px solid var(--line); }
+    .storage-mini { display: grid; gap: 7px; padding: 10px; border-radius: var(--radius); background: #f8fafc; }
+    .storage-mini .row { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .meter { width: 100%; height: 4px; overflow: hidden; border-radius: 99px; background: #dfe7e3; }
+    .meter > span { display: block; width: 38%; height: 100%; border-radius: inherit; background: var(--brand); }
+
+    .page { padding: 28px; max-width: 1540px; width: 100%; margin: 0 auto; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .eyebrow { margin: 0 0 5px; color: var(--brand); font-size: 12px; font-weight: 700; }
+    h1 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 16px; line-height: 1.35; }
+    h3 { margin: 0; font-size: 14px; }
+    .subcopy { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 7px; color: #3d4a45; background: var(--surface); font-size: 12px; font-weight: 650; }
+    .button:hover { border-color: var(--brand); color: var(--brand-dark); background: var(--brand-soft); }
+    .button.primary { border-color: var(--brand); color: #fff; background: var(--brand); }
+    .button.primary:hover { border-color: var(--brand-dark); color: #fff; background: var(--brand-dark); }
+    .button i { width: 15px; height: 15px; }
+    .button[disabled] { cursor: wait; opacity: 0.75; }
+    .pill-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; color: var(--muted); background: var(--surface); font-size: 11px; font-weight: 650; }
+    .pill.green { border-color: #c9e7df; color: var(--brand-dark); background: var(--brand-soft); }
+    .pill.blue { border-color: #d2e2f4; color: var(--info); background: var(--info-soft); }
+    .pill.amber { border-color: #f2ddaf; color: var(--amber); background: var(--amber-soft); }
+    .pill.danger { border-color: #f1cbd3; color: var(--danger); background: var(--danger-soft); }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 16px 12px; border-bottom: 1px solid #edf1ef; }
+    .panel-body { padding: 16px; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 28px 0 12px; }
+    .tab-row { display: inline-flex; gap: 3px; max-width: 100%; overflow-x: auto; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .tab { min-height: 31px; padding: 5px 10px; border: 0; border-radius: 5px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 650; white-space: nowrap; }
+    .tab.active { color: var(--brand-dark); background: var(--brand-soft); }
+    .tab:disabled { cursor: not-allowed; opacity: 0.48; }
+
+    .create-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(270px, 0.9fr); gap: 18px; }
+    .create-left { display: grid; gap: 18px; }
+    .reference-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .upload-zone { min-height: 186px; display: grid; place-items: center; gap: 9px; padding: 18px; border: 1.5px dashed #aebdb6; border-radius: 7px; background: var(--surface-muted); color: var(--muted); text-align: center; }
+    .upload-zone:hover { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-dark); }
+    .upload-zone i { width: 26px; height: 26px; color: var(--brand); }
+    .upload-zone strong { color: var(--ink); font-size: 13px; }
+    .upload-zone span { font-size: 11px; line-height: 1.55; }
+    .asset-choice { min-height: 186px; position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: #27342f; }
+    .asset-choice img { width: 100%; height: 186px; display: block; object-fit: cover; opacity: 0.82; }
+    .asset-choice-content { position: absolute; inset: auto 0 0; padding: 13px; color: #fff; background: rgba(23, 32, 29, 0.78); }
+    .asset-choice-content p { margin: 3px 0 0; color: #d5ddd9; font-size: 11px; }
+    .asset-choice .button { margin-top: 10px; border-color: rgba(255,255,255,.4); color: #fff; background: transparent; }
+    .prompt-area { width: 100%; min-height: 134px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 7px; padding: 12px; color: var(--ink); background: var(--surface); font-size: 13px; line-height: 1.65; }
+    .prompt-area::placeholder { color: #9aa5a0; }
+    .hint-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+    .text-action { border: 0; padding: 0; color: var(--brand); background: transparent; font-size: 11px; font-weight: 700; }
+    .settings { display: grid; gap: 16px; }
+    .field { display: grid; gap: 7px; }
+    .field label { color: #506059; font-size: 12px; font-weight: 700; }
+    .control { width: 100%; height: 38px; border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 10px; color: var(--ink); background: var(--surface); font-size: 12px; }
+    .choice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .choice { min-height: 37px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--surface); font-size: 12px; font-weight: 650; }
+    .choice.active { border-color: var(--brand); color: var(--brand-dark); background: var(--brand-soft); }
+    .quote { display: grid; gap: 9px; padding: 13px; border-radius: 7px; background: var(--surface-muted); }
+    .quote-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+    .quote-line strong { color: var(--ink); font-size: 16px; font-variant-numeric: tabular-nums; }
+    .task-state { display: none; padding: 12px; border: 1px solid #c9e7df; border-radius: 7px; color: var(--brand-dark); background: var(--brand-soft); font-size: 12px; line-height: 1.6; }
+    .task-state.visible { display: flex; align-items: center; gap: 9px; }
+    .task-state i { width: 18px; height: 18px; flex: 0 0 auto; }
+
+    .scene-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .scene-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 7px 18px rgba(22,37,31,.04); }
+    .scene-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+    .scene-card-body { padding: 13px; }
+    .scene-card-body p { margin: 6px 0 12px; min-height: 38px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .scene-card-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .scene-card .scene-info { color: var(--muted); font-size: 11px; }
+    .asset-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .asset-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .asset-card img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+    .asset-card-body { padding: 10px 11px; }
+    .asset-card-body strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .asset-card-body span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; min-width: 680px; }
+    th { padding: 11px 14px; color: #718078; background: var(--surface-muted); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; text-align: left; white-space: nowrap; }
+    td { padding: 13px 14px; border-bottom: 1px solid #edf1ef; color: #4d5b55; font-size: 12px; vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .work-thumb { width: 58px; height: 35px; display: block; border-radius: 4px; object-fit: cover; }
+    .work-title { color: var(--ink); font-size: 12px; font-weight: 700; }
+    .work-meta { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .wallet-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, .85fr); gap: 18px; }
+    .wallet-balance { padding: 22px; border-radius: var(--radius); color: #fff; background: #1f3932; }
+    .wallet-balance .label { color: #b9d0c6; font-size: 12px; }
+    .wallet-balance .amount { margin: 8px 0 16px; font-size: 34px; font-weight: 760; font-variant-numeric: tabular-nums; }
+    .wallet-balance .button { border-color: #8dc1af; color: #fff; background: transparent; }
+    .recharge-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+    .recharge { min-height: 85px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); text-align: left; }
+    .recharge:hover, .recharge.active { border-color: var(--brand); background: var(--brand-soft); }
+    .recharge strong { display: block; font-size: 18px; }
+    .recharge span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+    .admin-shell .topbar { border-bottom-color: var(--line); }
+    .admin-shell .brand-mark { background: #059669; box-shadow: 0 3px 8px rgba(5, 150, 105, 0.2); }
+    .admin-shell .sidebar { background: var(--surface); border-right-color: var(--line); }
+    .admin-shell .nav-label, .admin-shell .nav-group-label { color: #94a3b8; }
+    .admin-shell .nav-button { color: #64748b; }
+    .admin-shell .nav-button:hover { color: #0f172a; background: #f8fafc; }
+    .admin-shell .nav-button.active { color: #047857; border-color: #bbf7d0; background: #ecfdf5; }
+    .admin-shell .sidebar-bottom { border-top-color: var(--line); }
+    .admin-shell .storage-mini { color: #475569; background: #f8fafc; }
+    .admin-shell .storage-mini .row { color: #64748b; }
+    .admin-shell .meter { background: #dbe5df; }
+    .admin-shell .meter > span { background: #059669; }
+    .admin-shell .eyebrow { color: #059669; }
+    .admin-shell .button.primary { border-color: #059669; background: #059669; }
+    .admin-shell .button.primary:hover { border-color: #047857; background: #047857; }
+    .nav-group { display: grid; gap: 3px; margin-top: 8px; }
+    .nav-group-label { padding: 5px 10px 3px; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+    .admin-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+    .kpi { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .kpi-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; }
+    .kpi-icon { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 7px; }
+    .kpi-icon.green { color: var(--brand); background: var(--brand-soft); }
+    .kpi-icon.blue { color: var(--info); background: var(--info-soft); }
+    .kpi-icon.amber { color: var(--amber); background: var(--amber-soft); }
+    .kpi-icon.red { color: var(--danger); background: var(--danger-soft); }
+    .kpi-icon i { width: 16px; height: 16px; }
+    .kpi strong { display: block; margin-top: 14px; color: var(--ink); font-size: 24px; font-variant-numeric: tabular-nums; }
+    .kpi span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .admin-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(290px, .8fr); gap: 18px; margin-top: 18px; }
+    .queue-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 12px 0; border-bottom: 1px solid #edf1ef; }
+    .queue-item:last-child { border-bottom: 0; }
+    .queue-item strong { display: block; font-size: 12px; }
+    .queue-item span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .progress { width: 100%; max-width: 150px; height: 5px; overflow: hidden; border-radius: 99px; background: #e2e9e5; }
+    .progress span { display: block; height: 100%; border-radius: inherit; background: var(--brand); }
+    .metric-list { display: grid; gap: 13px; }
+    .metric-line { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 12px; }
+    .metric-line strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+    .config-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .config-card { min-height: 170px; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .config-card p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .config-card .foot { margin-top: 18px; color: #4f5f58; font-size: 11px; }
+    .two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .notice { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #d6e4f5; border-radius: 7px; color: #3f5e7a; background: var(--info-soft); font-size: 12px; line-height: 1.55; }
+    .notice i { width: 17px; height: 17px; flex: 0 0 auto; color: var(--info); }
+    .toast { position: fixed; right: 20px; bottom: 20px; z-index: 50; max-width: 320px; display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid #b9dfd2; border-radius: 7px; color: #145445; background: #effaf6; box-shadow: var(--shadow); font-size: 12px; transform: translateY(20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+    .toast.visible { transform: translateY(0); opacity: 1; }
+    .toast i { width: 17px; height: 17px; }
+
+    @media (max-width: 1120px) {
+      .scene-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .asset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .admin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 860px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { position: sticky; top: 0; z-index: 10; display: block; min-height: 0; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav { display: flex; gap: 6px; padding: 8px 12px; min-width: max-content; }
+      .nav-label, .nav-group-label, .nav-divider, .sidebar-bottom { display: none; }
+      .nav-button { width: auto; min-height: 34px; }
+      .nav-button .nav-count { display: none; }
+      .admin-shell .sidebar { overflow-x: auto; }
+      .admin-shell .nav { min-width: max-content; }
+      .admin-shell .nav-group { display: contents; }
+      .admin-shell .nav-button { flex: 0 0 auto; }
+      .page { padding: 20px 16px 28px; }
+      .create-layout, .wallet-layout, .admin-grid, .two-columns { grid-template-columns: 1fr; }
+      .config-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .topbar { padding: 0 14px; }
+      .brand { font-size: 16px; }
+      .balance { display: none; }
+      .sidebar { overflow-x: hidden; }
+      .nav { width: 100%; min-width: 0; gap: 2px; padding: 8px 6px; justify-content: space-between; }
+      .nav-button { min-height: 36px; flex: 1 1 0; justify-content: center; gap: 3px; padding: 7px 4px; font-size: 11px; }
+      .nav-button i { width: 15px; height: 15px; }
+      .page-header { display: grid; }
+      h1 { font-size: 21px; }
+      .reference-grid, .scene-grid, .asset-grid { grid-template-columns: 1fr; }
+      .choice-grid { grid-template-columns: repeat(3, 1fr); }
+      .admin-kpis { grid-template-columns: 1fr 1fr; }
+      .recharge-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="client-app">
+    <header class="topbar">
+      <a class="brand" href="#create" aria-label="Sub2Video 创作空间">
+        <span class="brand-mark"><i data-lucide="clapperboard"></i></span>
+        <span>Sub2Video</span>
+      </a>
+      <div class="topbar-main">
+        <span class="balance"><i data-lucide="wallet-cards" style="width:15px;height:15px"></i> 余额 <strong>¥ 128.60</strong></span>
+        <button class="icon-button" id="show-admin" data-tip="运营后台" aria-label="打开运营后台"><i data-lucide="shield-check"></i></button>
+        <button class="avatar" aria-label="个人资料">林</button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <nav class="nav" aria-label="创作端导航">
+          <span class="nav-label">创作空间</span>
+          <button class="nav-button active" data-client-view="create"><i data-lucide="clapperboard"></i><span>创作</span></button>
+          <button class="nav-button" data-client-view="garden"><i data-lucide="sparkles"></i><span>创意园</span></button>
+          <button class="nav-button" data-client-view="works"><i data-lucide="film"></i><span>作品</span><span class="nav-count">12</span></button>
+          <button class="nav-button" data-client-view="assets"><i data-lucide="library-big"></i><span>资产</span><span class="nav-count">38</span></button>
+          <span class="nav-divider"></span>
+          <button class="nav-button" data-client-view="wallet"><i data-lucide="wallet"></i><span>钱包</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="storage-mini">
+            <div class="row"><span>已保存资产</span><span>0.38 / 1 GB</span></div>
+            <div class="meter"><span></span></div>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <section class="page client-view" id="client-create">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">H3 视频创作</p>
+              <h1>把一个参考画面做成一段视频</h1>
+              <p class="subcopy">选择工作流，补充画面描述后即可生成。价格会在提交前固定展示。</p>
+            </div>
+            <div class="tab-row" aria-label="视频工作流">
+              <button class="tab active" data-workflow="image">图生视频</button>
+              <button class="tab" disabled title="后续开放">文生视频</button>
+              <button class="tab" disabled title="后续开放">多图生视频</button>
+            </div>
+          </header>
+
+          <div class="create-layout">
+            <div class="create-left">
+              <article class="panel">
+                <div class="panel-header"><div><h2>参考画面</h2><p class="subcopy">上传一张图片，或从资产中选择。</p></div><span class="pill green">图生视频</span></div>
+                <div class="panel-body">
+                  <div class="reference-grid">
+                    <button class="upload-zone" id="upload-mock" type="button"><i data-lucide="upload"></i><strong>上传参考图片</strong><span>JPG、PNG、WebP<br>建议清晰主体与稳定构图</span></button>
+                    <div class="asset-choice">
+                      <img src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=85" alt="资产库中的人像参考图" />
+                      <div class="asset-choice-content"><strong>portrait_studio_01.jpg</strong><p>来自资产库 · 2.4 MB</p><button class="button" id="pick-asset" type="button">使用这张图片</button></div>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-header"><div><h2>画面描述</h2><p class="subcopy">描述主体动作、镜头运动和氛围。</p></div><button class="text-action" id="prompt-polish" type="button">优化描述</button></div>
+                <div class="panel-body">
+                  <textarea class="prompt-area" id="prompt" aria-label="视频画面描述">一位时尚女性站在干净的工作室中，轻微转身并看向镜头。柔和窗光，镜头缓慢推进，真实皮肤质感，克制的时尚短片。</textarea>
+                  <div class="hint-row"><span>清晰的动作和镜头描述会提高可控性</span><span id="prompt-count">55 / 800</span></div>
+                </div>
+              </article>
+            </div>
+
+            <aside class="panel">
+              <div class="panel-header"><div><h2>生成设置</h2><p class="subcopy">首期仅开放 H3 768P 工作流。</p></div></div>
+              <div class="panel-body settings">
+                <div class="field"><label for="ratio">画面比例</label><select class="control" id="ratio"><option>9:16 竖版</option><option>16:9 横版</option><option>1:1 方形</option></select></div>
+                <div class="field"><label>时长</label><div class="choice-grid"><button class="choice active" type="button">15 秒</button><button class="choice" type="button" disabled title="后续开放">30 秒</button><button class="choice" type="button" disabled title="后续开放">60 秒</button></div></div>
+                <div class="field"><label>运动强度</label><div class="choice-grid"><button class="choice" type="button">克制</button><button class="choice active" type="button">自然</button><button class="choice" type="button">强烈</button></div></div>
+                <div class="quote"><div class="quote-line"><span>本次生成</span><strong>¥ 7.50</strong></div><div class="quote-line"><span>预计完成</span><span>约 2 - 5 分钟</span></div></div>
+                <button class="button primary" id="generate" type="button"><i data-lucide="play"></i>开始生成</button>
+                <div class="task-state" id="task-state"><i data-lucide="loader-circle"></i><span>任务已进入队列。可在“作品”中查看实时进度。</span></div>
+              </div>
+            </aside>
+          </div>
+
+          <div class="section-heading"><div><h2>为你准备的场景</h2><p class="subcopy">来自创意园的官方工作流预设。</p></div><button class="button" data-go-client="garden" type="button">浏览创意园 <i data-lucide="arrow-right"></i></button></div>
+          <div class="scene-grid">
+            <article class="scene-card"><img src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1000&q=85" alt="服装人物动态短片封面" /><div class="scene-card-body"><div class="pill-row"><span class="pill green">人物</span><span class="pill">图生视频</span></div><h3 style="margin-top:11px">人物动态肖像</h3><p>保留人物身份感，让人物以自然动作完成一段镜头表达。</p><div class="scene-card-footer"><span class="scene-info">15 秒 · 768P</span><button class="text-action use-scene" type="button">套用</button></div></div></article>
+            <article class="scene-card"><img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1000&q=85" alt="产品广告短片封面" /><div class="scene-card-body"><div class="pill-row"><span class="pill blue">电商</span><span class="pill">图生视频</span></div><h3 style="margin-top:11px">产品质感展示</h3><p>以干净布光和微距运镜突出材质、结构与产品细节。</p><div class="scene-card-footer"><span class="scene-info">15 秒 · 768P</span><button class="text-action use-scene" type="button">套用</button></div></div></article>
+            <article class="scene-card"><img src="https://images.unsplash.com/photo-1519608487953-e999c86e7454?auto=format&fit=crop&w=1000&q=85" alt="氛围风景短片封面" /><div class="scene-card-body"><div class="pill-row"><span class="pill amber">氛围</span><span class="pill">图生视频</span></div><h3 style="margin-top:11px">电影感氛围镜头</h3><p>为静态风景加入缓慢推进和细微环境变化，建立情绪。</p><div class="scene-card-footer"><span class="scene-info">15 秒 · 768P</span><button class="text-action use-scene" type="button">套用</button></div></div></article>
+          </div>
+        </section>
+
+        <section class="page client-view hidden" id="client-garden">
+          <header class="page-header"><div><p class="eyebrow">官方精选</p><h1>创意园</h1><p class="subcopy">先从可复用的场景开始，再按自己的素材和想法微调。</p></div><div class="tab-row"><button class="tab active">全部</button><button class="tab">人物</button><button class="tab">电商</button><button class="tab">氛围</button></div></header>
+          <div class="scene-grid">
+            <article class="scene-card"><img src="https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1000&q=85" alt="舞台氛围视频封面" /><div class="scene-card-body"><div class="pill-row"><span class="pill amber">氛围</span></div><h3 style="margin-top:11px">舞台灯光推进</h3><p>在强弱光切换中保持镜头的稳定推进与空间层次。</p><div class="scene-card-footer"><span class="scene-info">H3 · 图生视频</span><button class="button use-scene" type="button">套用</button></div></div></article>
+            <article class="scene-card"><img src="https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=1000&q=85" alt="时尚人物视频封面" /><div class="scene-card-body"><div class="pill-row"><span class="pill green">人物</span></div><h3 style="margin-top:11px">走近人物</h3><p>从半身构图开始，用轻微镜头推进制造可控的人物表达。</p><div class="scene-card-footer"><span class="scene-info">H3 · 图生视频</span><button class="button use-scene" type="button">套用</button></div></div></article>
+            <article class="scene-card"><img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1000&q=85" alt="产品视频封面" /><div class="scene-card-body"><div class="pill-row"><span class="pill blue">电商</span></div><h3 style="margin-top:11px">产品环绕展示</h3><p>以桌面产品图为参考，突出轮廓、材质和缓慢的环绕运动。</p><div class="scene-card-footer"><span class="scene-info">H3 · 图生视频</span><button class="button use-scene" type="button">套用</button></div></div></article>
+          </div>
+        </section>
+
+        <section class="page client-view hidden" id="client-assets">
+          <header class="page-header"><div><p class="eyebrow">长期保留</p><h1>资产</h1><p class="subcopy">只收纳你主动保存的参考素材和成片，不等同于全部任务记录。</p></div><button class="button primary" id="asset-upload" type="button"><i data-lucide="upload"></i>上传素材</button></header>
+          <div class="notice"><i data-lucide="clock-3"></i><span>任务输入默认保留 7 天，生成结果默认保留 30 天；需要长期复用时，再保存到资产。</span></div>
+          <div class="section-heading"><h2>我的素材</h2><span class="pill">0.38 / 1 GB</span></div>
+          <div class="asset-grid">
+            <article class="asset-card"><img src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=700&q=85" alt="人物照片素材" /><div class="asset-card-body"><strong>portrait_studio_01.jpg</strong><span>图片 · 2.4 MB · 永久保存</span></div></article>
+            <article class="asset-card"><img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=700&q=85" alt="手表产品素材" /><div class="asset-card-body"><strong>watch_reference.png</strong><span>图片 · 1.8 MB · 永久保存</span></div></article>
+            <article class="asset-card"><img src="https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=700&q=85" alt="旅行风景素材" /><div class="asset-card-body"><strong>travel_moodboard.jpg</strong><span>图片 · 3.2 MB · 29 天后过期</span></div></article>
+            <article class="asset-card"><img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=700&q=85" alt="演出视频素材" /><div class="asset-card-body"><strong>live_stage.mp4</strong><span>视频 · 18.6 MB · 永久保存</span></div></article>
+          </div>
+        </section>
+
+        <section class="page client-view hidden" id="client-works">
+          <header class="page-header"><div><p class="eyebrow">生成记录</p><h1>作品</h1><p class="subcopy">查看每一次生成的进度、参数、结果和费用；可将需要复用的内容保存到资产。</p></div><div class="tab-row"><button class="tab active">全部</button><button class="tab">生成中</button><button class="tab">已完成</button><button class="tab">失败</button></div></header>
+          <div class="table-wrap"><table><thead><tr><th>作品</th><th>工作流</th><th>状态</th><th>生成时间</th><th>费用</th><th></th></tr></thead><tbody>
+            <tr><td><div style="display:flex;align-items:center;gap:10px"><img class="work-thumb" src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=85" alt="产品作品封面" /><div><div class="work-title">产品环绕展示</div><div class="work-meta">9:16 · 15 秒 · 768P</div></div></div></td><td>图生视频</td><td><span class="pill green">已完成</span></td><td>今天 14:32</td><td>¥ 7.50</td><td><button class="button" type="button">查看</button></td></tr>
+            <tr><td><div style="display:flex;align-items:center;gap:10px"><img class="work-thumb" src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=300&q=85" alt="人物作品封面" /><div><div class="work-title">人物动态肖像</div><div class="work-meta">9:16 · 15 秒 · 768P</div></div></div></td><td>图生视频</td><td><span class="pill amber">生成中 68%</span></td><td>今天 14:26</td><td>¥ 7.50</td><td><button class="button" type="button">查看</button></td></tr>
+            <tr><td><div style="display:flex;align-items:center;gap:10px"><img class="work-thumb" src="https://images.unsplash.com/photo-1519608487953-e999c86e7454?auto=format&fit=crop&w=300&q=85" alt="风景作品封面" /><div><div class="work-title">夜色环境镜头</div><div class="work-meta">16:9 · 15 秒 · 768P</div></div></div></td><td>图生视频</td><td><span class="pill green">已完成</span></td><td>昨天 19:40</td><td>¥ 7.50</td><td><button class="button" type="button">查看</button></td></tr>
+          </tbody></table></div>
+        </section>
+
+        <section class="page client-view hidden" id="client-wallet">
+          <header class="page-header"><div><p class="eyebrow">余额与订单</p><h1>钱包</h1><p class="subcopy">只按实际生成扣款。充值金额和历史订单都在这里。</p></div><button class="button" type="button" id="redeem"><i data-lucide="ticket"></i>兑换码</button></header>
+          <div class="wallet-layout"><div class="wallet-balance"><div class="label">可用余额</div><div class="amount">¥ 128.60</div><button class="button" id="wallet-recharge" type="button">充值余额</button></div><article class="panel"><div class="panel-header"><div><h2>余额明细</h2><p class="subcopy">最近 30 天</p></div></div><div class="panel-body metric-list"><div class="metric-line"><span>图生视频 · 产品环绕展示</span><strong>- ¥ 7.50</strong></div><div class="metric-line"><span>微信充值 · 订单 #W202608281</span><strong style="color:var(--brand)">+ ¥ 100.00</strong></div><div class="metric-line"><span>图生视频 · 人物动态肖像</span><strong>- ¥ 7.50</strong></div></div></article></div>
+          <div class="section-heading"><div><h2>充值金额</h2><p class="subcopy">充值仅增加余额，不绑定会员权益。</p></div></div>
+          <div class="recharge-grid"><button class="recharge" type="button"><strong>¥ 30</strong><span>到账 ¥ 30</span></button><button class="recharge active" type="button"><strong>¥ 100</strong><span>到账 ¥ 100</span></button><button class="recharge" type="button"><strong>¥ 300</strong><span>到账 ¥ 300</span></button></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="app admin-shell hidden" id="admin-app">
+    <header class="topbar">
+      <a class="brand" href="#admin-overview" aria-label="Sub2Video 运营后台"><span class="brand-mark"><i data-lucide="chart-no-axes-combined"></i></span><span>Sub2Video <span style="font-size:12px;color:var(--muted);font-weight:650">运营后台</span></span></a>
+      <div class="topbar-main"><span class="pill green"><i data-lucide="circle-check" style="width:13px;height:13px"></i>服务正常</span><button class="icon-button" id="show-client" data-tip="创作空间" aria-label="打开创作空间"><i data-lucide="clapperboard"></i></button><button class="avatar" aria-label="管理员资料">管</button></div>
+    </header>
+    <div class="shell">
+      <aside class="sidebar">
+        <nav class="nav" aria-label="运营后台导航">
+          <button class="nav-button active" data-admin-view="overview"><i data-lucide="layout-dashboard"></i><span>首页概览</span></button>
+          <div class="nav-group">
+            <span class="nav-group-label">创作管理</span>
+            <button class="nav-button" data-admin-view="workflows"><i data-lucide="git-branch"></i><span>工作流</span></button>
+            <button class="nav-button" data-admin-view="providers"><i data-lucide="boxes"></i><span>模型与供应商</span></button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-label">计费管理</span>
+            <button class="nav-button" data-admin-view="pricing"><i data-lucide="calculator"></i><span>定价规则</span></button>
+            <button class="nav-button" data-admin-view="wallet-recharge"><i data-lucide="wallet-cards"></i><span>充值商品</span></button>
+            <button class="nav-button" data-admin-view="orders"><i data-lucide="receipt-text"></i><span>交易订单</span></button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-label">任务管理</span>
+            <button class="nav-button" data-admin-view="task-center"><i data-lucide="list-todo"></i><span>任务中心</span><span class="nav-count">2</span></button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-label">运营管理</span>
+            <button class="nav-button" data-admin-view="user-management"><i data-lucide="users-round"></i><span>用户管理</span></button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-label">系统</span>
+            <button class="nav-button" data-admin-view="logs"><i data-lucide="scroll-text"></i><span>操作日志</span></button>
+            <button class="nav-button" data-admin-view="settings"><i data-lucide="settings-2"></i><span>系统设置</span></button>
+          </div>
+        </nav>
+        <div class="sidebar-bottom"><div class="storage-mini"><div class="row"><span>对象存储</span><span>42.8 GB</span></div><div class="meter"><span style="width:27%"></span></div></div></div>
+      </aside>
+      <main>
+        <section class="page admin-view" id="admin-overview"><header class="page-header"><div><p class="eyebrow">今日运营</p><h1>总览</h1><p class="subcopy">围绕任务、收入和平台状态查看当天的运行情况。</p></div><button class="button" id="refresh-admin" type="button"><i data-lucide="refresh-cw"></i>刷新数据</button></header>
+          <div class="admin-kpis"><article class="kpi"><div class="kpi-top"><span>已完成任务</span><span class="kpi-icon green"><i data-lucide="circle-check"></i></span></div><strong>186</strong><span>较昨日 +12.0%</span></article><article class="kpi"><div class="kpi-top"><span>生成成功率</span><span class="kpi-icon blue"><i data-lucide="activity"></i></span></div><strong>97.8%</strong><span>过去 24 小时</span></article><article class="kpi"><div class="kpi-top"><span>待处理异常</span><span class="kpi-icon amber"><i data-lucide="triangle-alert"></i></span></div><strong>3</strong><span>含 2 个可重试任务</span></article><article class="kpi"><div class="kpi-top"><span>充值金额</span><span class="kpi-icon red"><i data-lucide="wallet-cards"></i></span></div><strong>¥ 4,280</strong><span>今日已支付</span></article></div>
+          <div class="admin-grid"><article class="panel"><div class="panel-header"><div><h2>当前任务</h2><p class="subcopy">按执行状态排序</p></div><button class="text-action" data-go-admin="task-center" type="button">查看全部</button></div><div class="panel-body"><div class="queue-item"><div><strong>tsk_9F284 · 产品环绕展示</strong><span>H3 · 768P · 用户：林影像工作室</span></div><div><span style="text-align:right">渲染中 68%</span><div class="progress"><span style="width:68%"></span></div></div></div><div class="queue-item"><div><strong>tsk_9F283 · 人物动态肖像</strong><span>H3 · 768P · 用户：新芽工作室</span></div><div><span style="text-align:right">队列中</span><div class="progress"><span style="width:18%"></span></div></div></div><div class="queue-item"><div><strong>tsk_9F278 · 氛围风景镜头</strong><span>回调异常，等待自动重试</span></div><div><span class="pill amber">需关注</span></div></div></div></article><article class="panel"><div class="panel-header"><div><h2>运行状态</h2><p class="subcopy">最近 15 分钟</p></div></div><div class="panel-body metric-list"><div class="metric-line"><span>H3 Provider 可用率</span><strong style="color:var(--brand)">100%</strong></div><div class="metric-line"><span>任务队列深度</span><strong>5</strong></div><div class="metric-line"><span>平均生成耗时</span><strong>3 分 12 秒</strong></div><div class="metric-line"><span>对象存储下载量</span><strong>8.6 GB</strong></div></div></article></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-workflows">
+          <header class="page-header"><div><p class="eyebrow">创作管理</p><h1>工作流</h1><p class="subcopy">决定用户在创作端能选择什么输入、参数、输出和价格。</p></div><button class="button primary" type="button"><i data-lucide="plus"></i>新建工作流</button></header>
+          <div class="config-grid"><article class="config-card"><span class="pill green">已上架</span><h3 style="margin-top:13px">H3 图生视频</h3><p>单图参考，15 秒，768P。首期唯一对外开放工作流。</p><div class="foot">workflow_h3_i2v_15s</div></article><article class="config-card"><span class="pill">草稿</span><h3 style="margin-top:13px">H3 文生视频</h3><p>等待供应商能力与价格确认后再启用。</p><div class="foot">暂不展示给客户端</div></article><article class="config-card"><span class="pill">草稿</span><h3 style="margin-top:13px">H3 多图生视频</h3><p>用于多参考图一致性工作流，后续独立验证。</p><div class="foot">暂不展示给客户端</div></article></div>
+          <div class="section-heading"><h2>已发布工作流</h2><span class="pill green">1 个已上架</span></div>
+          <div class="table-wrap"><table><thead><tr><th>工作流</th><th>输入</th><th>输出</th><th>价格规则</th><th>状态</th><th></th></tr></thead><tbody><tr><td><div class="work-title">H3 图生视频</div><div class="work-meta">workflow_h3_i2v_15s</div></td><td>图片 1 张</td><td>768P / 15 秒</td><td>H3 768P 15 秒</td><td><span class="pill green">已上架</span></td><td><button class="button" type="button">编辑</button></td></tr></tbody></table></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-providers">
+          <header class="page-header"><div><p class="eyebrow">创作管理</p><h1>模型与供应商</h1><p class="subcopy">维护可调用模型和服务商凭据，凭据只在后端加密保存。</p></div><button class="button primary" type="button"><i data-lucide="plus"></i>添加供应商</button></header>
+          <div class="config-grid"><article class="config-card"><span class="pill green">启用中</span><h3 style="margin-top:13px">MiniMax H3</h3><p>图生视频 · 768P · 当前 H3 用户工作流唯一模型。</p><div class="foot">并发限制：12 · 健康检查：正常</div></article><article class="config-card"><span class="pill green">已连接</span><h3 style="margin-top:13px">H3 Provider</h3><p>API 凭据已加密，回调地址和可用余额由后台巡检。</p><div class="foot">最近检查：刚刚</div></article><article class="config-card"><span class="pill">预留</span><h3 style="margin-top:13px">图片辅助模型</h3><p>仅为后续首帧、图像处理扩展预留，不出现在客户端。</p><div class="foot">未配置</div></article></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-pricing">
+          <header class="page-header"><div><p class="eyebrow">计费管理</p><h1>定价规则</h1><p class="subcopy">前台展示价可配置；每次创建任务时会快照成本、售价和规则版本。</p></div><button class="button primary" type="button"><i data-lucide="plus"></i>新建规则</button></header>
+          <div class="notice"><i data-lucide="calculator"></i><span>调整价格只影响新任务，已进入队列或已完成的任务继续使用创建时快照。</span></div>
+          <div class="section-heading"><h2>生效中规则</h2><span class="pill green">1 条</span></div>
+          <div class="table-wrap"><table><thead><tr><th>规则</th><th>模型</th><th>输出</th><th>供应商成本</th><th>用户价格</th><th>状态</th></tr></thead><tbody><tr><td><div class="work-title">H3 768P 15 秒</div><div class="work-meta">price_h3_768_15s_v1</div></td><td>MiniMax H3</td><td>768P / 15 秒</td><td>¥ 6.00</td><td><strong style="color:#047857">¥ 7.50</strong></td><td><span class="pill green">生效中</span></td></tr></tbody></table></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-wallet-recharge">
+          <header class="page-header"><div><p class="eyebrow">计费管理</p><h1>充值商品</h1><p class="subcopy">配置创作端可售余额档位和支付通道。这里不包含订阅套餐。</p></div><button class="button primary" type="button"><i data-lucide="plus"></i>新增充值档位</button></header>
+          <div class="config-grid"><article class="config-card"><span class="pill green">已上架</span><h3 style="margin-top:13px">¥ 30</h3><p>用户支付 ¥ 30，到账余额 ¥ 30。</p><div class="foot">微信支付 · 支付宝</div></article><article class="config-card"><span class="pill green">已上架</span><h3 style="margin-top:13px">¥ 100</h3><p>用户支付 ¥ 100，到账余额 ¥ 100。</p><div class="foot">微信支付 · 支付宝</div></article><article class="config-card"><span class="pill green">已上架</span><h3 style="margin-top:13px">¥ 300</h3><p>用户支付 ¥ 300，到账余额 ¥ 300。</p><div class="foot">微信支付 · 支付宝</div></article></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-orders">
+          <header class="page-header"><div><p class="eyebrow">计费管理</p><h1>交易订单</h1><p class="subcopy">集中查询充值支付、关闭、退款和到账状态；任务消费在对应用户和任务中追溯。</p></div><div class="pill-row"><button class="button" type="button">全部订单</button><button class="button" type="button">今天</button></div></header>
+          <div class="table-wrap"><table><thead><tr><th>订单号</th><th>用户</th><th>金额</th><th>支付方式</th><th>状态</th><th>创建时间</th><th></th></tr></thead><tbody><tr><td><div class="work-title">ord_20260828_081</div></td><td>林影像工作室</td><td>¥ 100.00</td><td>微信支付</td><td><span class="pill green">已支付</span></td><td>今天 13:48</td><td><button class="button" type="button">详情</button></td></tr><tr><td><div class="work-title">ord_20260828_074</div></td><td>新芽工作室</td><td>¥ 30.00</td><td>支付宝</td><td><span class="pill green">已支付</span></td><td>今天 11:16</td><td><button class="button" type="button">详情</button></td></tr><tr><td><div class="work-title">ord_20260827_311</div></td><td>叶浅</td><td>¥ 100.00</td><td>微信支付</td><td><span class="pill">已关闭</span></td><td>昨天 20:02</td><td><button class="button" type="button">详情</button></td></tr></tbody></table></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-task-center">
+          <header class="page-header"><div><p class="eyebrow">任务管理</p><h1>任务中心</h1><p class="subcopy">查询任务状态、处理失败重试和退款。内容审核模块后续单独接入。</p></div><div class="pill-row"><span class="pill amber">2 进行中</span><span class="pill danger">1 异常</span></div></header>
+          <div class="table-wrap"><table><thead><tr><th>任务</th><th>用户</th><th>工作流</th><th>状态</th><th>费用</th><th>操作</th></tr></thead><tbody><tr><td><div class="work-title">tsk_9F284</div><div class="work-meta">产品环绕展示</div></td><td>林影像工作室</td><td>H3 · 图生视频</td><td><span class="pill amber">渲染中 68%</span></td><td>¥ 7.50</td><td><button class="button" type="button">查看</button></td></tr><tr><td><div class="work-title">tsk_9F278</div><div class="work-meta">氛围风景镜头</div></td><td>新芽工作室</td><td>H3 · 图生视频</td><td><span class="pill danger">回调异常</span></td><td>¥ 7.50</td><td><button class="button" type="button">重试</button></td></tr><tr><td><div class="work-title">tsk_9F266</div><div class="work-meta">人物动态肖像</div></td><td>叶浅</td><td>H3 · 图生视频</td><td><span class="pill green">已完成</span></td><td>¥ 7.50</td><td><button class="button" type="button">查看</button></td></tr></tbody></table></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-logs">
+          <header class="page-header"><div><p class="eyebrow">系统</p><h1>操作日志</h1><p class="subcopy">记录管理员在任务、工作流、价格和用户账户上的关键操作。</p></div><div class="pill-row"><button class="button" type="button">今天</button><button class="button" type="button">全部操作人</button></div></header>
+          <div class="table-wrap"><table><thead><tr><th>时间</th><th>操作人</th><th>模块</th><th>动作</th><th>结果</th></tr></thead><tbody><tr><td>今天 14:12:46</td><td>admin@sub2video</td><td>任务中心</td><td>重试 tsk_9F278</td><td><span class="pill green">已提交</span></td></tr><tr><td>今天 13:30:22</td><td>admin@sub2video</td><td>定价规则</td><td>更新 price_h3_768_15s_v1</td><td><span class="pill green">已保存</span></td></tr><tr><td>今天 10:08:11</td><td>ops@sub2video</td><td>模型与供应商</td><td>执行 Provider 健康检查</td><td><span class="pill green">正常</span></td></tr></tbody></table></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-user-management">
+          <header class="page-header"><div><p class="eyebrow">运营管理</p><h1>用户管理</h1><p class="subcopy">从用户维度查看余额、作品量、订单和账户状态。</p></div><div class="pill-row"><button class="button" type="button"><i data-lucide="search"></i>搜索用户</button><button class="button" type="button">导出</button></div></header>
+          <div class="table-wrap"><table><thead><tr><th>用户</th><th>钱包余额</th><th>作品</th><th>最近订单</th><th>状态</th><th></th></tr></thead><tbody><tr><td><div class="work-title">林影像工作室</div><div class="work-meta">u_10428 · 2026-08-21 注册</div></td><td>¥ 128.60</td><td>12</td><td>¥ 100.00</td><td><span class="pill green">正常</span></td><td><button class="button" type="button">详情</button></td></tr><tr><td><div class="work-title">新芽工作室</div><div class="work-meta">u_10420 · 2026-08-19 注册</div></td><td>¥ 72.50</td><td>8</td><td>¥ 30.00</td><td><span class="pill green">正常</span></td><td><button class="button" type="button">详情</button></td></tr><tr><td><div class="work-title">叶浅</div><div class="work-meta">u_10398 · 2026-08-11 注册</div></td><td>¥ 4.30</td><td>19</td><td>¥ 100.00</td><td><span class="pill amber">需关注</span></td><td><button class="button" type="button">详情</button></td></tr></tbody></table></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-settings">
+          <header class="page-header"><div><p class="eyebrow">系统</p><h1>系统设置</h1><p class="subcopy">维护平台基础策略。内容审核与风险任务暂未启用，不出现在主菜单。</p></div><button class="button primary" type="button"><i data-lucide="save"></i>保存设置</button></header>
+          <div class="two-columns"><article class="panel"><div class="panel-header"><div><h2>存储与保留期</h2><p class="subcopy">按资产类型执行对象生命周期。</p></div></div><div class="panel-body metric-list"><div class="metric-line"><span>未保存任务输入</span><strong>7 天</strong></div><div class="metric-line"><span>生成成片</span><strong>30 天</strong></div><div class="metric-line"><span>缩略图与任务元数据</span><strong>180 天</strong></div></div></article><article class="panel"><div class="panel-header"><div><h2>服务监控</h2><p class="subcopy">生产环境状态。</p></div><span class="pill green">正常</span></div><div class="panel-body metric-list"><div class="metric-line"><span>API 服务</span><strong style="color:#047857">正常</strong></div><div class="metric-line"><span>Redis 队列</span><strong style="color:#047857">正常</strong></div><div class="metric-line"><span>对象存储</span><strong style="color:#047857">正常</strong></div></div></article></div>
+        </section>
+
+        <section class="page admin-view hidden" id="admin-tasks"><header class="page-header"><div><p class="eyebrow">执行与异常</p><h1>任务</h1><p class="subcopy">兼容旧原型任务页。</p></div></header></section>
+
+        <section class="page admin-view hidden" id="admin-creation"><header class="page-header"><div><p class="eyebrow">供给与展示</p><h1>创作</h1><p class="subcopy">在一个业务域内配置模型、工作流、价格和创意园内容。</p></div><div class="tab-row"><button class="tab active">工作流</button><button class="tab">模型</button><button class="tab">价格</button><button class="tab">创意园</button></div></header><div class="config-grid"><article class="config-card"><span class="pill green">已上架</span><h3 style="margin-top:13px">H3 图生视频</h3><p>首期唯一开放的用户工作流。单图参考，15 秒，768P。</p><div class="foot">供应商：已配置 · 并发：12</div></article><article class="config-card"><span class="pill blue">价格</span><h3 style="margin-top:13px">图生视频 15 秒</h3><p>前台定价 ¥ 7.50，任务创建时自动快照价格和成本。</p><div class="foot">状态：启用中</div></article><article class="config-card"><span class="pill amber">内容</span><h3 style="margin-top:13px">创意园精选</h3><p>人物、电商、氛围三类官方预设。套用后进入创作页。</p><div class="foot">已发布：18 个</div></article></div><div class="section-heading"><div><h2>工作流发布检查</h2><p class="subcopy">只发布参数与能力已经在供应商侧核验的工作流。</p></div><button class="button primary" type="button"><i data-lucide="plus"></i>新建工作流</button></div><div class="table-wrap"><table><thead><tr><th>工作流</th><th>输入</th><th>输出</th><th>前台价格</th><th>状态</th></tr></thead><tbody><tr><td><div class="work-title">H3 图生视频</div><div class="work-meta">workflow_h3_i2v_15s</div></td><td>图片 1 张</td><td>768P / 15 秒</td><td>¥ 7.50</td><td><span class="pill green">已上架</span></td></tr><tr><td><div class="work-title">H3 文生视频</div><div class="work-meta">workflow_h3_t2v</div></td><td>文本</td><td>待确认</td><td>-</td><td><span class="pill">草稿</span></td></tr></tbody></table></div></section>
+
+        <section class="page admin-view hidden" id="admin-users"><header class="page-header"><div><p class="eyebrow">账户与结算</p><h1>用户</h1><p class="subcopy">用户、钱包、订单和优惠策略以同一用户视角关联查看。</p></div><div class="tab-row"><button class="tab active">用户</button><button class="tab">钱包账变</button><button class="tab">订单</button><button class="tab">优惠</button></div></header><div class="table-wrap"><table><thead><tr><th>用户</th><th>余额</th><th>作品</th><th>最近订单</th><th>状态</th><th></th></tr></thead><tbody><tr><td><div class="work-title">林影像工作室</div><div class="work-meta">u_10428 · 2026-08-21 注册</div></td><td>¥ 128.60</td><td>12</td><td>¥ 100.00</td><td><span class="pill green">正常</span></td><td><button class="button" type="button">详情</button></td></tr><tr><td><div class="work-title">新芽工作室</div><div class="work-meta">u_10420 · 2026-08-19 注册</div></td><td>¥ 72.50</td><td>8</td><td>¥ 30.00</td><td><span class="pill green">正常</span></td><td><button class="button" type="button">详情</button></td></tr><tr><td><div class="work-title">叶浅</div><div class="work-meta">u_10398 · 2026-08-11 注册</div></td><td>¥ 4.30</td><td>19</td><td>¥ 100.00</td><td><span class="pill amber">需关注</span></td><td><button class="button" type="button">详情</button></td></tr></tbody></table></div></section>
+
+        <section class="page admin-view hidden" id="admin-platform"><header class="page-header"><div><p class="eyebrow">基础能力</p><h1>平台</h1><p class="subcopy">监控、存储生命周期、内容安全和管理员审计都收纳在这里。</p></div><div class="tab-row"><button class="tab active">监控</button><button class="tab">存储</button><button class="tab">内容安全</button><button class="tab">操作日志</button></div></header><div class="two-columns"><article class="panel"><div class="panel-header"><div><h2>服务状态</h2><p class="subcopy">生产环境</p></div><span class="pill green">正常</span></div><div class="panel-body metric-list"><div class="metric-line"><span>API 服务</span><strong style="color:var(--brand)">正常</strong></div><div class="metric-line"><span>Redis 队列</span><strong style="color:var(--brand)">正常</strong></div><div class="metric-line"><span>对象存储</span><strong style="color:var(--brand)">正常</strong></div><div class="metric-line"><span>失败任务告警</span><strong style="color:var(--amber)">3 条</strong></div></div></article><article class="panel"><div class="panel-header"><div><h2>存储生命周期</h2><p class="subcopy">由对象类型决定，非公开 OSS 网盘。</p></div></div><div class="panel-body metric-list"><div class="metric-line"><span>未保存任务输入</span><strong>7 天</strong></div><div class="metric-line"><span>生成成片</span><strong>30 天</strong></div><div class="metric-line"><span>用户已保存资产</span><strong>按空间策略</strong></div><div class="metric-line"><span>缩略图与任务元数据</span><strong>180 天</strong></div></div></article></div></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><i data-lucide="circle-check"></i><span id="toast-text">操作已完成</span></div>
+  <script>
+    const clientApp = document.getElementById('client-app');
+    const adminApp = document.getElementById('admin-app');
+    const toast = document.getElementById('toast');
+    let toastTimer;
+
+    function showToast(message) {
+      document.getElementById('toast-text').textContent = message;
+      toast.classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('visible'), 2600);
+    }
+
+    function showSurface(surface) {
+      const showAdmin = surface === 'admin';
+      clientApp.classList.toggle('hidden', showAdmin);
+      adminApp.classList.toggle('hidden', !showAdmin);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    function showClientView(view) {
+      document.querySelectorAll('.client-view').forEach((section) => section.classList.toggle('hidden', section.id !== `client-${view}`));
+      document.querySelectorAll('[data-client-view]').forEach((button) => button.classList.toggle('active', button.dataset.clientView === view));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showAdminView(view) {
+      document.querySelectorAll('.admin-view').forEach((section) => section.classList.toggle('hidden', section.id !== `admin-${view}`));
+      document.querySelectorAll('[data-admin-view]').forEach((button) => button.classList.toggle('active', button.dataset.adminView === view));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.getElementById('show-admin').addEventListener('click', () => showSurface('admin'));
+    document.getElementById('show-client').addEventListener('click', () => showSurface('client'));
+    document.querySelectorAll('[data-client-view]').forEach((button) => button.addEventListener('click', () => showClientView(button.dataset.clientView)));
+    document.querySelectorAll('[data-admin-view]').forEach((button) => button.addEventListener('click', () => showAdminView(button.dataset.adminView)));
+    document.querySelectorAll('[data-go-client]').forEach((button) => button.addEventListener('click', () => showClientView(button.dataset.goClient)));
+    document.querySelectorAll('[data-go-admin]').forEach((button) => button.addEventListener('click', () => showAdminView(button.dataset.goAdmin)));
+
+    document.querySelectorAll('.tab').forEach((button) => button.addEventListener('click', () => {
+      const siblings = button.parentElement.querySelectorAll('.tab');
+      siblings.forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+      if (button.dataset.workflow) showToast(`${button.textContent.trim()}工作流已切换`);
+    }));
+    document.querySelectorAll('.choice').forEach((button) => button.addEventListener('click', () => {
+      if (button.disabled) return;
+      button.parentElement.querySelectorAll('.choice').forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+    }));
+    document.querySelectorAll('.use-scene').forEach((button) => button.addEventListener('click', () => { showClientView('create'); showToast('场景已带入创作设置'); }));
+    document.getElementById('upload-mock').addEventListener('click', () => showToast('原型演示：将打开图片上传选择器'));
+    document.getElementById('asset-upload').addEventListener('click', () => showToast('原型演示：将打开素材上传选择器'));
+    document.getElementById('pick-asset').addEventListener('click', () => showToast('已选择 portrait_studio_01.jpg'));
+    document.getElementById('redeem').addEventListener('click', () => showToast('原型演示：将打开兑换码输入框'));
+    document.getElementById('wallet-recharge').addEventListener('click', () => showToast('请选择下方充值金额'));
+    document.getElementById('refresh-admin').addEventListener('click', () => showToast('运营数据已刷新'));
+    document.getElementById('prompt-polish').addEventListener('click', () => { document.getElementById('prompt').value += ' 电影级浅景深，镜头保持平稳。'; updatePromptCount(); showToast('描述已优化'); });
+    document.getElementById('prompt').addEventListener('input', updatePromptCount);
+    function updatePromptCount() { document.getElementById('prompt-count').textContent = `${document.getElementById('prompt').value.length} / 800`; }
+    document.getElementById('generate').addEventListener('click', (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.innerHTML = '<i data-lucide="loader-circle"></i>正在创建任务';
+      lucide.createIcons();
+      setTimeout(() => { button.disabled = false; button.innerHTML = '<i data-lucide="play"></i>开始生成'; document.getElementById('task-state').classList.add('visible'); lucide.createIcons(); showToast('任务已创建，已冻结本次价格'); }, 700);
+    });
+    lucide.createIcons();
+  </script>
+</body>
+</html>

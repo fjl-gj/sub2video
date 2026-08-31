@@ -1,0 +1,32 @@
+import type { Config } from 'tailwindcss'
+
+export default {
+  content: ['./index.html', './src/**/*.{vue,ts}'],
+  theme: {
+    extend: {
+      colors: {
+        s2v: {
+          canvas: 'rgb(var(--s2v-canvas) / <alpha-value>)',
+          surface: 'rgb(var(--s2v-surface) / <alpha-value>)',
+          ink: 'rgb(var(--s2v-ink) / <alpha-value>)',
+          muted: 'rgb(var(--s2v-muted) / <alpha-value>)',
+          line: 'rgb(var(--s2v-line) / <alpha-value>)',
+          'line-strong': 'rgb(var(--s2v-line-strong) / <alpha-value>)',
+          primary: 'rgb(var(--s2v-primary) / <alpha-value>)',
+          'primary-hover': 'rgb(var(--s2v-primary-hover) / <alpha-value>)',
+          'primary-soft': 'rgb(var(--s2v-primary-soft) / <alpha-value>)',
+          success: 'rgb(var(--s2v-success) / <alpha-value>)',
+          warning: 'rgb(var(--s2v-warning) / <alpha-value>)',
+          danger: 'rgb(var(--s2v-danger) / <alpha-value>)',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+        mono: ['JetBrains Mono', 'SFMono-Regular', 'Consolas', 'monospace'],
+      },
+      boxShadow: { subtle: 'var(--s2v-shadow)' },
+      borderRadius: { panel: 'var(--s2v-radius)' },
+    },
+  },
+  plugins: [],
+} satisfies Config

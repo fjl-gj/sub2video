@@ -1,0 +1,10 @@
+<script setup lang="ts">
+import { MoreHorizontal, Search, UserRound, UserRoundCheck } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { users } from '@/data/mock'
+import { useAppStore } from '@/stores/app'
+import S2VBadge from '@/shared/ui/S2VBadge.vue'
+import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
+const app = useAppStore(); const search = ref('')
+</script>
+<template><section class="s2v-page"><header class="s2v-page-header"><div><p class="s2v-eyebrow">运营管理 / 用户管理</p><h1 class="s2v-page-title">用户管理</h1><p class="s2v-subcopy">查看账户状态、余额、任务和订单，处理需要人工介入的账户。</p></div><S2VBadge tone="success"><UserRoundCheck class="h-3 w-3" />{{ users.filter((u) => u.status === '正常').length }} 个正常账户</S2VBadge></header><div class="mb-4 flex items-center gap-2 rounded-[7px] border border-s2v-line bg-s2v-surface px-3 py-2 sm:max-w-xs"><Search class="h-3.5 w-3.5 text-s2v-muted" /><input v-model="search" class="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="昵称 / 邮箱 / UID" /></div><div class="s2v-table-wrap"><table class="s2v-table"><thead><tr><th>用户</th><th>邮箱</th><th>状态</th><th>余额</th><th>任务数</th><th>注册时间</th><th>操作</th></tr></thead><tbody><tr v-for="user in users.filter((row) => !search || `${row.id}${row.name}${row.email}`.includes(search))" :key="user.id"><td><div class="flex items-center gap-2"><span class="grid h-8 w-8 place-items-center rounded-full bg-slate-700 text-xs font-bold text-white">{{ user.name.slice(0,1) }}</span><div><strong class="block text-xs text-s2v-ink">{{ user.name }}</strong><span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ user.id }}</span></div></div></td><td>{{ user.email }}</td><td><S2VBadge :tone="user.status === '正常' ? 'success' : user.status === '已冻结' ? 'danger' : 'warning'">{{ user.status }}</S2VBadge></td><td class="font-mono">¥{{ user.balance.toFixed(2) }}</td><td>{{ user.tasks }}</td><td>{{ user.joined }}</td><td><S2VIconButton label="查看用户详情" @click="app.notify(`已打开 ${user.name} 详情`)"><MoreHorizontal class="h-4 w-4" /></S2VIconButton></td></tr></tbody></table></div></section></template>

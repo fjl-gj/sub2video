@@ -1,0 +1,22 @@
+import { expect, test } from '@playwright/test'
+
+const cases = [
+  { name: 'client-overview', path: '/app/overview', heading: '下午好，林默' },
+  { name: 'client-create', path: '/app/create', heading: '创建视频' },
+  { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘' },
+  { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心' },
+]
+
+for (const item of cases) {
+  test(`${item.name} matches the surface baseline`, async ({ page }) => {
+    await page.goto(item.path)
+    await expect(page.getByRole('heading', { name: item.heading })).toBeVisible()
+    await expect(page).toHaveScreenshot(`${item.name}.png`, {
+      fullPage: true,
+      animations: 'disabled',
+      caret: 'hide',
+      scale: 'css',
+      maxDiffPixelRatio: 0.02,
+    })
+  })
+}

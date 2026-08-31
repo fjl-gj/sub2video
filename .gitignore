@@ -1,0 +1,26 @@
+# Dependencies and build output
+**/node_modules/
+**/dist/
+**/.vite/
+**/*.tsbuildinfo
+
+# Test reports and generated snapshots metadata
+**/test-results/
+**/.tmp_playwright_report/
+**/playwright-report/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+
+# Temporary workspace artifacts
+.tmp_*/
+**/.tmp_*/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
