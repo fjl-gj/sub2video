@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 const cases = [
-  { name: 'client-overview', path: '/app/overview', heading: '下午好，林默' },
+  { name: 'client-overview', path: '/app/overview', heading: '欢迎回来，李维工作室' },
   { name: 'client-create', path: '/app/create', heading: '创建视频' },
   { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘' },
   { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心' },

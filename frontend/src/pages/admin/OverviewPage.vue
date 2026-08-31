@@ -1,15 +1,57 @@
 <script setup lang="ts">
-import { Activity, ArrowRight, Bot, CheckCircle2, CircleAlert, Coins, ListChecks, Plus, Server, UsersRound } from 'lucide-vue-next'
+import { Cpu, RefreshCw } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
-import { adminTasks, providers } from '@/data/mock'
-import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
+import S2VCard from '@/shared/ui/S2VCard.vue'
+import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+
 const router = useRouter()
-const queue = adminTasks.filter((task) => task.status === '生成中' || task.status === '排队中')
+const nodes = [
+  { name: '上海张江 H100 集群', detail: '16 卡在线 · 负载 68% · 延迟 12ms' },
+  { name: '北京亦庄 A100 集群', detail: '12 卡在线 · 负载 45% · 延迟 18ms' },
+  { name: '前端与多模态网关', detail: '4 节点 · 延迟 24ms · 吞吐 420 音轨/分钟' },
+]
+const metrics = [
+  { label: '全网今日产出视频', value: '1,842', unit: '支', note: '较昨日增长 +18.4%' },
+  { label: '今日充值实收流水 (GMV)', value: '¥ 18,920.00', note: '含活动赠送补贴成本 ¥1,420.00', tone: 'success' as const },
+  { label: '推理预扣净结算额 (Revenue)', value: '¥ 5,120.00', note: '全网异常退款率 0.42% (原路退还)', tone: 'primary' as const },
+  { label: 'GPU 算力集群总并发负载', value: '24 / 32', unit: '卡', note: '综合集群利用率 75.0% · 极佳' },
+]
 </script>
-<template><section class="s2v-page"><header class="s2v-page-header"><div><p class="s2v-eyebrow">平台运营 / 首页概览</p><h1 class="s2v-page-title">运行大盘</h1><p class="s2v-subcopy">今天的生成、收入和供应状态都在这里快速查看。</p></div><S2VButton variant="primary" @click="router.push('/admin/workflows')"><template #icon><Plus class="h-4 w-4" /></template>管理工作流</S2VButton></header>
-  <div class="s2v-grid-4"><div v-for="item in [{label:'今日生成',value:'1,428',note:'+12.8% 较昨日',icon:ListChecks},{label:'成功率',value:'96.4%',note:'过去 24 小时',icon:CheckCircle2},{label:'今日流水',value:'¥ 8,642',note:'+8.2% 较昨日',icon:Coins},{label:'活跃用户',value:'286',note:'过去 24 小时',icon:UsersRound}]" :key="item.label" class="s2v-stat"><div class="s2v-stat-label"><span>{{ item.label }}</span><component :is="item.icon" class="h-4 w-4 text-s2v-primary" /></div><strong class="s2v-stat-value">{{ item.value }}</strong><span class="s2v-stat-note">{{ item.note }}</span></div></div>
-  <div class="s2v-grid-2 mt-5"><S2VCard><div class="s2v-panel-header"><div><h2 class="s2v-section-title">实时任务队列</h2><p class="mt-1 text-xs text-s2v-muted">{{ queue.length }} 个任务正在处理</p></div><button class="text-xs font-semibold text-s2v-primary" @click="router.push('/admin/tasks')">任务中心 <ArrowRight class="inline h-3.5 w-3.5" /></button></div><div class="px-4"><div v-for="task in queue" :key="task.id" class="flex items-center gap-3 border-b border-s2v-line/70 py-3 last:border-0"><img :src="task.thumb" :alt="task.title" class="h-9 w-14 rounded object-cover" /><div class="min-w-0 flex-1"><strong class="block truncate text-xs">{{ task.title }}</strong><span class="mt-1 block text-[11px] text-s2v-muted">{{ task.id }} · {{ task.provider }}</span><div class="mt-2 h-1 max-w-[180px] overflow-hidden rounded-full bg-slate-100"><span class="block h-full rounded-full bg-s2v-primary" :style="{ width: `${task.progress}%` }" /></div></div><span class="font-mono text-xs text-s2v-primary">{{ task.progress }}%</span></div></div></S2VCard><S2VCard><div class="s2v-panel-header"><div><h2 class="s2v-section-title">供应状态</h2><p class="mt-1 text-xs text-s2v-muted">当前可用的模型与节点</p></div><Server class="h-4 w-4 text-s2v-primary" /></div><div class="divide-y divide-s2v-line/70 px-4"><div v-for="provider in providers" :key="provider.name" class="flex items-center gap-3 py-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-s2v-primary-soft text-s2v-primary"><Bot class="h-4 w-4" /></span><div class="min-w-0 flex-1"><strong class="block truncate text-xs">{{ provider.name }}</strong><span class="mt-1 block text-[11px] text-s2v-muted">{{ provider.channel }} · {{ provider.concurrency }}</span></div><S2VBadge :tone="provider.status === '健康' ? 'success' : provider.status === '未启用' ? 'neutral' : 'warning'">{{ provider.status }}</S2VBadge></div></div></S2VCard></div>
-  <div class="mt-5 grid gap-3 rounded-panel border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-800"><div class="flex items-center gap-2 font-semibold"><CircleAlert class="h-4 w-4" />需要关注</div><p class="m-0 leading-5">有 2 个工单等待处理，备用供应商尚未启用。建议先查看工单中心，再确认备用通道的健康检查。</p></div>
-</section></template>
+
+<template>
+  <section class="s2v-page">
+    <S2VPageHeader badge="Dashboard · BI" kicker="全站吞吐、算力消耗与财务收益实时中枢" title="运行大盘">
+      <template #actions>
+        <S2VButton @click="router.push('/admin/monitoring')"><RefreshCw class="h-3.5 w-3.5" />实时刷新</S2VButton>
+      </template>
+    </S2VPageHeader>
+
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <S2VCard v-for="item in metrics" :key="item.label" variant="metric">
+        <div class="text-xs font-medium text-s2v-muted">{{ item.label }}</div>
+        <strong :class="['s2v-mono mt-2 block text-2xl font-bold tabular-nums', item.tone === 'success' ? 'text-s2v-success' : item.tone === 'primary' ? 'text-indigo-600' : 'text-s2v-ink']">
+          {{ item.value }} <span v-if="item.unit" class="text-xs font-normal text-s2v-muted">{{ item.unit }}</span>
+        </strong>
+        <span class="mt-1 block text-[10px] text-s2v-muted">{{ item.note }}</span>
+      </S2VCard>
+    </div>
+
+    <S2VCard variant="padded" class="mt-6">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-s2v-ink">智算中心节点实时链路</h2>
+        <button type="button" class="text-xs font-semibold text-s2v-primary hover:underline" @click="router.push('/admin/monitoring')">集群拓扑详情 →</button>
+      </div>
+      <div class="mt-3 grid gap-3 sm:grid-cols-3">
+        <div v-for="node in nodes" :key="node.name" class="rounded-xl border border-s2v-line bg-s2v-canvas p-3">
+          <div class="flex items-center justify-between gap-2">
+            <strong class="truncate text-xs">{{ node.name }}</strong>
+            <S2VBadge tone="success">正常</S2VBadge>
+          </div>
+          <p class="s2v-mono mt-2 flex items-center gap-1.5 text-[11px] text-s2v-muted"><Cpu class="h-3.5 w-3.5 text-s2v-primary" />{{ node.detail }}</p>
+        </div>
+      </div>
+    </S2VCard>
+  </section>
+</template>

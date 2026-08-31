@@ -2,8 +2,21 @@
 import { computed } from 'vue'
 import { cn } from '@/shared/lib/cn'
 
-const props = withDefaults(defineProps<{ variant?: 'default' | 'muted' | 'highlight'; class?: string }>(), { variant: 'default' })
-const classes = computed(() => cn('s2v-panel', props.variant === 'muted' && 'bg-slate-50/70', props.variant === 'highlight' && 'border-s2v-primary/35 bg-s2v-primary-soft/35', props.class))
+const props = withDefaults(defineProps<{
+  variant?: 'default' | 'metric' | 'padded' | 'muted' | 'highlight'
+  class?: string
+}>(), { variant: 'default' })
+
+const classes = computed(() => cn(
+  's2v-panel',
+  props.variant === 'metric' && 'min-h-24 p-3.5',
+  props.variant === 'padded' && 'p-5',
+  props.variant === 'muted' && 'bg-s2v-canvas/70',
+  props.variant === 'highlight' && 'border-s2v-primary/30 bg-s2v-primary-soft/25',
+  props.class,
+))
 </script>
 
-<template><section :class="classes"><slot /></section></template>
+<template>
+  <section :class="classes"><slot /></section>
+</template>

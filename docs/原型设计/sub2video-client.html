@@ -1,0 +1,2305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sub2Video · 创作者工作台 (Creator Studio)</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          boxShadow: {
+            'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02)',
+            'card': '0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.02)',
+            'floating': '0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+    .badge-pulse { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.15); }
+    }
+
+    .nav-item-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 2.25rem; /* 36px */
+      padding: 0 0.625rem;
+      border-radius: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #475569;
+      transition: all 0.15s ease-in-out;
+      border: 1px solid transparent;
+    }
+    .nav-item-btn:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+    }
+    .nav-item-btn.active {
+      background-color: #eef2ff;
+      color: #4338ca;
+      font-weight: 600;
+      border-color: #e0e7ff;
+    }
+    .nav-icon-slot {
+      width: 1.25rem;
+      height: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .nav-item-btn.active .nav-icon-slot {
+      color: #4f46e5;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50/70 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-indigo-100 selection:text-indigo-900">
+
+  <!-- ==================== TOP NAVIGATION ==================== -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 lg:px-6 h-14 flex items-center justify-between shadow-xs shrink-0">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-black text-sm shadow-sm shadow-indigo-600/30">
+          S2V
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5 leading-none">
+            <span class="font-bold text-slate-900 text-sm tracking-tight">Sub2Video</span>
+            <span class="text-[10px] font-semibold font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200/60 flex items-center gap-1">
+              Creator Studio
+            </span>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-0.5">智能视频创作与资产管理系统</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Controls: Cluster & Wallet & Profile -->
+    <div class="flex items-center gap-3">
+      <div class="hidden md:flex items-center gap-2 px-2.5 py-1 bg-emerald-50/80 rounded-full border border-emerald-200/50 text-[11px] text-emerald-800 font-medium">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 badge-pulse"></span>
+        <span class="font-mono">算力集群: 24/32 卡在线</span>
+        <span class="text-emerald-300">|</span>
+        <span class="font-mono text-emerald-700">基准 ¥0.20/秒</span>
+      </div>
+
+      <div id="top-wallet-indicator" onclick="switchClientTab('wallet')" class="flex items-center gap-1.5 px-3 py-1 bg-indigo-50/80 border border-indigo-200/60 rounded-lg text-xs font-mono font-bold text-indigo-700 cursor-pointer hover:bg-indigo-100/70 transition">
+        <i data-lucide="wallet" class="w-3.5 h-3.5 text-indigo-600"></i>
+        <span>¥</span>
+        <span id="header-user-balance">256.00</span>
+      </div>
+
+      <div class="flex items-center gap-2.5 pl-2 border-l border-slate-200 cursor-pointer" onclick="switchClientTab('profile')">
+        <div class="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold font-mono">
+          李
+        </div>
+        <div class="hidden sm:block text-left text-xs">
+          <div class="font-semibold text-slate-800 leading-none">李维工作室</div>
+          <div class="text-[10px] text-slate-400 mt-0.5 font-mono">Pro 认证</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- CREATOR SIDEBAR -->
+    <aside id="client-sidebar" class="w-60 bg-white border-r border-slate-200/80 flex flex-col justify-between shrink-0 select-none">
+      <div class="p-3 space-y-5 overflow-y-auto max-h-[calc(100vh-3.5rem)]">
+
+        <!-- 首页概览 -->
+        <div>
+          <button onclick="switchClientTab('overview')" id="cnav-overview" class="nav-item-btn active">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot"><i data-lucide="layout-dashboard" class="w-4 h-4"></i></span>
+              <span class="truncate">首页概览</span>
+            </div>
+            <span class="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold leading-none">Home</span>
+          </button>
+        </div>
+
+        <!-- 分组 1: 创作空间 (广场 -> 创作台 -> 作品集 -> 任务管理) -->
+        <div class="space-y-1">
+          <div class="px-2.5 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">创作空间</div>
+
+          <button onclick="switchClientTab('explore')" id="cnav-explore" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="compass" class="w-4 h-4"></i></span>
+              <span class="truncate">广场</span>
+            </div>
+            <span class="text-[10px] text-slate-400 font-mono">灵感</span>
+          </button>
+
+          <button onclick="switchClientTab('create')" id="cnav-create" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="clapperboard" class="w-4 h-4"></i></span>
+              <span class="truncate">创作台</span>
+            </div>
+            <span class="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded font-mono leading-none">Studio</span>
+          </button>
+
+          <button onclick="switchClientTab('portfolios')" id="cnav-portfolios" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="folder-kanban" class="w-4 h-4"></i></span>
+              <span class="truncate">作品集</span>
+            </div>
+            <span id="sidebar-proj-count" class="text-[10px] text-slate-400 font-mono">2 个项目</span>
+          </button>
+
+          <button onclick="switchClientTab('tasks')" id="cnav-tasks" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="list-video" class="w-4 h-4"></i></span>
+              <span class="truncate">任务管理</span>
+            </div>
+            <span id="nav-running-count" class="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded font-mono border border-amber-200/60 leading-none">1 渲染中</span>
+          </button>
+        </div>
+
+        <!-- 分组 2: 账户服务 (钱包 -> 个人资料 -> 帮助与工单) -->
+        <div class="space-y-1">
+          <div class="px-2.5 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">账户服务</div>
+
+          <button onclick="switchClientTab('wallet')" id="cnav-wallet" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="wallet" class="w-4 h-4"></i></span>
+              <span class="truncate">钱包</span>
+            </div>
+            <span class="text-[10px] text-emerald-600 font-mono font-bold bg-emerald-50 px-1.5 py-0.5 rounded leading-none">RMB</span>
+          </button>
+
+          <button onclick="switchClientTab('profile')" id="cnav-profile" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="user-check" class="w-4 h-4"></i></span>
+              <span class="truncate">个人资料</span>
+            </div>
+            <span class="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-mono leading-none">已认证</span>
+          </button>
+
+          <button onclick="switchClientTab('ticket')" id="cnav-ticket" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="life-buoy" class="w-4 h-4"></i></span>
+              <span class="truncate">帮助与工单</span>
+            </div>
+            <span class="text-[10px] text-slate-400 font-mono">支持</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Storage Widget -->
+      <div class="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+        <div class="flex items-center justify-between text-[11px]">
+          <span class="text-slate-500 font-medium">空间资源占用</span>
+          <span class="font-mono text-slate-700 font-semibold">14.8 / 50 GB</span>
+        </div>
+        <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-full bg-indigo-600 rounded-full" style="width: 29.6%"></div>
+        </div>
+        <div class="text-[10px] text-slate-400 flex items-center justify-between font-mono">
+          <span>占用率 29.6%</span>
+          <span class="text-indigo-600 hover:underline cursor-pointer" onclick="switchClientTab('portfolios')">管理 &rarr;</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENT CONTAINER -->
+    <main class="flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8">
+      <div class="max-w-6xl mx-auto space-y-6">
+
+        <!-- C1: 首页概览 (Overview) -->
+        <section id="cpane-overview" class="cpane space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200/60 font-mono">
+                  S2V Video Studio
+                </span>
+                <span class="text-xs text-slate-400">多模态文生/图生视频创作系统</span>
+              </div>
+              <h1 class="text-xl font-bold text-slate-900 mt-1">欢迎回来，李维工作室</h1>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="switchClientTab('tasks')" class="px-3.5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl shadow-subtle transition flex items-center gap-2">
+                <i data-lucide="list-video" class="w-4 h-4 text-indigo-600"></i>
+                <span>查看任务队列</span>
+              </button>
+              <button onclick="switchClientTab('create')" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle transition flex items-center gap-2 justify-center">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>新建生成任务</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 5 Key Overview Metrics -->
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-subtle">
+              <div class="text-[11px] text-slate-400 font-medium">累计支出 (RMB)</div>
+              <div class="text-xl font-bold text-slate-900 font-mono mt-1" id="overview-total-spent">¥ 148.00</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">本月消耗 ¥36.00</div>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-subtle">
+              <div class="text-[11px] text-slate-400 font-medium">可用余额 (RMB)</div>
+              <div class="text-xl font-bold text-emerald-600 font-mono mt-1"><span id="overview-wallet-balance">¥ 256.00</span></div>
+              <div class="text-[10px] text-indigo-600 cursor-pointer hover:underline mt-0.5" onclick="switchClientTab('wallet')">立即充值 &rarr;</div>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-subtle">
+              <div class="text-[11px] text-slate-400 font-medium">每秒视频均价</div>
+              <div class="text-xl font-bold text-slate-900 font-mono mt-1">¥ 0.20 <span class="text-xs font-normal text-slate-400">/s</span></div>
+              <div class="text-[10px] text-slate-400 mt-0.5">768P/1080P多档按秒计</div>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-subtle">
+              <div class="text-[11px] text-slate-400 font-medium">空间资源占用</div>
+              <div class="text-xl font-bold text-slate-900 font-mono mt-1">14.8 <span class="text-xs font-normal text-slate-400">/ 50GB</span></div>
+              <div class="text-[10px] text-slate-400 mt-0.5">已建 2 个作品集</div>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-subtle col-span-2 sm:col-span-1">
+              <div class="text-[11px] text-slate-400 font-medium">活跃渲染任务</div>
+              <div class="text-xl font-bold text-amber-600 font-mono mt-1"><span id="overview-active-task-num">1</span> <span class="text-xs font-normal text-slate-400">支进行中</span></div>
+              <div class="text-[10px] text-indigo-600 cursor-pointer hover:underline mt-0.5" onclick="switchClientTab('tasks')">查看队列 &rarr;</div>
+            </div>
+          </div>
+
+          <!-- Active Task Live Card -->
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">正在执行的渲染流水 (预扣款机制)</h3>
+              </div>
+              <button onclick="switchClientTab('tasks')" class="text-[11px] font-semibold text-indigo-600 hover:underline">进入完整任务中心 &rarr;</button>
+            </div>
+
+            <div id="overview-live-task-card" class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Recent Works Showcase -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900">最近生成作品</h3>
+              <button onclick="switchClientTab('portfolios')" class="text-xs text-indigo-600 font-semibold hover:underline">进入作品集 &rarr;</button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="overview-recent-works">
+              <!-- Injected dynamically -->
+            </div>
+          </div>
+        </section>
+
+        <!-- C2: 广场 (Explore / Plaza) -->
+        <section id="cpane-explore" class="cpane hidden space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+            <div>
+              <h1 class="text-xl font-bold text-slate-900">灵感广场</h1>
+              <p class="text-xs text-slate-500 mt-0.5">探索精选开源提示词与场景结构，一键导入创作台</p>
+            </div>
+            <div class="flex gap-2">
+              <button class="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg">全部灵感</button>
+              <button class="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg hover:bg-slate-50">电影级故事</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle flex flex-col justify-between space-y-3 hover:border-indigo-400 transition">
+              <div class="space-y-2">
+                <div class="h-32 bg-gradient-to-tr from-slate-900 to-indigo-950 rounded-xl flex items-center justify-center text-white font-mono text-xs relative overflow-hidden">
+                  <span>王家卫复古雨夜</span>
+                  <span class="absolute top-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] font-mono">15s · 有声</span>
+                </div>
+                <div class="font-bold text-slate-900 text-xs">港风雨夜车水马龙与角色特写</div>
+                <p class="text-[11px] text-slate-500 leading-relaxed">首尾帧过渡自然，雨滴反光、青黄撞色与背景爵士萨克斯音效。</p>
+              </div>
+              <button onclick="applyPlazaTemplate('港风雨夜车水马龙，微距水滴霓虹反射，角色眼神流转', '16:9', '768p')" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1">
+                <span>套用并开始创作</span> &rarr;
+              </button>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle flex flex-col justify-between space-y-3 hover:border-indigo-400 transition">
+              <div class="space-y-2">
+                <div class="h-32 bg-gradient-to-tr from-slate-900 to-cyan-950 rounded-xl flex items-center justify-center text-white font-mono text-xs relative overflow-hidden">
+                  <span>赛博机械飞升</span>
+                  <span class="absolute top-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] font-mono">10s · 有声</span>
+                </div>
+                <div class="font-bold text-slate-900 text-xs">机械义眼充能与全息光圈迸发</div>
+                <p class="text-[11px] text-slate-500 leading-relaxed">高动态光晕，粒子流由暗转亮，伴随低沉的电磁共鸣音效。</p>
+              </div>
+              <button onclick="applyPlazaTemplate('超精细机械义眼缓缓点亮，全息光圈旋转发光，粒子流四溢', '16:9', '1080p')" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1">
+                <span>套用并开始创作</span> &rarr;
+              </button>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle flex flex-col justify-between space-y-3 hover:border-indigo-400 transition">
+              <div class="space-y-2">
+                <div class="h-32 bg-gradient-to-tr from-slate-900 to-rose-950 rounded-xl flex items-center justify-center text-white font-mono text-xs relative overflow-hidden">
+                  <span>极简静物大片</span>
+                  <span class="absolute top-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] font-mono">10s · 静音</span>
+                </div>
+                <div class="font-bold text-slate-900 text-xs">香水瓶身水雾与自然光漫反射</div>
+                <p class="text-[11px] text-slate-500 leading-relaxed">高端商业广告级别构图，微距慢动作水珠滑落与纯净光影交织。</p>
+              </div>
+              <button onclick="applyPlazaTemplate('晶莹香水玻璃瓶置于大理石台面，水雾慢动作喷洒，光影柔和漫射', '16:9', '1080p')" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1">
+                <span>套用并开始创作</span> &rarr;
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- C3: 创作台 (Create Studio) -->
+        <section id="cpane-create" class="cpane hidden space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200/60 font-mono">
+                  Video Studio
+                </span>
+                <span class="text-xs text-slate-400">纯文生视频 / 文+图生视频（首尾帧 / 参考图）</span>
+              </div>
+              <h1 class="text-xl font-bold text-slate-900 mt-1">创建视频生成任务</h1>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 font-mono shadow-xs">
+                钱包余额: <strong id="creator-current-balance" class="text-emerald-600 font-bold">¥ 256.00</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Target Project & Output Folder -->
+          <div class="bg-white border-2 border-indigo-100 rounded-2xl p-4 shadow-subtle space-y-3 bg-gradient-to-r from-indigo-50/30 to-white">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                  <i data-lucide="folder-git-2" class="w-3.5 h-3.5"></i>
+                </div>
+                <div>
+                  <span class="text-xs font-bold text-slate-900">目标作品集与生成视频存放位置</span>
+                  <span class="text-[11px] text-slate-400 ml-1.5">(自动沉淀至对应作品的视频子目录下)</span>
+                </div>
+              </div>
+              <span id="last-task-tag" class="text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-2 py-0.5 rounded-full">已绑定当前作品</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">1. 目标作品 (项目归属)</label>
+                <select id="select-target-work" onchange="syncTargetFolderOptions(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
+                  <!-- Synced dynamically -->
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">2. 生成视频存放子目录 (位于 /视频/ 下)</label>
+                <select id="select-target-video-folder" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
+                  <option value="正片镜头">📁 /视频/正片镜头/</option>
+                  <option value="第一集">📁 /视频/第一集/</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mode Selectors -->
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle space-y-3">
+            <div class="text-xs font-bold text-slate-700 uppercase tracking-wider">选择生成形式</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button type="button" onclick="setCreationMode('t2v')" id="btn-mode-t2v" class="creation-mode-btn p-3.5 rounded-xl border-2 border-slate-200 text-left hover:border-indigo-400 transition">
+                <div class="flex items-center gap-2 font-bold text-xs text-slate-900">
+                  <i data-lucide="file-text" class="w-4 h-4 text-indigo-600"></i>
+                  <span>纯文本生成视频 (Text-to-Video)</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1">仅需输入动态提示词，AI 全自动构图与生成画面。</div>
+              </button>
+
+              <button type="button" onclick="setCreationMode('i2v')" id="btn-mode-i2v" class="creation-mode-btn p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50/50 text-left transition">
+                <div class="flex items-center gap-2 font-bold text-xs text-indigo-900">
+                  <i data-lucide="image" class="w-4 h-4 text-indigo-600"></i>
+                  <span>文 + 图片生成视频 (Image-to-Video)</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-1">支持 首尾帧生成 或 多张参考图生成 (命中当前作品资产库)。</div>
+              </button>
+            </div>
+
+            <div id="i2v-submode-box" class="pt-2 flex items-center gap-3 border-t border-slate-100 text-xs">
+              <span class="font-bold text-slate-600">图生模式细分:</span>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="i2v_sub_type" value="keyframes" checked onchange="switchI2VSubType('keyframes')" class="text-indigo-600">
+                <span class="text-slate-700 font-medium">首尾帧生成视频 (Keyframes)</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="i2v_sub_type" value="references" onchange="switchI2VSubType('references')" class="text-indigo-600">
+                <span class="text-slate-700 font-medium">参考图生成视频 (Reference Images, 最多8张)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 space-y-4">
+              <!-- Image Input Area -->
+              <div id="image-input-container" class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+                <div class="flex items-center justify-between">
+                  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="image" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span>首尾帧图片 / 资产库文件命中</span>
+                  </label>
+                  <button type="button" onclick="openAssetPickerModal()" class="text-xs text-indigo-600 hover:underline font-semibold flex items-center gap-1">
+                    <i data-lucide="folder-search" class="w-3 h-3"></i> 从作品资产库选取
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div class="border-2 border-dashed border-indigo-300 rounded-xl p-3 text-center hover:border-indigo-500 transition cursor-pointer flex flex-col items-center justify-center min-h-[100px] relative bg-indigo-50/20" onclick="openAssetPickerModal()">
+                    <i data-lucide="image" class="w-5 h-5 text-indigo-600 mb-1"></i>
+                    <span class="text-[11px] font-bold text-slate-800" id="slot-1-label">首帧: 角色首帧_特写.png</span>
+                    <span class="text-[9px] text-indigo-600 font-mono">/资产/人物/</span>
+                  </div>
+                  <div class="border-2 border-dashed border-slate-200 rounded-xl p-3 text-center hover:border-indigo-500 transition cursor-pointer flex flex-col items-center justify-center min-h-[100px] relative bg-slate-50/50" onclick="openAssetPickerModal()">
+                    <i data-lucide="plus" class="w-5 h-5 text-slate-400 mb-1"></i>
+                    <span class="text-[11px] font-bold text-slate-600" id="slot-2-label">尾帧 / 参考图 2</span>
+                    <span class="text-[9px] text-slate-400">选填 · 点击选取</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Prompts & Seed -->
+              <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-4">
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <i data-lucide="pen-tool" class="w-3.5 h-3.5 text-indigo-600"></i>
+                      <span>画面主体与动态提示词 (Prompt)</span>
+                    </label>
+                    <button type="button" id="btn-at-mention" onclick="insertAtMention()" class="text-[11px] text-indigo-600 font-semibold cursor-pointer hover:underline flex items-center gap-1">
+                      <i data-lucide="at-sign" class="w-3 h-3"></i>
+                      <span>引用资产</span>
+                    </button>
+                  </div>
+                  <textarea id="creator-prompt-input" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:ring-1 focus:ring-indigo-500 transition resize-none" placeholder="描述画面主体动态、光影与变化... 例如：@角色首帧_特写 缓缓低头，霓虹水滴顺着雨衣滑落"></textarea>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    <div class="font-bold text-slate-700 flex items-center gap-1.5">
+                      <span>随机种子 (Seed)</span>
+                      <span class="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded">1 ~ 999999999999999</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input id="input-seed-val" type="number" min="1" max="999999999999999" placeholder="输入整数" class="w-48 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono text-slate-800 text-center">
+                    <button type="button" onclick="randomizeSeed()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg shrink-0">🎲 随机</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Col: Parameters & Pricing -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4 shadow-subtle h-fit">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">成片参数与规格</h3>
+                <span class="text-[10px] font-mono bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold">按秒计费</span>
+              </div>
+
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700">音效与配乐</label>
+                <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
+                  <button type="button" onclick="setAudioOption(this, true)" id="btn-audio-yes" class="audio-btn p-2 bg-indigo-50 border-2 border-indigo-500 text-indigo-700 rounded-lg text-center flex items-center justify-center gap-1 transition">
+                    <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+                    <span>有声音 (AI配乐)</span>
+                  </button>
+                  <button type="button" onclick="setAudioOption(this, false)" id="btn-audio-no" class="audio-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 flex items-center justify-center gap-1 transition">
+                    <i data-lucide="volume-x" class="w-3.5 h-3.5"></i>
+                    <span>无声音 (静音)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700">画幅比例</label>
+                <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
+                  <button type="button" onclick="setAspectRatio(this, '16:9')" class="ratio-btn p-2 bg-indigo-50 border-2 border-indigo-500 text-indigo-700 rounded-lg text-center transition">16:9 横屏</button>
+                  <button type="button" onclick="setAspectRatio(this, '9:16')" class="ratio-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 transition">9:16 竖屏</button>
+                </div>
+              </div>
+
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700">画质分辨率</label>
+                <div class="grid grid-cols-3 gap-1.5 text-xs font-semibold">
+                  <button type="button" onclick="setResolution(this, '480p')" id="btn-res-480p" class="res-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 transition">480P (¥0.15/s)</button>
+                  <button type="button" onclick="setResolution(this, '768p')" id="btn-res-768p" class="res-btn p-2 bg-indigo-50 border-2 border-indigo-500 text-indigo-700 rounded-lg text-center transition">768P (¥0.20/s)</button>
+                  <button type="button" onclick="setResolution(this, '1080p')" id="btn-res-1080p" class="res-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 transition">1080P (¥0.30/s)</button>
+                </div>
+              </div>
+
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between text-xs">
+                  <label class="font-bold text-slate-700">成片时长 (≤ 15秒)</label>
+                  <span class="font-mono font-bold text-indigo-600" id="duration-display">15 秒</span>
+                </div>
+                <input id="slider-duration" type="range" min="3" max="15" step="1" value="15" oninput="onDurationSliderChanged(this.value)" class="w-full accent-indigo-600 cursor-pointer">
+              </div>
+
+              <div class="pt-4 border-t border-slate-100 space-y-3">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-500">预扣产生金额:</span>
+                  <span class="font-bold text-rose-600 font-mono text-lg" id="live-price-calc">¥ 3.00</span>
+                </div>
+                <button id="btn-creator-submit" onclick="submitCreationTask()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle transition flex items-center justify-center gap-2">
+                  <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+                  <span>立即渲染 (预扣 <span id="btn-prededuct-txt">¥ 3.00</span>)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- C4: 作品集与资产管理 (Portfolios) -->
+        <section id="cpane-portfolios" class="cpane hidden space-y-6">
+
+          <!-- VIEW 1: PROJECTS LIST VIEW (作品列表视图) -->
+          <div id="portfolio-view-projects" class="space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200/60">Portfolio Space</span>
+                  <span class="text-xs text-slate-400">作品集企划管理</span>
+                </div>
+                <h1 class="text-xl font-bold text-slate-900 mt-1">我的作品集</h1>
+                <p class="text-xs text-slate-500 mt-0.5">选择或新建一个项目作品，进入管理人物/场景/道具/素材及视频分集</p>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button onclick="openNewProjectModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle flex items-center gap-1.5 transition">
+                  <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                  <span>新建作品集</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Projects Grid Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" id="projects-grid-container">
+              <!-- Dynamically populated project cards -->
+            </div>
+          </div>
+
+          <!-- VIEW 2: PROJECT DETAIL & FOLDER EXPLORER (单个作品详情与目录资产) -->
+          <div id="portfolio-view-detail" class="hidden space-y-4">
+            <!-- Top Bar Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+              <div class="flex items-center gap-3">
+                <button onclick="exitProjectDetail()" class="p-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 hover:text-slate-900 transition shadow-subtle" title="返回作品列表">
+                  <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                </button>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-mono font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200/60" id="detail-project-badge">Active Project</span>
+                    <span class="text-xs text-slate-400">作品资产空间</span>
+                  </div>
+                  <h1 class="text-xl font-bold text-slate-900 mt-0.5" id="detail-project-title">赛博朋克微电影项目</h1>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button onclick="openNewFolderModal()" id="btn-create-folder" class="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl shadow-subtle flex items-center gap-1.5 transition">
+                  <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-indigo-600"></i>
+                  <span>新建子目录</span>
+                </button>
+                <button onclick="openUploadModal()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle flex items-center gap-1.5 transition">
+                  <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                  <span>上传素材</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- File Explorer Shell -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl shadow-subtle overflow-hidden flex flex-col">
+              
+              <!-- Explorer Toolbar: Breadcrumbs & View Modes & Search -->
+              <div class="p-3.5 bg-slate-50/90 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                
+                <!-- Breadcrumb Navigation -->
+                <div class="flex items-center gap-1.5 overflow-x-auto font-mono text-slate-700" id="oss-breadcrumb">
+                  <!-- Injected via JS -->
+                </div>
+
+                <!-- View Mode Toggle & Search -->
+                <div class="flex items-center gap-2">
+                  <div class="flex items-center p-0.5 bg-slate-200/70 rounded-lg">
+                    <button onclick="setExplorerViewMode('grid')" id="btn-view-grid" class="p-1 rounded-md bg-white text-slate-800 shadow-2xs transition" title="网格卡片视图">
+                      <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="setExplorerViewMode('table')" id="btn-view-table" class="p-1 rounded-md text-slate-500 hover:text-slate-800 transition" title="详细列表视图">
+                      <i data-lucide="list" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+
+                  <div class="relative w-full sm:w-56 shrink-0">
+                    <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5"></i>
+                    <input id="oss-search-input" oninput="filterOSSExplorer(this.value)" type="text" placeholder="在当前目录检索..." class="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:ring-1 focus:ring-indigo-500">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Path Template Notice Banner -->
+              <div id="oss-template-banner" class="px-4 py-2 bg-indigo-50/40 border-b border-indigo-100 flex items-center justify-between text-[11px]">
+                <div class="flex items-center gap-2 text-indigo-900 font-medium">
+                  <i data-lucide="shield-check" class="w-3.5 h-3.5 text-indigo-600"></i>
+                  <span id="oss-banner-text">标准工程模板已就绪：包含「资产（人物/场景/道具/素材）」与「视频」固定主架构</span>
+                </div>
+                <span class="text-[10px] text-slate-400 font-mono">🔒 系统固定目录不可删除 · 自定义分集与文件自由管理</span>
+              </div>
+
+              <!-- Explorer Container -->
+              <div id="oss-content-wrapper" class="min-h-[360px] p-4">
+                <!-- Dynamically rendered by JS -->
+              </div>
+
+              <!-- Explorer Footer Status -->
+              <div class="p-3 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-400">
+                <span id="oss-item-count">共 0 个项目</span>
+                <span class="font-mono">Sub2Video Portfolio File Engine</span>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- C5: 任务管理 / 渲染队列 (Task Center) -->
+        <section id="cpane-tasks" class="cpane hidden space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200/60 font-mono">
+                  Render Queue
+                </span>
+                <span class="text-xs text-slate-400">实时任务流水与 GPU 生成状态跟踪</span>
+              </div>
+              <h1 class="text-xl font-bold text-slate-900 mt-1">任务管理与渲染队列</h1>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="switchClientTab('create')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle flex items-center gap-1.5 transition">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>新建任务</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Task Filter Tabs & Search -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+              <button onclick="filterTasks('all')" id="tfilter-all" class="task-filter-btn px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs">全部任务 (<span id="tcount-all">0</span>)</button>
+              <button onclick="filterTasks('running')" id="tfilter-running" class="task-filter-btn px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800">进行中 (<span id="tcount-running">0</span>)</button>
+              <button onclick="filterTasks('completed')" id="tfilter-completed" class="task-filter-btn px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800">已完成 (<span id="tcount-completed">0</span>)</button>
+              <button onclick="filterTasks('failed')" id="tfilter-failed" class="task-filter-btn px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800">异常/退款 (<span id="tcount-failed">0</span>)</button>
+            </div>
+
+            <div class="relative w-full sm:w-64">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5"></i>
+              <input id="task-search-input" oninput="renderTasksList()" type="text" placeholder="按任务 ID 或提示词搜索..." class="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:ring-1 focus:ring-indigo-500">
+            </div>
+          </div>
+
+          <!-- Tasks List Container -->
+          <div class="space-y-3" id="tasks-cards-container">
+            <!-- Dynamic Task Cards Rendered by JS -->
+          </div>
+        </section>
+
+        <!-- C6: 钱包 (Wallet) -->
+        <section id="cpane-wallet" class="cpane hidden space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+            <div>
+              <h1 class="text-xl font-bold text-slate-900">RMB 钱包中心</h1>
+              <p class="text-xs text-slate-500 mt-0.5">支持 RMB 在线充值、余额实时抵扣、生成预扣与账本流水</p>
+            </div>
+            <div class="text-right">
+              <span class="text-xs text-slate-400">可用余额:</span>
+              <div class="text-2xl font-bold text-emerald-600 font-mono"><span id="wallet-pane-balance">¥ 256.00</span></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+              <div class="text-xs font-bold text-slate-400 uppercase">基础充值</div>
+              <div class="text-2xl font-bold text-slate-900 font-mono">¥ 50.00</div>
+              <p class="text-xs text-slate-500">约可生成 250 秒 768P 视频</p>
+              <button onclick="simulateClientRecharge(50, 50)" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition">微信 / 支付宝充值 ¥50</button>
+            </div>
+
+            <div class="bg-white border-2 border-indigo-500 rounded-2xl p-5 shadow-subtle space-y-3 relative">
+              <span class="absolute top-3 right-3 text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded">推荐</span>
+              <div class="text-xs font-bold text-indigo-600 uppercase">进阶充值 (赠送 ¥10)</div>
+              <div class="text-2xl font-bold text-slate-900 font-mono">¥ 100.00 <span class="text-xs text-emerald-600 font-normal">(实得 ¥110)</span></div>
+              <p class="text-xs text-slate-500">加赠 10 元，约可生成 550 秒视频</p>
+              <button onclick="simulateClientRecharge(110, 100)" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle transition">立即充值 ¥100</button>
+            </div>
+
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+              <div class="text-xs font-bold text-slate-400 uppercase">工作室大额 (赠送 ¥50)</div>
+              <div class="text-2xl font-bold text-slate-900 font-mono">¥ 300.00 <span class="text-xs text-emerald-600 font-normal">(实得 ¥350)</span></div>
+              <p class="text-xs text-slate-500">加赠 50 元 + 高并发快速渲染队列</p>
+              <button onclick="simulateClientRecharge(350, 300)" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition">立即充值 ¥300</button>
+            </div>
+          </div>
+
+          <!-- Transaction Records -->
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">近期资金流动账单</h3>
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase font-semibold">
+                <tr>
+                  <th class="p-2.5">流水号</th>
+                  <th class="p-2.5">类型</th>
+                  <th class="p-2.5">金额变动</th>
+                  <th class="p-2.5">说明</th>
+                  <th class="p-2.5">时间</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-slate-700 font-mono text-[11px]" id="wallet-tx-tbody">
+                <!-- Dynamically updated -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- C7: 个人资料 (Profile) -->
+        <section id="cpane-profile" class="cpane hidden space-y-6">
+          <div class="border-b border-slate-200/80 pb-4">
+            <h1 class="text-xl font-bold text-slate-900">个人资料与账号认证</h1>
+            <p class="text-xs text-slate-500 mt-0.5">支持邮箱验证、API Key 生成与团队权限</p>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-subtle space-y-6">
+            <div class="flex items-center gap-4">
+              <div class="w-16 h-16 rounded-full bg-indigo-600 text-white font-bold text-xl flex items-center justify-center font-mono shadow-md">
+                李
+              </div>
+              <div>
+                <div class="text-base font-bold text-slate-900">李维工作室</div>
+                <div class="text-xs text-slate-400 font-mono mt-0.5">UID: u_98241029 · 认证专业创作者</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <span class="text-slate-400">绑定登录邮箱</span>
+                <div class="font-bold text-slate-800 font-mono">creator@sub2video.com</div>
+              </div>
+              <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <span class="text-slate-400">会员级别</span>
+                <div class="font-bold text-indigo-600">Pro Studio 专业创作者</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- C8: 帮助与工单 (Tickets) -->
+        <section id="cpane-ticket" class="cpane hidden space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+            <div>
+              <h1 class="text-xl font-bold text-slate-900">帮助与工单支持</h1>
+              <p class="text-xs text-slate-500 mt-0.5">支持按「售前咨询、售后支持、运维故障」快速派单，自动关联任务 ID</p>
+            </div>
+            <button onclick="openTicketModalWithTask('')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-subtle flex items-center gap-1.5 transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>新建工单</span>
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-subtle">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 uppercase font-semibold">
+                <tr>
+                  <th class="p-3.5">工单号</th>
+                  <th class="p-3.5">问题分类</th>
+                  <th class="p-3.5">工单标题与描述</th>
+                  <th class="p-3.5">挂载单号</th>
+                  <th class="p-3.5">状态</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-slate-700" id="client-ticket-tbody">
+                <!-- Dynamically updated -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- MODALS -->
+  <!-- 1. Ticket Modal -->
+  <div id="ticket-modal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-floating space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-sm font-bold text-slate-900">提交工单支持</h3>
+        <button onclick="closeTicketModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">关联任务 ID 或订单号</label>
+          <input id="modal-task-id-input" type="text" placeholder="例如: tsk_88921" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-mono text-slate-800">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">问题分类</label>
+          <select id="modal-issue-type" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-medium">
+            <option value="售后支持">售后支持 (生成失败 / 申请退款)</option>
+            <option value="运维故障">运维故障 (GPU 节点排队停滞)</option>
+            <option value="售前咨询">售前咨询 (团队套餐 / 定制模型)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">详细描述</label>
+          <textarea id="modal-issue-desc" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 resize-none" placeholder="请详细描述碰到的问题与诉求..."></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button onclick="closeTicketModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-semibold transition">取消</button>
+        <button onclick="submitClientTicket()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-subtle transition">确认提交工单</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Asset Picker Modal -->
+  <div id="asset-picker-modal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-xl w-full p-6 shadow-floating space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">从当前作品资产库选取素材</h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">支持命中角色、场景、道具与素材图片</p>
+        </div>
+        <button onclick="closeAssetPickerModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto" id="asset-picker-list">
+        <!-- Populated dynamically based on active project -->
+      </div>
+      <div class="flex justify-end pt-2 border-t border-slate-100">
+        <button onclick="closeAssetPickerModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Action Dialog Modal -->
+  <div id="action-dialog-modal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-floating space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-sm font-bold text-slate-900" id="dialog-title">新建项</h3>
+        <button onclick="closeActionDialog()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-600 leading-relaxed" id="dialog-description">请输入内容：</p>
+        <div id="dialog-input-wrap">
+          <input id="dialog-input" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-medium text-slate-800 focus:ring-1 focus:ring-indigo-500">
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button onclick="closeActionDialog()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-semibold transition">取消</button>
+        <button id="dialog-confirm-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-subtle transition">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-medium shadow-floating flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toast-text">操作已成功</span>
+  </div>
+
+  <!-- JAVASCRIPT BUSINESS LOGIC -->
+  <script>
+    let userBalance = 256.00;
+    let totalSpent = 148.00;
+    let currentCreationMode = 'i2v';
+    let currentAudio = true;
+    let currentResolution = '768p';
+    let currentDuration = 15;
+
+    let systemPricing = {
+      '480p': 0.15,
+      '768p': 0.20,
+      '1080p': 0.30
+    };
+
+    let currentProjectKey = 'cyberpunk';
+    let isInsideProjectDetail = false;
+    let currentPath = [];
+    let explorerViewMode = 'grid';
+    let searchQuery = '';
+    let currentTaskFilter = 'all';
+
+    function createStandardProjectBlueprint(projectName, desc = '智能视频企划工程') {
+      return {
+        name: projectName,
+        desc: desc,
+        coverColor: 'from-indigo-900 to-slate-900',
+        createdAt: '2026-08-30',
+        folders: {
+          '资产': {
+            isSystem: true,
+            desc: '核心资产固定目录',
+            folders: {
+              '人物': { isSystem: true, desc: '角色与人设图', folders: {}, items: [] },
+              '场景': { isSystem: true, desc: '环境与场景参考', folders: {}, items: [] },
+              '道具': { isSystem: true, desc: '装备与物品特写', folders: {}, items: [] },
+              '素材': { isSystem: true, desc: '纹理与贴图音效', folders: {}, items: [] }
+            },
+            items: []
+          },
+          '视频': {
+            isSystem: true,
+            desc: '视频成片输出主目录',
+            folders: {
+              '正片镜头': {
+                isSystem: false,
+                desc: '默认镜头分集',
+                folders: {},
+                items: []
+              }
+            },
+            items: []
+          }
+        },
+        items: []
+      };
+    }
+
+    const ossProjects = {
+      'cyberpunk': {
+        name: '赛博朋克微电影项目',
+        desc: '近未来科幻悬疑短片，融合霓虹雨夜与高动态机甲特写',
+        coverColor: 'from-indigo-950 via-slate-900 to-indigo-900',
+        createdAt: '2026-08-28',
+        folders: {
+          '资产': {
+            isSystem: true,
+            desc: '核心资产固定目录',
+            folders: {
+              '人物': {
+                isSystem: true,
+                desc: '角色与人设图',
+                folders: {},
+                items: [
+                  { name: '角色首帧_特写.png', type: 'image', size: '2.4 MB', time: '2026-08-28 20:10' },
+                  { name: '赛博侦探_立绘.png', type: 'image', size: '3.1 MB', time: '2026-08-28 19:40' }
+                ]
+              },
+              '场景': {
+                isSystem: true,
+                desc: '环境与场景参考',
+                folders: {},
+                items: [
+                  { name: '雨夜街景尾帧.png', type: 'image', size: '4.8 MB', time: '2026-08-28 18:20' }
+                ]
+              },
+              '道具': {
+                isSystem: true,
+                desc: '装备与物品特写',
+                folders: {},
+                items: [
+                  { name: '发光机械义眼.png', type: 'image', size: '1.9 MB', time: '2026-08-28 15:10' }
+                ]
+              },
+              '素材': {
+                isSystem: true,
+                desc: '纹理与贴图音效',
+                folders: {},
+                items: [
+                  { name: '水滴散斑底纹.png', type: 'image', size: '5.2 MB', time: '2026-08-27 12:00' }
+                ]
+              }
+            },
+            items: []
+          },
+          '视频': {
+            isSystem: true,
+            desc: '视频成片输出主目录',
+            folders: {
+              '第一集': {
+                isSystem: false,
+                desc: '自定义正片分集',
+                folders: {},
+                items: [
+                  { name: '#V003_雨夜霓虹漫步.mp4', type: 'video', size: '45.2 MB', time: '2026-08-28 20:42', meta: '1080P · 15s' },
+                  { name: '#V002_机械义眼扫描.mp4', type: 'video', size: '28.5 MB', time: '2026-08-28 17:15', meta: '768P · 10s' }
+                ]
+              },
+              '预告片花絮': {
+                isSystem: false,
+                desc: '宣发素材与剪辑',
+                folders: {},
+                items: [
+                  { name: '#V001_水滴倒影微距.mp4', type: 'video', size: '32.0 MB', time: '2026-08-28 14:00', meta: '768P · 15s' }
+                ]
+              }
+            },
+            items: []
+          }
+        },
+        items: []
+      },
+      'perfume': {
+        name: '高端香水商业短片',
+        desc: '静物广告光影渲染，包含微距水雾喷洒与大理石展台质感',
+        coverColor: 'from-slate-900 via-rose-950 to-slate-900',
+        createdAt: '2026-08-26',
+        folders: {
+          '资产': {
+            isSystem: true,
+            desc: '核心资产固定目录',
+            folders: {
+              '人物': { isSystem: true, desc: '角色与人设图', folders: {}, items: [] },
+              '场景': { isSystem: true, desc: '环境与场景参考', folders: {}, items: [{ name: '白墙极简展台.png', type: 'image', size: '3.5 MB', time: '2026-08-26 10:00' }] },
+              '道具': { isSystem: true, desc: '装备与物品特写', folders: {}, items: [] },
+              '素材': { isSystem: true, desc: '纹理与贴图音效', folders: {}, items: [] }
+            },
+            items: []
+          },
+          '视频': {
+            isSystem: true,
+            desc: '视频成片输出主目录',
+            folders: {
+              '正片镜头': {
+                isSystem: false,
+                desc: '商业成片镜头',
+                folders: {},
+                items: []
+              }
+            },
+            items: []
+          }
+        },
+        items: []
+      }
+    };
+
+    let tasksList = [
+      {
+        id: 'tsk_88921',
+        title: '雨夜街道霓虹漫步',
+        prompt: '基于 @角色首帧_特写.png 缓缓低头，霓虹水滴顺着雨衣滑落，景深虚化',
+        projectKey: 'cyberpunk',
+        targetFolder: '第一集',
+        mode: 'Image-to-Video',
+        resolution: '1080P',
+        duration: 15,
+        audio: true,
+        cost: 4.50,
+        seed: 839210491,
+        status: 'running',
+        progress: 68,
+        createdAt: '2026-08-30 14:20',
+        eta: '约 12 秒',
+        gpuNode: '上海张江 H100-A'
+      },
+      {
+        id: 'tsk_88842',
+        title: '机械义眼全息扫描',
+        prompt: '超精细机械义眼缓缓点亮，全息光圈旋转发光，粒子流四溢',
+        projectKey: 'cyberpunk',
+        targetFolder: '第一集',
+        mode: 'Text-to-Video',
+        resolution: '768P',
+        duration: 10,
+        audio: true,
+        cost: 2.00,
+        seed: 284192019,
+        status: 'completed',
+        progress: 100,
+        createdAt: '2026-08-28 17:15',
+        videoName: '#V002_机械义眼扫描.mp4',
+        gpuNode: '北京亦庄 A100-A'
+      },
+      {
+        id: 'tsk_88840',
+        title: '大理石展台水雾微距',
+        prompt: '晶莹香水玻璃瓶置于大理石台面，水雾慢动作喷洒',
+        projectKey: 'perfume',
+        targetFolder: '正片镜头',
+        mode: 'Image-to-Video',
+        resolution: '1080P',
+        duration: 10,
+        audio: false,
+        cost: 3.00,
+        seed: 109283742,
+        status: 'failed',
+        progress: 100,
+        createdAt: '2026-08-27 10:15',
+        failReason: '源图片解析异常，已全额原路退款至钱包',
+        gpuNode: '北京亦庄 A100-B'
+      }
+    ];
+
+    let ticketsList = [
+      {
+        id: 'tkt_9921',
+        user: '李维工作室',
+        uid: 'u_98241029',
+        type: '售后支持',
+        desc: '任务 #tsk_88840 生成黑屏申请全额退款',
+        taskId: 'tsk_88840',
+        refundAmount: 3.00,
+        status: 'completed',
+        createdAt: '2026-08-27 10:20'
+      },
+      {
+        id: 'tkt_9925',
+        user: '李维工作室',
+        uid: 'u_98241029',
+        type: '运维故障',
+        desc: '任务 #tsk_88921 进度停滞超 3 分钟，请排查张江集群状态',
+        taskId: 'tsk_88921',
+        refundAmount: 4.50,
+        status: 'pending',
+        createdAt: '2026-08-30 14:25'
+      }
+    ];
+
+    let transactionsList = [
+      { id: 'TX_90182', type: '任务预扣', amount: -4.50, desc: 'Task #tsk_88921 雨夜街道霓虹漫步', time: '2026-08-30 14:20' },
+      { id: 'TX_90150', type: '在线充值', amount: 110.00, desc: '微信充值 (活动实付 ¥100 赠送 ¥10)', time: '2026-08-29 09:12' },
+      { id: 'TX_90120', type: '工单退款', amount: 3.00, desc: '工单 #tkt_9921 任务失败原路退款', time: '2026-08-27 10:30' }
+    ];
+
+    window.onload = function () {
+      lucide.createIcons();
+      recalcCost();
+      syncTargetWorkSelect();
+      renderOverviewWidgets();
+      renderProjectsGrid();
+      renderWalletTransactions();
+      renderClientTickets();
+    };
+
+    function switchClientTab(tabKey) {
+      const tabs = ['overview', 'explore', 'create', 'portfolios', 'tasks', 'wallet', 'profile', 'ticket'];
+      tabs.forEach(key => {
+        const pane = document.getElementById(`cpane-${key}`);
+        const btn = document.getElementById(`cnav-${key}`);
+        if (pane) pane.classList.add('hidden');
+        if (btn) {
+          btn.classList.remove('active');
+          const iconSlot = btn.querySelector('.nav-icon-slot');
+          if (iconSlot) iconSlot.classList.add('text-slate-400');
+        }
+      });
+
+      const activePane = document.getElementById(`cpane-${tabKey}`);
+      const activeBtn = document.getElementById(`cnav-${tabKey}`);
+      if (activePane) activePane.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.classList.add('active');
+        const iconSlot = activeBtn.querySelector('.nav-icon-slot');
+        if (iconSlot) iconSlot.classList.remove('text-slate-400');
+      }
+      
+      if (tabKey === 'portfolios') {
+        if (!isInsideProjectDetail) {
+          renderProjectsGrid();
+        } else {
+          renderOSSExplorer();
+        }
+      } else if (tabKey === 'tasks') {
+        renderTasksList();
+      } else if (tabKey === 'overview') {
+        renderOverviewWidgets();
+      }
+      lucide.createIcons();
+    }
+
+    function renderProjectsGrid() {
+      const grid = document.getElementById('projects-grid-container');
+      const sideProjCount = document.getElementById('sidebar-proj-count');
+      if (!grid) return;
+
+      const keys = Object.keys(ossProjects);
+      if (sideProjCount) sideProjCount.innerText = `${keys.length} 个项目`;
+
+      let html = '';
+      keys.forEach(key => {
+        const p = ossProjects[key];
+        let assetCount = 0;
+        let videoCount = 0;
+
+        if (p.folders && p.folders['资产']) {
+          const af = p.folders['资产'].folders || {};
+          Object.keys(af).forEach(sub => {
+            assetCount += (af[sub].items || []).length;
+          });
+        }
+        if (p.folders && p.folders['视频']) {
+          const vf = p.folders['视频'].folders || {};
+          Object.keys(vf).forEach(sub => {
+            videoCount += (vf[sub].items || []).length;
+          });
+        }
+
+        html += `
+          <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-subtle hover:shadow-card transition flex flex-col justify-between group">
+            <div class="h-32 bg-gradient-to-tr ${p.coverColor || 'from-indigo-900 to-slate-900'} p-4 flex flex-col justify-between relative cursor-pointer" onclick="enterProjectDetail('${key}')">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-bold bg-white/20 backdrop-blur-md text-white px-2 py-0.5 rounded-full">企划工程</span>
+                <span class="text-[10px] text-white/70 font-mono">${p.createdAt}</span>
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-base group-hover:underline flex items-center gap-1.5">
+                  <i data-lucide="clapperboard" class="w-4 h-4 text-indigo-300"></i>
+                  <span>${p.name}</span>
+                </h3>
+              </div>
+            </div>
+
+            <div class="p-4 space-y-3 flex-1 flex flex-col justify-between">
+              <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${p.desc || '标准工程模板已初始化'}</p>
+              
+              <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs font-mono">
+                <div class="p-2 bg-slate-50 rounded-lg">
+                  <span class="text-slate-400 text-[10px] block">标准资产</span>
+                  <strong class="text-indigo-600 font-bold">${assetCount} 件</strong>
+                </div>
+                <div class="p-2 bg-slate-50 rounded-lg">
+                  <span class="text-slate-400 text-[10px] block">产出成片</span>
+                  <strong class="text-emerald-600 font-bold">${videoCount} 支</strong>
+                </div>
+              </div>
+
+              <div class="pt-2 flex items-center justify-between">
+                <button onclick="enterProjectDetail('${key}')" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5">
+                  <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+                  <span>进入作品空间</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      grid.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function enterProjectDetail(projKey, initialPath = []) {
+      currentProjectKey = projKey;
+      isInsideProjectDetail = true;
+      currentPath = initialPath;
+      searchQuery = '';
+      
+      const vProjects = document.getElementById('portfolio-view-projects');
+      const vDetail = document.getElementById('portfolio-view-detail');
+      const titleEl = document.getElementById('detail-project-title');
+      
+      if (vProjects) vProjects.classList.add('hidden');
+      if (vDetail) vDetail.classList.remove('hidden');
+      if (titleEl && ossProjects[projKey]) {
+        titleEl.innerText = ossProjects[projKey].name;
+      }
+      
+      renderOSSExplorer();
+    }
+
+    function exitProjectDetail() {
+      isInsideProjectDetail = false;
+      const vProjects = document.getElementById('portfolio-view-projects');
+      const vDetail = document.getElementById('portfolio-view-detail');
+      if (vDetail) vDetail.classList.add('hidden');
+      if (vProjects) vProjects.classList.remove('hidden');
+      renderProjectsGrid();
+    }
+
+    function setExplorerViewMode(mode) {
+      explorerViewMode = mode;
+      const btnGrid = document.getElementById('btn-view-grid');
+      const btnTable = document.getElementById('btn-view-table');
+      if (mode === 'grid') {
+        btnGrid.className = "p-1 rounded-md bg-white text-slate-800 shadow-2xs transition";
+        btnTable.className = "p-1 rounded-md text-slate-500 hover:text-slate-800 transition";
+      } else {
+        btnTable.className = "p-1 rounded-md bg-white text-slate-800 shadow-2xs transition";
+        btnGrid.className = "p-1 rounded-md text-slate-500 hover:text-slate-800 transition";
+      }
+      renderOSSExplorer();
+    }
+
+    function navigateToPath(pathArr) {
+      currentPath = pathArr;
+      renderOSSExplorer();
+    }
+
+    function goParentPath() {
+      if (currentPath.length > 0) {
+        currentPath.pop();
+        renderOSSExplorer();
+      }
+    }
+
+    function filterOSSExplorer(val) {
+      searchQuery = val.trim().toLowerCase();
+      renderOSSExplorer();
+    }
+
+    function getCurrentFolderNode() {
+      let node = ossProjects[currentProjectKey];
+      if (!node) return null;
+      for (const seg of currentPath) {
+        if (node.folders && node.folders[seg]) {
+          node = node.folders[seg];
+        } else {
+          return null;
+        }
+      }
+      return node;
+    }
+
+    function renderOSSExplorer() {
+      const container = document.getElementById('oss-content-wrapper');
+      const breadcrumb = document.getElementById('oss-breadcrumb');
+      const itemCount = document.getElementById('oss-item-count');
+      const bannerText = document.getElementById('oss-banner-text');
+      if (!container) return;
+
+      const activeProj = ossProjects[currentProjectKey];
+      if (!activeProj) return;
+
+      let bcHtml = `<button onclick="navigateToPath([])" class="hover:text-indigo-600 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 shadow-2xs font-semibold text-slate-800">
+        <i data-lucide="folder-kanban" class="w-3.5 h-3.5 text-indigo-600"></i> ${activeProj.name}
+      </button>`;
+
+      let accumulated = [];
+      currentPath.forEach((segment) => {
+        accumulated.push(segment);
+        const pathCopy = [...accumulated];
+        bcHtml += `<span class="text-slate-300">/</span>`;
+        bcHtml += `<button onclick="navigateToPath(${JSON.stringify(pathCopy).replace(/"/g, '&quot;')})" class="hover:text-indigo-600 px-2 py-1 rounded-lg bg-white border border-slate-200 shadow-2xs font-semibold text-slate-700">${segment}</button>`;
+      });
+      if (breadcrumb) breadcrumb.innerHTML = bcHtml;
+
+      if (bannerText) {
+        if (currentPath.length === 0) {
+          bannerText.innerText = `作品根目录 · 包含「资产（人物/场景/道具/素材）」与「视频」标准工程结构`;
+        } else if (currentPath[0] === '资产') {
+          bannerText.innerText = `资产库路径: /${currentPath.join('/')}/ · 用于模型参考图与首尾帧训练命中`;
+        } else if (currentPath[0] === '视频') {
+          bannerText.innerText = `视频输出库路径: /${currentPath.join('/')}/ · 自由创建与组织镜头分集`;
+        } else {
+          bannerText.innerText = `当前路径: /${currentPath.join('/')}/`;
+        }
+      }
+
+      const currNode = getCurrentFolderNode();
+      if (!currNode) return;
+
+      let folderEntries = [];
+      let fileEntries = [];
+
+      if (currNode.folders) {
+        Object.keys(currNode.folders).forEach(name => {
+          folderEntries.push({
+            name: name,
+            ...currNode.folders[name]
+          });
+        });
+      }
+
+      if (currNode.items) {
+        fileEntries = [...currNode.items];
+      }
+
+      if (searchQuery) {
+        folderEntries = folderEntries.filter(f => f.name.toLowerCase().includes(searchQuery));
+        fileEntries = fileEntries.filter(f => f.name.toLowerCase().includes(searchQuery));
+      }
+
+      if (explorerViewMode === 'grid') {
+        let gridHtml = `<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">`;
+
+        if (currentPath.length > 0) {
+          gridHtml += `
+            <div onclick="goParentPath()" class="border-2 border-dashed border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition min-h-[130px]">
+              <i data-lucide="corner-left-up" class="w-6 h-6 text-slate-400 mb-1"></i>
+              <span class="text-xs font-semibold text-slate-600">.. 返回上一级</span>
+            </div>
+          `;
+        }
+
+        folderEntries.forEach(f => {
+          const nextPath = [...currentPath, f.name];
+          const isSystem = !!f.isSystem;
+          const totalSubs = Object.keys(f.folders || {}).length + (f.items || []).length;
+
+          gridHtml += `
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle hover:shadow-card hover:border-indigo-400 transition flex flex-col justify-between min-h-[130px] group relative">
+              <div class="cursor-pointer" onclick="navigateToPath(${JSON.stringify(nextPath).replace(/"/g, '&quot;')})">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="w-9 h-9 rounded-xl ${isSystem ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'} flex items-center justify-center">
+                    <i data-lucide="${isSystem ? 'folder-archive' : 'folder'}" class="w-5 h-5"></i>
+                  </div>
+                  ${isSystem ? '<span class="text-[9px] bg-slate-100 text-slate-500 font-mono px-1.5 py-0.2 rounded border">固定</span>' : '<button onclick="confirmDeleteCustomFolder(\''+f.name+'\'); event.stopPropagation();" class="text-slate-300 hover:text-rose-500 p-1"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>'}
+                </div>
+                <div class="font-bold text-xs text-slate-900 group-hover:text-indigo-600 truncate">${f.name}</div>
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">${f.desc || (isSystem ? '标准系统目录' : '自定义分集')}</div>
+              </div>
+              <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span>${totalSubs} 项</span>
+                <span class="text-indigo-600 font-semibold group-hover:underline cursor-pointer" onclick="navigateToPath(${JSON.stringify(nextPath).replace(/"/g, '&quot;')})">进入 &rarr;</span>
+              </div>
+            </div>
+          `;
+        });
+
+        fileEntries.forEach((file, fIdx) => {
+          const isVideo = file.type === 'video';
+          const iconName = isVideo ? 'film' : 'image';
+          const badgeClass = isVideo ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700';
+
+          gridHtml += `
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle hover:shadow-card transition flex flex-col justify-between min-h-[130px] group">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <div class="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
+                    <i data-lucide="${iconName}" class="w-5 h-5 ${isVideo ? 'text-indigo-600' : 'text-emerald-600'}"></i>
+                  </div>
+                  <span class="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${badgeClass} uppercase">${file.type}</span>
+                </div>
+                <div class="font-bold text-xs text-slate-900 truncate" title="${file.name}">${file.name}</div>
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">${file.meta || file.size}</div>
+              </div>
+              <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                <button onclick="applyAssetToPrompt('${file.name}')" class="text-indigo-600 font-bold hover:underline">用于创作</button>
+                <button onclick="confirmDeleteFile(${fIdx}, '${file.name}')" class="text-slate-400 hover:text-rose-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+              </div>
+            </div>
+          `;
+        });
+
+        gridHtml += `</div>`;
+        container.innerHTML = gridHtml;
+
+      } else {
+        let tableHtml = `
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase font-semibold text-[10px]">
+                <tr>
+                  <th class="p-3 pl-4">名称 / 项</th>
+                  <th class="p-3">类型属性</th>
+                  <th class="p-3">规格 / 占用</th>
+                  <th class="p-3">更新时间</th>
+                  <th class="p-3 text-right pr-4">操作</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-slate-700">
+        `;
+
+        if (currentPath.length > 0) {
+          tableHtml += `
+            <tr class="hover:bg-slate-50 cursor-pointer" onclick="goParentPath()">
+              <td class="p-3 pl-4 flex items-center gap-2 font-medium text-slate-600">
+                <i data-lucide="corner-left-up" class="w-4 h-4 text-slate-400"></i> .. (返回上一级目录)
+              </td>
+              <td class="p-3 text-slate-400 text-[11px]">-</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">-</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">-</td>
+              <td class="p-3 text-right pr-4"></td>
+            </tr>
+          `;
+        }
+
+        folderEntries.forEach(f => {
+          const nextPath = [...currentPath, f.name];
+          const isSystem = !!f.isSystem;
+          tableHtml += `
+            <tr class="hover:bg-indigo-50/30 transition group">
+              <td class="p-3 pl-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="cursor-pointer flex items-center gap-2 font-bold text-slate-900" onclick="navigateToPath(${JSON.stringify(nextPath).replace(/"/g, '&quot;')})">
+                    <i data-lucide="${isSystem ? 'folder-archive' : 'folder'}" class="w-4 h-4 ${isSystem ? 'text-indigo-600' : 'text-amber-500'}"></i>
+                    <span>${f.name}</span>
+                  </div>
+                  ${isSystem ? '<span class="text-[9px] bg-slate-100 text-slate-500 font-mono px-1.5 py-0.2 rounded border">系统固定</span>' : '<span class="text-[9px] bg-emerald-50 text-emerald-700 font-mono px-1.5 py-0.2 rounded border">自定义</span>'}
+                </div>
+              </td>
+              <td class="p-3 text-slate-500 font-mono text-[11px]">${f.desc || (isSystem ? '标准系统目录' : '自定义分集')}</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">${Object.keys(f.folders || {}).length + (f.items || []).length} 项</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">2026-08-30</td>
+              <td class="p-3 text-right pr-4 space-x-2">
+                <button onclick="navigateToPath(${JSON.stringify(nextPath).replace(/"/g, '&quot;')})" class="text-indigo-600 font-semibold hover:underline">进入 &rarr;</button>
+                ${!isSystem ? `<button onclick="confirmDeleteCustomFolder('${f.name}')" class="text-rose-500 hover:underline">删除</button>` : `<span class="text-slate-300 select-none">不可删</span>`}
+              </td>
+            </tr>
+          `;
+        });
+
+        fileEntries.forEach((file, fIdx) => {
+          const isVideo = file.type === 'video';
+          tableHtml += `
+            <tr class="hover:bg-slate-50 transition">
+              <td class="p-3 pl-4 flex items-center gap-2.5 font-medium text-slate-800">
+                <i data-lucide="${isVideo ? 'film' : 'image'}" class="w-4 h-4 ${isVideo ? 'text-indigo-600' : 'text-emerald-600'}"></i>
+                <span class="font-bold text-slate-900">${file.name}</span>
+              </td>
+              <td class="p-3 text-slate-500 font-mono uppercase text-[10px]">
+                <span class="px-1.5 py-0.5 rounded ${isVideo ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}">${file.type}</span>
+              </td>
+              <td class="p-3 text-slate-500 font-mono text-[11px]">${file.meta || file.size}</td>
+              <td class="p-3 text-slate-400 font-mono text-[11px]">${file.time}</td>
+              <td class="p-3 text-right pr-4 space-x-2">
+                <button onclick="applyAssetToPrompt('${file.name}')" class="text-indigo-600 font-semibold hover:underline">用于创作</button>
+                <button onclick="triggerToast('正在下载 ${file.name} ...')" class="text-slate-500 hover:underline">下载</button>
+                <button onclick="confirmDeleteFile(${fIdx}, '${file.name}')" class="text-rose-500 hover:underline">删除</button>
+              </td>
+            </tr>
+          `;
+        });
+
+        tableHtml += `</tbody></table></div>`;
+        container.innerHTML = tableHtml;
+      }
+
+      if (itemCount) itemCount.innerText = `共 ${folderEntries.length + fileEntries.length} 项 (${folderEntries.length} 个子目录，${fileEntries.length} 个文件)`;
+      lucide.createIcons();
+    }
+
+    function syncTargetWorkSelect() {
+      const select = document.getElementById('select-target-work');
+      if (!select) return;
+      let html = '';
+      Object.keys(ossProjects).forEach(key => {
+        html += `<option value="${key}">📁 ${ossProjects[key].name}</option>`;
+      });
+      select.innerHTML = html;
+      select.value = currentProjectKey;
+      syncTargetFolderOptions(currentProjectKey);
+    }
+
+    function syncTargetFolderOptions(projKey) {
+      const folderSelect = document.getElementById('select-target-video-folder');
+      if (!folderSelect) return;
+      const proj = ossProjects[projKey];
+      let html = '';
+      if (proj && proj.folders && proj.folders['视频'] && proj.folders['视频'].folders) {
+        Object.keys(proj.folders['视频'].folders).forEach(fName => {
+          html += `<option value="${fName}">📁 /视频/${fName}/</option>`;
+        });
+      }
+      if (!html) {
+        html = `<option value="正片镜头">📁 /视频/正片镜头/</option>`;
+      }
+      folderSelect.innerHTML = html;
+    }
+
+    function setCreationMode(mode) {
+      currentCreationMode = mode;
+      const btnT2V = document.getElementById('btn-mode-t2v');
+      const btnI2V = document.getElementById('btn-mode-i2v');
+      const i2vSubBox = document.getElementById('i2v-submode-box');
+      const imgContainer = document.getElementById('image-input-container');
+
+      if (mode === 't2v') {
+        if (btnT2V) btnT2V.className = "creation-mode-btn p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50/50 text-left transition";
+        if (btnI2V) btnI2V.className = "creation-mode-btn p-3.5 rounded-xl border-2 border-slate-200 text-left hover:border-indigo-400 transition";
+        if (i2vSubBox) i2vSubBox.classList.add('hidden');
+        if (imgContainer) imgContainer.classList.add('hidden');
+        triggerToast("已切换为纯文本生成视频模式");
+      } else {
+        if (btnI2V) btnI2V.className = "creation-mode-btn p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50/50 text-left transition";
+        if (btnT2V) btnT2V.className = "creation-mode-btn p-3.5 rounded-xl border-2 border-slate-200 text-left hover:border-indigo-400 transition";
+        if (i2vSubBox) i2vSubBox.classList.remove('hidden');
+        if (imgContainer) imgContainer.classList.remove('hidden');
+        triggerToast("已切换为图生视频模式");
+      }
+    }
+
+    function switchI2VSubType(subType) {
+      triggerToast(subType === 'keyframes' ? "已选择首尾帧生成" : "已选择参考图生成");
+    }
+
+    function setAudioOption(btn, hasAudio) {
+      currentAudio = hasAudio;
+      document.querySelectorAll('.audio-btn').forEach(b => {
+        b.className = "audio-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 flex items-center justify-center gap-1 transition";
+      });
+      btn.className = "audio-btn p-2 bg-indigo-50 border-2 border-indigo-500 text-indigo-700 rounded-lg text-center flex items-center justify-center gap-1 transition";
+    }
+
+    function setAspectRatio(btn, ratio) {
+      document.querySelectorAll('.ratio-btn').forEach(b => {
+        b.className = "ratio-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 transition";
+      });
+      btn.className = "ratio-btn p-2 bg-indigo-50 border-2 border-indigo-500 text-indigo-700 rounded-lg text-center transition";
+    }
+
+    function setResolution(btn, res) {
+      currentResolution = res;
+      document.querySelectorAll('.res-btn').forEach(b => {
+        b.className = "res-btn p-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-center hover:bg-slate-50 transition";
+      });
+      btn.className = "res-btn p-2 bg-indigo-50 border-2 border-indigo-500 text-indigo-700 rounded-lg text-center transition";
+      recalcCost();
+    }
+
+    function onDurationSliderChanged(val) {
+      currentDuration = parseInt(val);
+      const el = document.getElementById('duration-display');
+      if (el) el.innerText = `${currentDuration} 秒`;
+      recalcCost();
+    }
+
+    function recalcCost() {
+      const rate = systemPricing[currentResolution] || 0.20;
+      const total = (currentDuration * rate).toFixed(2);
+      const livePrice = document.getElementById('live-price-calc');
+      const btnTxt = document.getElementById('btn-prededuct-txt');
+      if (livePrice) livePrice.innerText = `¥ ${total}`;
+      if (btnTxt) btnTxt.innerText = `¥ ${total}`;
+    }
+
+    function insertAtMention() {
+      const textarea = document.getElementById('creator-prompt-input');
+      if (textarea) {
+        textarea.value += " @角色首帧_特写.png ";
+        textarea.focus();
+      }
+    }
+
+    function randomizeSeed() {
+      const randInt = Math.floor(Math.random() * 999999999) + 1;
+      const seedEl = document.getElementById('input-seed-val');
+      if (seedEl) seedEl.value = randInt;
+      triggerToast(`已生成随机种子: ${randInt}`);
+    }
+
+    function submitCreationTask() {
+      const rate = systemPricing[currentResolution] || 0.20;
+      const cost = currentDuration * rate;
+      if (userBalance < cost) {
+        triggerToast("⚠️ 余额不足，请前往钱包充值");
+        switchClientTab('wallet');
+        return;
+      }
+      userBalance -= cost;
+      totalSpent += cost;
+      updateBalanceDisplay();
+
+      const promptVal = document.getElementById('creator-prompt-input')?.value.trim() || '高动态画面光影渲染';
+      const projKey = document.getElementById('select-target-work')?.value || 'cyberpunk';
+      const folderVal = document.getElementById('select-target-video-folder')?.value || '正片镜头';
+      const seedVal = parseInt(document.getElementById('input-seed-val')?.value) || Math.floor(Math.random() * 999999999);
+
+      const newTaskId = 'tsk_' + Math.floor(10000 + Math.random() * 90000);
+      const newTask = {
+        id: newTaskId,
+        title: promptVal.slice(0, 16) + '...',
+        prompt: promptVal,
+        projectKey: projKey,
+        targetFolder: folderVal,
+        mode: currentCreationMode === 't2v' ? 'Text-to-Video' : 'Image-to-Video',
+        resolution: currentResolution.toUpperCase(),
+        duration: currentDuration,
+        audio: currentAudio,
+        cost: cost,
+        seed: seedVal,
+        status: 'running',
+        progress: 15,
+        createdAt: '刚刚',
+        eta: '约 15 秒',
+        gpuNode: '上海张江 H100-A'
+      };
+
+      tasksList.unshift(newTask);
+      transactionsList.unshift({
+        id: 'TX_' + Math.floor(10000 + Math.random() * 90000),
+        type: '任务预扣',
+        amount: -cost,
+        desc: `Task #${newTaskId} ${promptVal.slice(0, 12)}...`,
+        time: '刚刚'
+      });
+
+      renderWalletTransactions();
+      triggerToast(`🚀 任务下发成功！已预扣 ¥${cost.toFixed(2)}，转入任务队列实时渲染中...`);
+      setTimeout(() => switchClientTab('tasks'), 600);
+    }
+
+    function applyAssetToPrompt(name) {
+      switchClientTab('create');
+      setCreationMode('i2v');
+      const promptEl = document.getElementById('creator-prompt-input');
+      if (promptEl) promptEl.value = `基于 @${name} 进行动态延伸，保持色调与环境光一致。`;
+      triggerToast(`已将文件「${name}」载入创作台`);
+    }
+
+    function applyPlazaTemplate(prompt, ratio, res) {
+      switchClientTab('create');
+      const promptEl = document.getElementById('creator-prompt-input');
+      if (promptEl) promptEl.value = prompt;
+      setResolution(document.getElementById(`btn-res-${res}`), res);
+      triggerToast("✨ 已成功套用广场灵感与配置参数！");
+    }
+
+    function filterTasks(status) {
+      currentTaskFilter = status;
+      const filters = ['all', 'running', 'completed', 'failed'];
+      filters.forEach(f => {
+        const btn = document.getElementById(`tfilter-${f}`);
+        if (btn) {
+          if (f === status) {
+            btn.className = "task-filter-btn px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs";
+          } else {
+            btn.className = "task-filter-btn px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800";
+          }
+        }
+      });
+      renderTasksList();
+    }
+
+    function renderTasksList() {
+      const container = document.getElementById('tasks-cards-container');
+      const searchVal = document.getElementById('task-search-input')?.value.toLowerCase().trim() || '';
+      if (!container) return;
+
+      const allCount = tasksList.length;
+      const runningCount = tasksList.filter(t => t.status === 'running').length;
+      const completedCount = tasksList.filter(t => t.status === 'completed').length;
+      const failedCount = tasksList.filter(t => t.status === 'failed').length;
+
+      document.getElementById('tcount-all').innerText = allCount;
+      document.getElementById('tcount-running').innerText = runningCount;
+      document.getElementById('tcount-completed').innerText = completedCount;
+      document.getElementById('tcount-failed').innerText = failedCount;
+
+      let filtered = tasksList;
+      if (currentTaskFilter !== 'all') {
+        filtered = filtered.filter(t => t.status === currentTaskFilter);
+      }
+      if (searchVal) {
+        filtered = filtered.filter(t => t.id.toLowerCase().includes(searchVal) || t.title.toLowerCase().includes(searchVal) || t.prompt.toLowerCase().includes(searchVal));
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="p-12 text-center bg-white rounded-2xl border border-slate-200/80 shadow-subtle space-y-2">
+            <i data-lucide="inbox" class="w-8 h-8 text-slate-300 mx-auto"></i>
+            <div class="text-sm font-bold text-slate-700">没有符合筛选条件的任务</div>
+            <div class="text-xs text-slate-400">可在创作台发起新的视频渲染任务</div>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(task => {
+        const isRunning = task.status === 'running';
+        const isCompleted = task.status === 'completed';
+        const isFailed = task.status === 'failed';
+        const projName = ossProjects[task.projectKey]?.name || '默认作品';
+
+        html += `
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle hover:border-indigo-300 transition space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">#${task.id}</span>
+                <span class="font-bold text-slate-900 text-sm">${task.title}</span>
+                <span class="text-[10px] font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200/60">${task.mode}</span>
+                <span class="text-[10px] font-mono bg-slate-50 text-slate-600 px-1.5 py-0.5 rounded">${task.resolution} · ${task.duration}s</span>
+              </div>
+
+              <div>
+                ${isRunning ? `
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                    <span>GPU 渲染中 ${task.progress}%</span>
+                  </span>
+                ` : isCompleted ? `
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                    <span>已完成成片</span>
+                  </span>
+                ` : `
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                    <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
+                    <span>异常并已退款</span>
+                  </span>
+                `}
+              </div>
+            </div>
+
+            <div class="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100">
+              <div class="text-slate-600 font-mono text-[11px] leading-relaxed">
+                <strong class="text-slate-700">Prompt:</strong> ${task.prompt}
+              </div>
+              <div class="flex flex-wrap items-center justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-200/60">
+                <span>📁 作品存放: /${projName}/视频/${task.targetFolder}/</span>
+                <span>种子 Seed: ${task.seed} · 预扣消耗: ¥${task.cost.toFixed(2)} · 创建时间: ${task.createdAt}</span>
+              </div>
+            </div>
+
+            ${isRunning ? `
+              <div class="space-y-1">
+                <div class="flex justify-between text-[11px] font-mono text-slate-500">
+                  <span>张江 GPU 集群渲染流水推进中...</span>
+                  <span class="font-bold text-indigo-600">${task.progress}% (${task.eta})</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div class="bg-indigo-600 h-full rounded-full transition-all duration-500" style="width: ${task.progress}%"></div>
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="flex items-center justify-between pt-1 text-xs">
+              <div class="text-[11px] text-slate-400">
+                ${isFailed ? `<span class="text-rose-600">${task.failReason}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="openTicketModalWithTask('${task.id}')" class="px-2.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition font-medium">挂载工单</button>
+                ${isCompleted ? `
+                  <button onclick="viewTaskInPortfolio('${task.projectKey}', '${task.targetFolder}')" class="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-semibold transition">在作品集中查看 &rarr;</button>
+                ` : isRunning ? `
+                  <button onclick="cancelTask('${task.id}')" class="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-semibold transition">终止并退款</button>
+                ` : `
+                  <button onclick="retryTask('${task.id}')" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-semibold transition">重新生成</button>
+                `}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function cancelTask(taskId) {
+      openActionDialog("终止渲染任务确认", `确定要终止任务 #${taskId} 吗？已预扣金额将即时全额退回您的钱包。`, "", () => {
+        const task = tasksList.find(t => t.id === taskId);
+        if (task) {
+          task.status = 'failed';
+          task.failReason = '用户主动终止渲染任务，已全额退款';
+          userBalance += task.cost;
+          transactionsList.unshift({
+            id: 'TX_' + Math.floor(10000 + Math.random() * 90000),
+            type: '任务退款',
+            amount: task.cost,
+            desc: `终止任务 #${taskId} 全额退款`,
+            time: '刚刚'
+          });
+          updateBalanceDisplay();
+          renderTasksList();
+          renderWalletTransactions();
+          triggerToast(`已终止任务 #${taskId}，¥${task.cost.toFixed(2)} 已退回钱包`);
+        }
+      }, false);
+    }
+
+    function retryTask(taskId) {
+      const old = tasksList.find(t => t.id === taskId);
+      if (!old) return;
+      if (userBalance < old.cost) {
+        triggerToast("⚠️ 余额不足，请先充值");
+        switchClientTab('wallet');
+        return;
+      }
+      userBalance -= old.cost;
+      updateBalanceDisplay();
+      old.status = 'running';
+      old.progress = 10;
+      renderTasksList();
+      triggerToast(`已重新提交任务 #${taskId}，预扣 ¥${old.cost.toFixed(2)}`);
+    }
+
+    function viewTaskInPortfolio(projKey, targetFolder) {
+      switchClientTab('portfolios');
+      enterProjectDetail(projKey, ['视频', targetFolder]);
+    }
+
+    function renderOverviewWidgets() {
+      const runningTasks = tasksList.filter(t => t.status === 'running');
+      const activeNumEl = document.getElementById('overview-active-task-num');
+      const navRunningCount = document.getElementById('nav-running-count');
+      if (activeNumEl) activeNumEl.innerText = runningTasks.length;
+      if (navRunningCount) navRunningCount.innerText = `${runningTasks.length} 渲染中`;
+
+      const liveTaskCard = document.getElementById('overview-live-task-card');
+      if (liveTaskCard) {
+        if (runningTasks.length > 0) {
+          const currentT = runningTasks[0];
+          const projName = ossProjects[currentT.projectKey]?.name || '当前作品';
+          liveTaskCard.innerHTML = `
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-indigo-950 text-indigo-300 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+                <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              <div>
+                <div class="font-bold text-slate-800">${currentT.title} · ${currentT.resolution} / ${currentT.duration}s (${currentT.audio ? '含音频' : '静音'})</div>
+                <div class="text-[11px] text-slate-500 font-mono mt-0.5">已预扣 ¥${currentT.cost.toFixed(2)} · 作品: /${projName}/视频/${currentT.targetFolder}/ · (进度 ${currentT.progress}%)</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 self-end sm:self-auto">
+              <div class="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div class="bg-indigo-600 h-full rounded-full transition-all duration-500" style="width: ${currentT.progress}%"></div>
+              </div>
+              <button onclick="openTicketModalWithTask('${currentT.id}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition">挂载工单</button>
+            </div>
+          `;
+        } else {
+          liveTaskCard.innerHTML = `
+            <div class="flex items-center gap-3 text-slate-500">
+              <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500"></i>
+              <span>当前队列空闲，所有视频任务均已渲染完成。</span>
+            </div>
+            <button onclick="switchClientTab('create')" class="text-xs text-indigo-600 hover:underline font-semibold">去创作新视频 &rarr;</button>
+          `;
+        }
+      }
+
+      const recentContainer = document.getElementById('overview-recent-works');
+      if (recentContainer) {
+        recentContainer.innerHTML = `
+          <div class="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-subtle flex gap-3">
+            <div class="w-24 h-16 bg-slate-900 rounded-lg flex items-center justify-center text-white shrink-0 relative overflow-hidden">
+              <i data-lucide="play" class="w-6 h-6 text-white/80"></i>
+              <span class="absolute bottom-1 right-1 text-[9px] font-mono bg-black/70 px-1 rounded text-white">#V003</span>
+            </div>
+            <div class="flex-1 flex flex-col justify-between">
+              <div>
+                <div class="font-bold text-slate-800 text-xs truncate">#V003_雨夜霓虹漫步.mp4</div>
+                <div class="text-[11px] text-slate-400 font-mono mt-0.5">1080P · 15s · ¥4.50</div>
+              </div>
+              <div class="flex justify-between items-center text-[11px]">
+                <span class="text-emerald-600 font-semibold">生成成功</span>
+                <button onclick="triggerToast('正在下载 MP4 成片...')" class="text-indigo-600 hover:underline">下载</button>
+              </div>
+            </div>
+          </div>
+          <div class="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-subtle flex gap-3">
+            <div class="w-24 h-16 bg-slate-800 rounded-lg flex items-center justify-center text-white shrink-0 relative">
+              <i data-lucide="play" class="w-6 h-6 text-white/80"></i>
+              <span class="absolute bottom-1 right-1 text-[9px] font-mono bg-black/70 px-1 rounded text-white">#V002</span>
+            </div>
+            <div class="flex-1 flex flex-col justify-between">
+              <div>
+                <div class="font-bold text-slate-800 text-xs truncate">#V002_机械义眼扫描.mp4</div>
+                <div class="text-[11px] text-slate-400 font-mono mt-0.5">768P · 10s · ¥2.00</div>
+              </div>
+              <div class="flex justify-between items-center text-[11px]">
+                <span class="text-emerald-600 font-semibold">生成成功</span>
+                <button onclick="triggerToast('正在下载 MP4 成片...')" class="text-indigo-600 hover:underline">下载</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      lucide.createIcons();
+    }
+
+    function simulateClientRecharge(amount, payAmount) {
+      userBalance += amount;
+      transactionsList.unshift({
+        id: 'TX_' + Math.floor(10000 + Math.random() * 90000),
+        type: '在线充值',
+        amount: amount,
+        desc: `在线支付充值 (实付 ¥${payAmount || amount} 到账 ¥${amount})`,
+        time: '刚刚'
+      });
+      updateBalanceDisplay();
+      renderWalletTransactions();
+      triggerToast(`🎉 成功充值 ¥${payAmount || amount}！已存入钱包 ¥${amount}`);
+    }
+
+    function renderWalletTransactions() {
+      const tbody = document.getElementById('wallet-tx-tbody');
+      if (!tbody) return;
+      let html = '';
+      transactionsList.forEach(tx => {
+        html += `
+          <tr>
+            <td class="p-2.5 text-slate-400 font-bold">#${tx.id}</td>
+            <td class="p-2.5"><span class="px-1.5 py-0.5 rounded ${tx.amount > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'} font-bold text-[10px]">${tx.type}</span></td>
+            <td class="p-2.5 font-bold ${tx.amount > 0 ? 'text-emerald-600' : 'text-rose-600'}">${tx.amount > 0 ? '+' : ''} ¥ ${Math.abs(tx.amount).toFixed(2)}</td>
+            <td class="p-2.5 font-sans">${tx.desc}</td>
+            <td class="p-2.5 text-slate-400">${tx.time}</td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function updateBalanceDisplay() {
+      const formatted = `¥ ${userBalance.toFixed(2)}`;
+      const hBal = document.getElementById('header-user-balance');
+      const cBal = document.getElementById('creator-current-balance');
+      const oBal = document.getElementById('overview-wallet-balance');
+      const wBal = document.getElementById('wallet-pane-balance');
+      const oSpent = document.getElementById('overview-total-spent');
+
+      if (hBal) hBal.innerText = userBalance.toFixed(2);
+      if (cBal) cBal.innerText = formatted;
+      if (oBal) oBal.innerText = formatted;
+      if (wBal) wBal.innerText = formatted;
+      if (oSpent) oSpent.innerText = `¥ ${totalSpent.toFixed(2)}`;
+    }
+
+    function openTicketModalWithTask(taskId) {
+      const input = document.getElementById('modal-task-id-input');
+      const modal = document.getElementById('ticket-modal');
+      if (input) input.value = taskId || '';
+      if (modal) modal.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeTicketModal() {
+      const modal = document.getElementById('ticket-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function submitClientTicket() {
+      const taskId = document.getElementById('modal-task-id-input')?.value || '无挂载';
+      const type = document.getElementById('modal-issue-type')?.value || '售后支持';
+      const desc = document.getElementById('modal-issue-desc')?.value || '用户未填写描述';
+      const ticketId = 'tkt_' + Math.floor(1000 + Math.random() * 9000);
+
+      const newTkt = {
+        id: ticketId,
+        user: '李维工作室',
+        uid: 'u_98241029',
+        type: type,
+        desc: desc,
+        taskId: taskId,
+        refundAmount: 3.00,
+        status: 'pending',
+        createdAt: '刚刚'
+      };
+
+      ticketsList.unshift(newTkt);
+      renderClientTickets();
+      closeTicketModal();
+      triggerToast("🎫 工单已提交，客服管理中心将即时受理");
+    }
+
+    function renderClientTickets() {
+      const tbody = document.getElementById('client-ticket-tbody');
+      if (!tbody) return;
+      let html = '';
+      ticketsList.forEach(tkt => {
+        html += `
+          <tr>
+            <td class="p-3.5 font-mono text-slate-500 font-bold">#${tkt.id}</td>
+            <td class="p-3.5"><span class="px-2 py-0.5 rounded ${tkt.type === '售后支持' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'} font-bold text-[10px]">${tkt.type}</span></td>
+            <td class="p-3.5 font-bold">${tkt.desc}</td>
+            <td class="p-3.5 font-mono text-indigo-600">${tkt.taskId}</td>
+            <td class="p-3.5">
+              ${tkt.status === 'pending' ? `<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold text-[10px]">处理中</span>` : tkt.status === 'completed' ? `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px]">已退款解决</span>` : `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-bold text-[10px]">已驳回</span>`}
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function openAssetPickerModal() {
+      const modal = document.getElementById('asset-picker-modal');
+      const list = document.getElementById('asset-picker-list');
+      if (!modal || !list) return;
+
+      const currProj = ossProjects[currentProjectKey];
+      let itemsFound = [];
+      if (currProj && currProj.folders && currProj.folders['资产']) {
+        const af = currProj.folders['资产'].folders || {};
+        Object.keys(af).forEach(sub => {
+          (af[sub].items || []).forEach(it => {
+            itemsFound.push({ ...it, subCategory: sub });
+          });
+        });
+      }
+
+      if (itemsFound.length === 0) {
+        list.innerHTML = `<div class="col-span-2 text-center p-6 text-slate-400 text-xs">当前作品资产库暂无图片素材，可在作品集中先上传</div>`;
+      } else {
+        let h = '';
+        itemsFound.forEach(it => {
+          h += `
+            <div onclick="selectAssetFromModal('${it.name}')" class="border border-slate-200 rounded-xl p-3 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-400 cursor-pointer space-y-1 transition">
+              <div class="font-bold text-xs text-slate-800 truncate">${it.name}</div>
+              <div class="text-[10px] text-indigo-600 font-mono">/资产/${it.subCategory}/ (${it.size})</div>
+            </div>
+          `;
+        });
+        list.innerHTML = h;
+      }
+
+      modal.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeAssetPickerModal() {
+      const modal = document.getElementById('asset-picker-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function selectAssetFromModal(name) {
+      closeAssetPickerModal();
+      const slot1 = document.getElementById('slot-1-label');
+      if (slot1) slot1.innerText = `首帧: ${name}`;
+      triggerToast(`已选中素材: ${name}`);
+    }
+
+    let dialogCallback = null;
+    function openActionDialog(title, description, defaultValue, onConfirm, isInput = true) {
+      const modal = document.getElementById('action-dialog-modal');
+      const titleEl = document.getElementById('dialog-title');
+      const descEl = document.getElementById('dialog-description');
+      const inputWrap = document.getElementById('dialog-input-wrap');
+      const inputEl = document.getElementById('dialog-input');
+      const confirmBtn = document.getElementById('dialog-confirm-btn');
+
+      titleEl.innerText = title;
+      descEl.innerText = description;
+      
+      if (isInput) {
+        inputWrap.classList.remove('hidden');
+        inputEl.value = defaultValue || '';
+      } else {
+        inputWrap.classList.add('hidden');
+      }
+
+      dialogCallback = onConfirm;
+      confirmBtn.onclick = function () {
+        const val = inputEl.value;
+        closeActionDialog();
+        if (dialogCallback) dialogCallback(val);
+      };
+
+      modal.classList.remove('hidden');
+      if (isInput) {
+        setTimeout(() => inputEl.focus(), 100);
+      }
+      lucide.createIcons();
+    }
+
+    function closeActionDialog() {
+      const modal = document.getElementById('action-dialog-modal');
+      modal.classList.add('hidden');
+      dialogCallback = null;
+    }
+
+    function openNewProjectModal() {
+      openActionDialog("新建作品集", "请输入新企划作品名称（系统将自动构建标准资产库与视频目录结构）：", "科幻纪实短片企划", (val) => {
+        if (!val || !val.trim()) return;
+        const clean = val.trim();
+        const key = 'proj_' + Date.now();
+        ossProjects[key] = createStandardProjectBlueprint(clean);
+        syncTargetWorkSelect();
+        renderProjectsGrid();
+        triggerToast(`🎉 作品集「${clean}」创建成功！`);
+      });
+    }
+
+    function openNewFolderModal() {
+      const currNode = getCurrentFolderNode();
+      if (!currNode) return;
+      openActionDialog("新建子目录", "请输入当前路径下的新建文件夹名称：", "第一集", (val) => {
+        if (!val || !val.trim()) return;
+        const clean = val.trim();
+        if (currNode.folders && currNode.folders[clean]) {
+          triggerToast("⚠️ 已存在同名文件夹，请更换名称");
+          return;
+        }
+        if (!currNode.folders) currNode.folders = {};
+        currNode.folders[clean] = {
+          isSystem: false,
+          desc: '自定义分集目录',
+          folders: {},
+          items: []
+        };
+        renderOSSExplorer();
+        syncTargetFolderOptions(currentProjectKey);
+        triggerToast(`📁 文件夹「${clean}」创建成功！`);
+      });
+    }
+
+    function openUploadModal() {
+      const currNode = getCurrentFolderNode();
+      if (!currNode) return;
+      openActionDialog("上传素材至当前目录", "请输入上传文件名（例如 角色特写_02.png 或 镜头B.mp4）：", "场景概念图_02.png", (val) => {
+        if (!val || !val.trim()) return;
+        const clean = val.trim();
+        const isVid = clean.toLowerCase().endsWith('.mp4');
+        if (!currNode.items) currNode.items = [];
+        currNode.items.push({
+          name: clean,
+          type: isVid ? 'video' : 'image',
+          size: '3.6 MB',
+          time: '刚刚'
+        });
+        renderOSSExplorer();
+        triggerToast(`✅ 素材「${clean}」已上传至当前目录！`);
+      });
+    }
+
+    function confirmDeleteCustomFolder(folderName) {
+      const currNode = getCurrentFolderNode();
+      if (!currNode || !currNode.folders || !currNode.folders[folderName]) return;
+      if (currNode.folders[folderName].isSystem) {
+        triggerToast("⛔ 系统固定模板目录受保护，无法删除！");
+        return;
+      }
+      openActionDialog("删除文件夹确认", `确定要彻底删除自定义目录「${folderName}」及其内部所有资产吗？`, "", () => {
+        delete currNode.folders[folderName];
+        renderOSSExplorer();
+        syncTargetFolderOptions(currentProjectKey);
+        triggerToast(`🗑️ 已删除目录「${folderName}」`);
+      }, false);
+    }
+
+    function confirmDeleteFile(idx, fileName) {
+      const currNode = getCurrentFolderNode();
+      if (!currNode || !currNode.items) return;
+      openActionDialog("删除文件确认", `确定要删除文件「${fileName}」吗？`, "", () => {
+        currNode.items.splice(idx, 1);
+        renderOSSExplorer();
+        triggerToast(`🗑️ 已删除文件「${fileName}」`);
+      }, false);
+    }
+
+    function triggerToast(msg) {
+      const toast = document.getElementById('toast');
+      const txt = document.getElementById('toast-text');
+      if (!toast || !txt) return;
+      txt.innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 2500);
+    }
+  </script>
+</body>
+</html>

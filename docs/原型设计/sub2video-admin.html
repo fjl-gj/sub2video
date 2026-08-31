@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sub2Video · 运营管理后台 (Admin Console)</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          boxShadow: {
+            'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02)',
+            'card': '0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.02)',
+            'floating': '0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+    .badge-pulse { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.15); }
+    }
+
+    .nav-item-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 2.25rem; /* 36px */
+      padding: 0 0.625rem;
+      border-radius: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #475569;
+      transition: all 0.15s ease-in-out;
+      border: 1px solid transparent;
+    }
+    .nav-item-btn:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+    }
+    .nav-item-btn.active {
+      background-color: #ecfdf5;
+      color: #047857;
+      font-weight: 600;
+      border-color: #d1fae5;
+    }
+    .nav-icon-slot {
+      width: 1.25rem;
+      height: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .nav-item-btn.active .nav-icon-slot {
+      color: #059669;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50/70 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-emerald-100 selection:text-emerald-900">
+
+  <!-- ==================== TOP NAVIGATION ==================== -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 lg:px-6 h-14 flex items-center justify-between shadow-xs shrink-0">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white font-black text-sm shadow-sm shadow-emerald-600/30">
+          S2V
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5 leading-none">
+            <span class="font-bold text-slate-900 text-sm tracking-tight">Sub2Video</span>
+            <span class="text-[10px] font-semibold font-mono bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200/60 flex items-center gap-1">
+              Admin Ops · v1.5
+            </span>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-0.5">运营管理后台与 AI 算力调度中枢</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Controls: Cluster Telemetry & Superadmin Profile -->
+    <div class="flex items-center gap-3">
+      <div class="hidden md:flex items-center gap-2 px-2.5 py-1 bg-emerald-50/80 rounded-full border border-emerald-200/50 text-[11px] text-emerald-800 font-medium">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 badge-pulse"></span>
+        <span class="font-mono">智算中心: <strong id="header-gpu-nodes">24/32</strong> 卡</span>
+        <span class="text-emerald-300">|</span>
+        <span class="font-mono text-emerald-700">平均负载 75%</span>
+      </div>
+
+      <div class="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+        <div class="w-7 h-7 rounded-full bg-emerald-900 text-white flex items-center justify-center text-xs font-bold font-mono">
+          管
+        </div>
+        <div class="hidden sm:block text-left text-xs">
+          <div class="font-semibold text-slate-800 leading-none">超级管理员</div>
+          <div class="text-[10px] text-emerald-600 mt-0.5 font-mono">Ops & Billing Center</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- ADMIN OPS SIDEBAR (标准精炼命名) -->
+    <aside id="admin-sidebar" class="w-60 bg-white border-r border-slate-200/80 flex flex-col justify-between shrink-0 select-none">
+      <div class="p-3 space-y-5 overflow-y-auto max-h-[calc(100vh-3.5rem)]">
+
+        <!-- 概览与看板 -->
+        <div>
+          <button onclick="switchAdminTab('overview')" id="anav-overview" class="nav-item-btn active">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot"><i data-lucide="gauge" class="w-4 h-4"></i></span>
+              <span class="truncate">运行大盘</span>
+            </div>
+            <span class="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-mono font-bold leading-none">BI</span>
+          </button>
+        </div>
+
+        <!-- 分组 1: 算力与模型 -->
+        <div class="space-y-1">
+          <div class="px-2.5 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">算力与模型</div>
+          
+          <button onclick="switchAdminTab('workflow')" id="anav-workflow" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="git-branch" class="w-4 h-4"></i></span>
+              <span class="truncate">模型配置</span>
+            </div>
+            <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono leading-none">Pipeline</span>
+          </button>
+
+          <button onclick="switchAdminTab('provider')" id="anav-provider" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="server" class="w-4 h-4"></i></span>
+              <span class="truncate">集群监控</span>
+            </div>
+            <span class="text-[10px] text-emerald-600 font-mono font-semibold">4 集群</span>
+          </button>
+
+          <button onclick="switchAdminTab('tasks-monitor')" id="anav-tasks-monitor" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="activity" class="w-4 h-4"></i></span>
+              <span class="truncate">任务调度</span>
+            </div>
+            <span id="admin-task-count-badge" class="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded font-mono border border-amber-200/60 leading-none">1 运行中</span>
+          </button>
+        </div>
+
+        <!-- 分组 2: 商业与财务 -->
+        <div class="space-y-1">
+          <div class="px-2.5 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">商业与财务</div>
+          
+          <button onclick="switchAdminTab('pricing')" id="anav-pricing" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="sliders-horizontal" class="w-4 h-4"></i></span>
+              <span class="truncate">定价策略</span>
+            </div>
+            <span class="text-[10px] text-indigo-600 font-mono font-bold bg-indigo-50 px-1.5 py-0.5 rounded leading-none">秒级</span>
+          </button>
+
+          <button onclick="switchAdminTab('orders')" id="anav-orders" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="badge-dollar-sign" class="w-4 h-4"></i></span>
+              <span class="truncate">交易流水</span>
+            </div>
+            <span class="text-[10px] text-slate-400 font-mono">账本</span>
+          </button>
+        </div>
+
+        <!-- 分组 3: 用户与运维 -->
+        <div class="space-y-1">
+          <div class="px-2.5 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">用户与运维</div>
+          
+          <button onclick="switchAdminTab('users')" id="anav-users" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="building-2" class="w-4 h-4"></i></span>
+              <span class="truncate">用户管理</span>
+            </div>
+            <span class="text-[10px] text-slate-400 font-mono">租户</span>
+          </button>
+
+          <button onclick="switchAdminTab('ticket-center')" id="anav-ticket-center" class="nav-item-btn">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="nav-icon-slot text-slate-400"><i data-lucide="clipboard-check" class="w-4 h-4"></i></span>
+              <span class="truncate">工单中心</span>
+            </div>
+            <span id="admin-pending-ticket-badge" class="text-[10px] bg-rose-50 text-rose-600 font-bold px-1.5 py-0.5 rounded font-mono border border-rose-200/50 leading-none">1 待办</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Admin Footer -->
+      <div class="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-[11px] text-slate-400">
+        <span class="flex items-center gap-1.5">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600"></i> Admin Console
+        </span>
+        <span class="font-mono text-slate-500">v1.5</span>
+      </div>
+    </aside>
+
+    <!-- CONTENT CONTAINER -->
+    <main class="flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8 space-y-6">
+      
+      <!-- A1: 运行大盘 (Overview & BI) -->
+      <section id="apane-overview" class="apane space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
+                Dashboard · BI
+              </span>
+              <span class="text-xs text-slate-400">全站吞吐、算力消耗与财务收益实时中枢</span>
+            </div>
+            <h1 class="text-xl font-bold text-slate-900 mt-1">运行大盘</h1>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="triggerToast('大盘数据已刷新至最新时间点')" class="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>实时刷新</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Key BI Metrics -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle">
+            <div class="text-xs text-slate-500 font-medium">全网今日产出视频</div>
+            <div class="mt-2 text-2xl font-bold text-slate-900 font-mono">1,842 <span class="text-xs font-normal text-slate-400">支</span></div>
+            <div class="text-[10px] text-slate-400 mt-1">较昨日增长 +18.4%</div>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle">
+            <div class="text-xs text-slate-500 font-medium">今日充值实收流水 (GMV)</div>
+            <div class="mt-2 text-2xl font-bold text-emerald-600 font-mono" id="admin-bi-recharge">¥ 18,920.00</div>
+            <div class="text-[10px] text-slate-400 mt-1">含活动赠送补贴成本 ¥1,420.00</div>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle">
+            <div class="text-xs text-slate-500 font-medium">推理预扣净结算额 (Revenue)</div>
+            <div class="mt-2 text-2xl font-bold text-indigo-600 font-mono" id="admin-bi-spend">¥ 5,120.00</div>
+            <div class="text-[10px] text-slate-400 mt-1">全网异常退款率 0.42% (原路退还)</div>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle">
+            <div class="text-xs text-slate-500 font-medium">GPU 算力集群总并发负载</div>
+            <div class="mt-2 text-2xl font-bold text-slate-900 font-mono"><span id="admin-bi-gpu-util">24</span> / 32 <span class="text-xs font-normal text-slate-400">卡</span></div>
+            <div class="text-[10px] text-emerald-600 mt-1">综合集群利用率 75.0% · 极佳</div>
+          </div>
+        </div>
+
+        <!-- Real-time Cluster State -->
+        <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">智算中心节点实时链路</h3>
+            <button onclick="switchAdminTab('provider')" class="text-xs text-indigo-600 font-semibold hover:underline">集群拓扑详情 &rarr;</button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-700">上海张江 H100 集群</span>
+                <span class="text-emerald-600 font-mono font-bold text-[10px]">● 正常</span>
+              </div>
+              <div class="font-mono text-slate-800">16 卡在线 · 负载 68% · 延迟 12ms</div>
+            </div>
+
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-700">北京亦庄 A100 集群</span>
+                <span class="text-emerald-600 font-mono font-bold text-[10px]">● 正常</span>
+              </div>
+              <div class="font-mono text-slate-800">12 卡在线 · 负载 45% · 延迟 18ms</div>
+            </div>
+
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-700">音频与多模态合成网关</span>
+                <span class="text-emerald-600 font-mono font-bold text-[10px]">● 正常</span>
+              </div>
+              <div class="font-mono text-slate-800">4 节点 · 延迟 24ms · 吞吐 420 音轨/分</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- A2: 模型配置 (Workflow Orchestration) -->
+      <section id="apane-workflow" class="apane hidden space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200">
+                Models & Inference
+              </span>
+            </div>
+            <h1 class="text-xl font-bold text-slate-900 mt-1">模型配置</h1>
+            <p class="text-xs text-slate-500 mt-0.5">管控 T2V（纯文生）、I2V（首尾帧/参考图插值）多模态管道路由、权重分流与超载降级策略</p>
+          </div>
+          <button onclick="triggerToast('模型路由与工作流配置已热更新')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-subtle">保存配置</button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <!-- T2V Workflow Card -->
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <i data-lucide="file-text" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900">纯文生视频管道 (T2V Pipeline)</div>
+                  <div class="text-[10px] text-slate-400 font-mono">Route: /v1/models/t2v-xl</div>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only peer">
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+
+            <div class="space-y-2.5">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">主调度模型</label>
+                <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-slate-800">
+                  <option>S2V-OmniVideo-XL (v1.4 旗舰)</option>
+                  <option>Open-Sora-v2-Turbofast</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">单任务最大时长限制 (秒)</label>
+                <input type="number" value="15" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-slate-800">
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <span class="text-slate-500">超载熔断与降级机制</span>
+                <span class="text-emerald-600 font-semibold">自动降采样排队 &rarr; 备用集群</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- I2V Workflow Card -->
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <i data-lucide="image" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900">图生视频 / 首尾帧插值管道 (I2V)</div>
+                  <div class="text-[10px] text-slate-400 font-mono">Route: /v1/models/frame-morph</div>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only peer">
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+
+            <div class="space-y-2.5">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">插值与动态特征融合模型</label>
+                <select class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-slate-800">
+                  <option>S2V-FrameMorpher-Ultra (首尾帧与参考图支持)</option>
+                  <option>AnimateDiff-Lightning-v3</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">单次参考图上限数量</label>
+                <input type="number" value="8" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-slate-800">
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <span class="text-slate-500">作品资产库直连支持</span>
+                <span class="text-emerald-600 font-semibold font-mono">/资产/ 目录特征预提取 · 启用</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- A3: 集群监控 (GPU Compute Topology) -->
+      <section id="apane-provider" class="apane hidden space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
+                GPU Clusters
+              </span>
+            </div>
+            <h1 class="text-xl font-bold text-slate-900 mt-1">集群监控</h1>
+            <p class="text-xs text-slate-500 mt-0.5">监控全网智算节点显存占用、核心温度、实时执行队列及异常节点隔离</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="simulateAddGpuNode()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-subtle flex items-center gap-1.5 transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>弹性扩容 +4 卡</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs" id="admin-gpu-nodes-container">
+          <!-- Injected via JS -->
+        </div>
+      </section>
+
+      <!-- A4: 任务调度 (Global Task Dispatcher) -->
+      <section id="apane-tasks-monitor" class="apane hidden space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded border border-amber-200">
+                Task Dispatcher
+              </span>
+            </div>
+            <h1 class="text-xl font-bold text-slate-900 mt-1">任务调度</h1>
+            <p class="text-xs text-slate-500 mt-0.5">穿透监控全站租户提交的渲染流水，支持任务故障重跑、阻塞任务终止与预扣原路退款</p>
+          </div>
+          <button onclick="renderAdminTasksMonitor()" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50">刷新流水</button>
+        </div>
+
+        <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-subtle text-xs">
+          <table class="w-full text-left">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
+              <tr>
+                <th class="p-3.5 pl-4">任务 ID</th>
+                <th class="p-3.5">租户 / 工作室</th>
+                <th class="p-3.5">生成类型 / 规格</th>
+                <th class="p-3.5">归属作品目录</th>
+                <th class="p-3.5">调度状态 / 进度</th>
+                <th class="p-3.5">预扣金额</th>
+                <th class="p-3.5 text-right pr-4">控制台操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-slate-700 font-mono text-[11px]" id="admin-tasks-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- A5: 定价策略 (Pricing & Rate Matrix) -->
+      <section id="apane-pricing" class="apane hidden space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200">
+                Pricing Matrix
+              </span>
+            </div>
+            <h1 class="text-xl font-bold text-slate-900 mt-1">定价策略</h1>
+            <p class="text-xs text-slate-500 mt-0.5">配置全站各画质规格的秒级基础费率模型，策略保存后全网创作端实时热生效</p>
+          </div>
+          <button onclick="saveAdminPricingConfig()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-subtle flex items-center gap-1.5 transition">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            <span>全网同步策略</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-800 text-sm">480P 标清生成 (草稿档)</span>
+              <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">Draft Mode</span>
+            </div>
+            <p class="text-slate-400 text-[11px]">低算力消耗档位，适用于粗剪测试与构图验证</p>
+            <div class="pt-2">
+              <label class="block text-slate-700 font-bold mb-1">基准单价 (RMB / 秒)</label>
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-mono">¥</span>
+                <input id="admin-rate-480" type="number" step="0.01" value="0.15" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono font-bold text-slate-900">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white border-2 border-emerald-500 rounded-2xl p-5 shadow-subtle space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-900 text-sm">768P 高清生成 (基准档)</span>
+              <span class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded font-mono">Default Baseline</span>
+            </div>
+            <p class="text-slate-500 text-[11px]">全平台默认推荐档位，兼顾细节质感与极速推理</p>
+            <div class="pt-2">
+              <label class="block text-slate-700 font-bold mb-1">基准单价 (RMB / 秒)</label>
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-mono">¥</span>
+                <input id="admin-rate-768" type="number" step="0.01" value="0.20" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono font-bold text-emerald-700">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-800 text-sm">1080P 影院级超清 (商用档)</span>
+              <span class="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded font-mono">Cinema Commercial</span>
+            </div>
+            <p class="text-slate-400 text-[11px]">高动态光影渲染与高频细节插值，商业成片输出</p>
+            <div class="pt-2">
+              <label class="block text-slate-700 font-bold mb-1">基准单价 (RMB / 秒)</label>
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-mono">¥</span>
+                <input id="admin-rate-1080" type="number" step="0.01" value="0.30" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono font-bold text-indigo-700">
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- A6: 交易流水 (Transactions & Financial Audit) -->
+      <section id="apane-orders" class="apane hidden space-y-5">
+        <div class="border-b border-slate-200/80 pb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+              Ledger & Audit
+            </span>
+          </div>
+          <h1 class="text-xl font-bold text-slate-900 mt-1">交易流水</h1>
+          <p class="text-xs text-slate-500 mt-0.5">记录全平台充值到账、推理生成预扣扣款、工单退款凭证与出入金明细账本</p>
+        </div>
+
+        <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-subtle text-xs">
+          <table class="w-full text-left">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold text-[10px]">
+              <tr>
+                <th class="p-3.5 pl-4">流水凭证号</th>
+                <th class="p-3.5">租户 / UID</th>
+                <th class="p-3.5">科目类型</th>
+                <th class="p-3.5">变动金额</th>
+                <th class="p-3.5">结算渠道 / 交易说明</th>
+                <th class="p-3.5 text-right pr-4">记账时间</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-mono text-[11px]" id="admin-orders-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- A7: 用户管理 (Tenants & Quota Policy) -->
+      <section id="apane-users" class="apane hidden space-y-5">
+        <div class="border-b border-slate-200/80 pb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+              Users & Tenants
+            </span>
+          </div>
+          <h1 class="text-xl font-bold text-slate-900 mt-1">用户管理</h1>
+          <p class="text-xs text-slate-500 mt-0.5">管理全站签约工作室、OSS 存储配额分配（默认 50GB）、API 凭证鉴权与定向补贴发放</p>
+        </div>
+
+        <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-subtle text-xs">
+          <table class="w-full text-left">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
+              <tr>
+                <th class="p-3.5 pl-4">租户组织 / 工作室</th>
+                <th class="p-3.5">主绑定邮箱</th>
+                <th class="p-3.5">租户等级</th>
+                <th class="p-3.5">账户可用余额</th>
+                <th class="p-3.5">存储空间配额使用率</th>
+                <th class="p-3.5 text-right pr-4">治理操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr>
+                <td class="p-3.5 pl-4 font-bold text-slate-900">李维工作室 (UID: u_98241029)</td>
+                <td class="p-3.5 font-mono text-slate-600">creator@sub2video.com</td>
+                <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-mono font-bold text-[10px]">Pro Studio</span></td>
+                <td class="p-3.5 font-mono font-bold text-emerald-600" id="admin-user-row-bal">¥ 256.00</td>
+                <td class="p-3.5 font-mono text-slate-600">14.8 / 50 GB (29.6%)</td>
+                <td class="p-3.5 text-right pr-4 space-x-2">
+                  <button onclick="adminGiftBalance(50)" class="text-indigo-600 font-semibold hover:underline">+ 发放¥50算力补贴</button>
+                  <button onclick="triggerToast('已重置该工作室 API 鉴权凭证')" class="text-slate-500 hover:underline">重置凭证</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- A8: 工单中心 (Ticket Resolution Center) -->
+      <section id="apane-ticket-center" class="apane hidden space-y-5">
+        <div class="border-b border-slate-200/80 pb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">
+              Ticket Center
+            </span>
+          </div>
+          <h1 class="text-xl font-bold text-slate-900 mt-1">工单中心</h1>
+          <p class="text-xs text-slate-500 mt-0.5">审核创作者提交的推理异常申诉与工单，支持核验挂载 Task ID 并一键执行全额原路退还至租户钱包</p>
+        </div>
+
+        <div class="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-subtle text-xs">
+          <table class="w-full text-left">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
+              <tr>
+                <th class="p-3.5 pl-4">工单 ID</th>
+                <th class="p-3.5">申诉租户</th>
+                <th class="p-3.5">工单分类</th>
+                <th class="p-3.5">挂载任务 / 故障描述</th>
+                <th class="p-3.5">流转状态</th>
+                <th class="p-3.5 text-right pr-4">审批操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100" id="admin-tickets-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Dialog Modal -->
+  <div id="action-dialog-modal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-floating space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-sm font-bold text-slate-900" id="dialog-title">操作确认</h3>
+        <button onclick="closeActionDialog()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-600 leading-relaxed" id="dialog-description">确定执行该操作？</p>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button onclick="closeActionDialog()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-semibold transition">取消</button>
+        <button id="dialog-confirm-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-subtle transition">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-medium shadow-floating flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toast-text">操作已成功</span>
+  </div>
+
+  <!-- JAVASCRIPT BUSINESS LOGIC -->
+  <script>
+    let mockUserBalance = 256.00;
+
+    let systemPricing = {
+      '480p': 0.15,
+      '768p': 0.20,
+      '1080p': 0.30
+    };
+
+    let gpuClusters = [
+      { id: 'node-sh-01', name: '上海张江 H100 节点组 A', cards: 8, load: 72, temp: '62°C', status: 'online', activeTask: 'tsk_88921' },
+      { id: 'node-sh-02', name: '上海张江 H100 节点组 B', cards: 8, load: 64, temp: '58°C', status: 'online', activeTask: 'tsk_88910' },
+      { id: 'node-bj-01', name: '北京亦庄 A100 节点组 A', cards: 8, load: 45, temp: '54°C', status: 'online', activeTask: 'tsk_88842' },
+      { id: 'node-bj-02', name: '北京亦庄 A100 节点组 B', cards: 8, load: 30, temp: '50°C', status: 'standby', activeTask: '空闲' }
+    ];
+
+    let adminTasksList = [
+      {
+        id: 'tsk_88921',
+        user: '李维工作室',
+        title: '雨夜街道霓虹漫步',
+        project: '赛博朋克微电影项目',
+        targetFolder: '第一集',
+        mode: 'Image-to-Video',
+        resolution: '1080P',
+        duration: 15,
+        cost: 4.50,
+        status: 'running',
+        progress: 68,
+        gpuNode: '上海张江 H100-A'
+      },
+      {
+        id: 'tsk_88842',
+        user: '李维工作室',
+        title: '机械义眼全息扫描',
+        project: '赛博朋克微电影项目',
+        targetFolder: '第一集',
+        mode: 'Text-to-Video',
+        resolution: '768P',
+        duration: 10,
+        cost: 2.00,
+        status: 'completed',
+        progress: 100,
+        gpuNode: '北京亦庄 A100-A'
+      },
+      {
+        id: 'tsk_88840',
+        user: '李维工作室',
+        title: '大理石展台水雾微距',
+        project: '高端香水商业短片',
+        targetFolder: '正片镜头',
+        mode: 'Image-to-Video',
+        resolution: '1080P',
+        duration: 10,
+        cost: 3.00,
+        status: 'failed',
+        progress: 100,
+        gpuNode: '北京亦庄 A100-B'
+      }
+    ];
+
+    let adminTicketsList = [
+      {
+        id: 'tkt_9921',
+        user: '李维工作室',
+        uid: 'u_98241029',
+        type: '售后支持',
+        desc: '任务 #tsk_88840 生成黑屏申请全额退款',
+        taskId: 'tsk_88840',
+        refundAmount: 3.00,
+        status: 'completed',
+        createdAt: '2026-08-27 10:20'
+      },
+      {
+        id: 'tkt_9925',
+        user: '李维工作室',
+        uid: 'u_98241029',
+        type: '运维故障',
+        desc: '任务 #tsk_88921 进度停滞超 3 分钟，请排查张江集群状态',
+        taskId: 'tsk_88921',
+        refundAmount: 4.50,
+        status: 'pending',
+        createdAt: '2026-08-30 14:25'
+      }
+    ];
+
+    let adminTransactionsList = [
+      { id: 'TX_90182', type: '任务预扣', amount: -4.50, desc: 'Task #tsk_88921 雨夜街道霓虹漫步', time: '2026-08-30 14:20' },
+      { id: 'TX_90150', type: '在线充值', amount: 110.00, desc: '微信充值 (活动实付 ¥100 赠送 ¥10)', time: '2026-08-29 09:12' },
+      { id: 'TX_90120', type: '工单退款', amount: 3.00, desc: '工单 #tkt_9921 任务失败原路退款', time: '2026-08-27 10:30' }
+    ];
+
+    window.onload = function () {
+      lucide.createIcons();
+      renderAdminGpuTopology();
+      renderAdminTasksMonitor();
+      renderAdminOrdersTable();
+      renderAdminTicketsTable();
+    };
+
+    function switchAdminTab(tabKey) {
+      const tabs = ['overview', 'workflow', 'provider', 'tasks-monitor', 'pricing', 'orders', 'ticket-center', 'users'];
+      tabs.forEach(key => {
+        const pane = document.getElementById(`apane-${key}`);
+        const btn = document.getElementById(`anav-${key}`);
+        if (pane) pane.classList.add('hidden');
+        if (btn) {
+          btn.classList.remove('active');
+          const iconSlot = btn.querySelector('.nav-icon-slot');
+          if (iconSlot) iconSlot.classList.add('text-slate-400');
+        }
+      });
+      const activePane = document.getElementById(`apane-${tabKey}`);
+      const activeBtn = document.getElementById(`anav-${tabKey}`);
+      if (activePane) activePane.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.classList.add('active');
+        const iconSlot = activeBtn.querySelector('.nav-icon-slot');
+        if (iconSlot) iconSlot.classList.remove('text-slate-400');
+      }
+
+      if (tabKey === 'tasks-monitor') {
+        renderAdminTasksMonitor();
+      } else if (tabKey === 'ticket-center') {
+        renderAdminTicketsTable();
+      } else if (tabKey === 'provider') {
+        renderAdminGpuTopology();
+      }
+      lucide.createIcons();
+    }
+
+    function saveAdminPricingConfig() {
+      const p480 = parseFloat(document.getElementById('admin-rate-480')?.value) || 0.15;
+      const p768 = parseFloat(document.getElementById('admin-rate-768')?.value) || 0.20;
+      const p1080 = parseFloat(document.getElementById('admin-rate-1080')?.value) || 0.30;
+
+      systemPricing['480p'] = p480;
+      systemPricing['768p'] = p768;
+      systemPricing['1080p'] = p1080;
+
+      triggerToast(`✅ 单价策略已同步：768P ¥${p768.toFixed(2)}/s，全网实时生效`);
+    }
+
+    function renderAdminGpuTopology() {
+      const container = document.getElementById('admin-gpu-nodes-container');
+      if (!container) return;
+      let html = '';
+      gpuClusters.forEach((node, idx) => {
+        const isOnline = node.status === 'online';
+        html += `
+          <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-800">${node.name}</span>
+              <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${isOnline ? '● 在线' : '○ 待机'}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
+              <div class="p-2 bg-slate-50 rounded-lg">
+                <span class="text-slate-400 block text-[9px]">显存/负载</span>
+                <strong class="text-slate-800">${node.load}%</strong>
+              </div>
+              <div class="p-2 bg-slate-50 rounded-lg">
+                <span class="text-slate-400 block text-[9px]">核心温度</span>
+                <strong class="text-slate-800">${node.temp}</strong>
+              </div>
+            </div>
+            <div class="text-[11px] text-slate-500 font-mono flex items-center justify-between">
+              <span>当前任务: <strong>${node.activeTask}</strong></span>
+              <button onclick="toggleGpuNodeState(${idx})" class="text-indigo-600 font-semibold hover:underline">${isOnline ? '调优/维护' : '唤醒上线'}</button>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function toggleGpuNodeState(idx) {
+      gpuClusters[idx].status = gpuClusters[idx].status === 'online' ? 'standby' : 'online';
+      renderAdminGpuTopology();
+      triggerToast(`节点 ${gpuClusters[idx].name} 状态已更新为: ${gpuClusters[idx].status}`);
+    }
+
+    function simulateAddGpuNode() {
+      const newId = 'node-extra-' + (gpuClusters.length + 1);
+      gpuClusters.push({
+        id: newId,
+        name: `弹性算力节点组 #${gpuClusters.length + 1}`,
+        cards: 4,
+        load: 20,
+        temp: '48°C',
+        status: 'online',
+        activeTask: '就绪排队中'
+      });
+      renderAdminGpuTopology();
+      document.getElementById('header-gpu-nodes').innerText = `${gpuClusters.reduce((acc, c) => acc + (c.status === 'online' ? c.cards : 0), 0)}/40`;
+      triggerToast('🚀 弹性算力集群动态扩容 +4 卡成功！');
+    }
+
+    function renderAdminTasksMonitor() {
+      const tbody = document.getElementById('admin-tasks-tbody');
+      const badge = document.getElementById('admin-task-count-badge');
+      if (!tbody) return;
+
+      const runningCount = adminTasksList.filter(t => t.status === 'running').length;
+      if (badge) badge.innerText = `${runningCount} 运行中`;
+
+      let html = '';
+      adminTasksList.forEach(t => {
+        const isRunning = t.status === 'running';
+        const isCompleted = t.status === 'completed';
+
+        html += `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="p-3.5 pl-4 font-bold text-slate-900">${t.id}</td>
+            <td class="p-3.5 font-sans font-medium text-slate-800">${t.user}</td>
+            <td class="p-3.5"><span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold">${t.mode} · ${t.resolution}/${t.duration}s</span></td>
+            <td class="p-3.5 font-sans text-slate-500">/${t.project}/视频/${t.targetFolder}/</td>
+            <td class="p-3.5">
+              ${isRunning ? `<span class="text-amber-600 font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>${t.progress}% (${t.gpuNode || 'H100-A'})</span>` : isCompleted ? `<span class="text-emerald-600 font-bold">已完成</span>` : `<span class="text-rose-600 font-bold">异常退款</span>`}
+            </td>
+            <td class="p-3.5 font-bold text-rose-600">¥ ${t.cost.toFixed(2)}</td>
+            <td class="p-3.5 text-right pr-4 space-x-2">
+              ${isRunning ? `
+                <button onclick="adminForceRefundTask('${t.id}')" class="text-rose-600 font-bold hover:underline">终止并退款</button>
+              ` : `
+                <button onclick="adminForceRetryTask('${t.id}')" class="text-indigo-600 font-semibold hover:underline">调优重跑</button>
+              `}
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function adminForceRefundTask(taskId) {
+      openActionDialog("管理端强制退款确认", `确定要由管理员介入终止任务 #${taskId} 并全额原路退还预扣款吗？`, () => {
+        const t = adminTasksList.find(x => x.id === taskId);
+        if (t) {
+          t.status = 'failed';
+          mockUserBalance += t.cost;
+          adminTransactionsList.unshift({
+            id: 'TX_' + Math.floor(10000 + Math.random() * 90000),
+            type: '工单退款',
+            amount: t.cost,
+            desc: `运维介入全额退款 Task #${taskId}`,
+            time: '刚刚'
+          });
+          document.getElementById('admin-user-row-bal').innerText = `¥ ${mockUserBalance.toFixed(2)}`;
+          renderAdminTasksMonitor();
+          renderAdminOrdersTable();
+          triggerToast(`✅ 已强制退款任务 #${taskId}，¥${t.cost.toFixed(2)} 已存入用户钱包`);
+        }
+      });
+    }
+
+    function adminForceRetryTask(taskId) {
+      const t = adminTasksList.find(x => x.id === taskId);
+      if (t) {
+        t.status = 'running';
+        t.progress = 15;
+        renderAdminTasksMonitor();
+        triggerToast(`🚀 已在张江 H100 节点重新调度任务 #${taskId}`);
+      }
+    }
+
+    function renderAdminTicketsTable() {
+      const tbody = document.getElementById('admin-tickets-tbody');
+      const badge = document.getElementById('admin-pending-ticket-badge');
+      if (!tbody) return;
+
+      const pending = adminTicketsList.filter(x => x.status === 'pending');
+      if (badge) badge.innerText = `${pending.length} 待办`;
+
+      let html = '';
+      adminTicketsList.forEach((tkt, idx) => {
+        const isPending = tkt.status === 'pending';
+        html += `
+          <tr class="hover:bg-slate-50 transition text-xs">
+            <td class="p-3.5 pl-4 font-mono font-bold text-slate-800">#${tkt.id}</td>
+            <td class="p-3.5 font-bold">${tkt.user}</td>
+            <td class="p-3.5"><span class="px-2 py-0.5 rounded ${tkt.type === '售后支持' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'} font-bold text-[10px]">${tkt.type}</span></td>
+            <td class="p-3.5">
+              <div class="font-medium text-slate-800">${tkt.desc}</div>
+              <div class="text-[10px] text-indigo-600 font-mono mt-0.5">挂载: ${tkt.taskId} · 预扣金额: ¥${tkt.refundAmount.toFixed(2)}</div>
+            </td>
+            <td class="p-3.5">
+              ${isPending ? `<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold text-[10px] border border-amber-200">待审批</span>` : tkt.status === 'completed' ? `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">已退款结案</span>` : `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-bold text-[10px]">已驳回</span>`}
+            </td>
+            <td class="p-3.5 text-right pr-4 space-x-2">
+              ${isPending ? `
+                <button onclick="adminApproveTicket(${idx})" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition">核准退款 ¥${tkt.refundAmount.toFixed(2)}</button>
+                <button onclick="adminRejectTicket(${idx})" class="px-2 py-1 text-slate-500 hover:text-slate-800 text-xs">驳回</button>
+              ` : `
+                <span class="text-slate-400 font-mono text-[11px]">处理完毕</span>
+              `}
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function adminApproveTicket(idx) {
+      const tkt = adminTicketsList[idx];
+      tkt.status = 'completed';
+      mockUserBalance += tkt.refundAmount;
+      adminTransactionsList.unshift({
+        id: 'TX_' + Math.floor(10000 + Math.random() * 90000),
+        type: '工单退款',
+        amount: tkt.refundAmount,
+        desc: `工单 #${tkt.id} 售后核准退款至钱包`,
+        time: '刚刚'
+      });
+      document.getElementById('admin-user-row-bal').innerText = `¥ ${mockUserBalance.toFixed(2)}`;
+      renderAdminTicketsTable();
+      renderAdminOrdersTable();
+      triggerToast(`🎉 工单 #${tkt.id} 审批通过，¥${tkt.refundAmount.toFixed(2)} 已存入创作者钱包！`);
+    }
+
+    function adminRejectTicket(idx) {
+      adminTicketsList[idx].status = 'rejected';
+      renderAdminTicketsTable();
+      triggerToast(`已驳回工单 #${adminTicketsList[idx].id}`);
+    }
+
+    function renderAdminOrdersTable() {
+      const tbody = document.getElementById('admin-orders-tbody');
+      if (!tbody) return;
+      let html = '';
+      adminTransactionsList.forEach(tx => {
+        html += `
+          <tr class="hover:bg-slate-50">
+            <td class="p-3.5 pl-4 text-slate-500 font-bold">#${tx.id}</td>
+            <td class="p-3.5 font-sans font-bold">李维工作室 (u_98241029)</td>
+            <td class="p-3.5"><span class="px-1.5 py-0.5 rounded ${tx.amount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'} font-bold">${tx.type}</span></td>
+            <td class="p-3.5 font-bold ${tx.amount > 0 ? 'text-emerald-600' : 'text-rose-600'}">${tx.amount > 0 ? '+' : ''} ¥ ${Math.abs(tx.amount).toFixed(2)}</td>
+            <td class="p-3.5 font-sans text-slate-600">${tx.desc}</td>
+            <td class="p-3.5 text-right pr-4 text-slate-400">${tx.time}</td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function adminGiftBalance(amount) {
+      mockUserBalance += amount;
+      adminTransactionsList.unshift({
+        id: 'TX_' + Math.floor(10000 + Math.random() * 90000),
+        type: '平台补贴',
+        amount: amount,
+        desc: 'Admin 运营中心发放创作者创作补贴',
+        time: '刚刚'
+      });
+      document.getElementById('admin-user-row-bal').innerText = `¥ ${mockUserBalance.toFixed(2)}`;
+      renderAdminOrdersTable();
+      triggerToast(`🎁 成功向李维工作室发放 ¥${amount} 平台补贴`);
+    }
+
+    let dialogCallback = null;
+    function openActionDialog(title, description, onConfirm) {
+      const modal = document.getElementById('action-dialog-modal');
+      const titleEl = document.getElementById('dialog-title');
+      const descEl = document.getElementById('dialog-description');
+      const confirmBtn = document.getElementById('dialog-confirm-btn');
+
+      titleEl.innerText = title;
+      descEl.innerText = description;
+      dialogCallback = onConfirm;
+
+      confirmBtn.onclick = function () {
+        closeActionDialog();
+        if (dialogCallback) dialogCallback();
+      };
+
+      modal.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeActionDialog() {
+      const modal = document.getElementById('action-dialog-modal');
+      modal.classList.add('hidden');
+      dialogCallback = null;
+    }
+
+    function triggerToast(msg) {
+      const toast = document.getElementById('toast');
+      const txt = document.getElementById('toast-text');
+      if (!toast || !txt) return;
+      txt.innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 2500);
+    }
+  </script>
+</body>
+</html>

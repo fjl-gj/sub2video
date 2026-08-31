@@ -4,12 +4,17 @@ globs: ["**/*.vue", "**/*.ts", "**/*.css"]
 alwaysApply: true
 ---
 
-Before editing UI, read `docs/ui/design-system.md`.
+Before editing UI, read `docs/ui/design-system.md`, then the matching HTML
+surface in `docs/原型设计/sub2video-client.html` or
+`docs/原型设计/sub2video-admin.html`.
 
+- Visual chrome follows those HTML files. Menus and object model follow
+  `docs/产品方案总览.md`. Do not copy HTML sidebar structure into Vue.
 - Use `shared/ui` components before writing new markup.
 - Pages may compose layout utilities, but may not define visual decisions.
 - Do not use arbitrary Tailwind values or raw color literals in business code.
 - Do not override S2V component visuals with `class` from a page.
 - Add a component variant only when two or more business surfaces need it.
 - Put client/admin theme differences in design tokens, not duplicated page CSS.
+- GPU / online / success states use success green on both surfaces.
 - Run typecheck, lint, and the relevant browser/visual checks after changes.
