@@ -44,7 +44,7 @@ const metrics = [
         <button type="button" class="text-xs font-semibold text-s2v-primary hover:underline" @click="router.push('/admin/monitoring')">集群拓扑详情 →</button>
       </div>
       <div class="mt-3 grid gap-3 sm:grid-cols-3">
-        <div v-for="node in nodes" :key="node.name" class="rounded-xl border border-s2v-line bg-s2v-canvas p-3">
+        <div v-for="node in nodes" :key="node.name" class="s2v-inset">
           <div class="flex items-center justify-between gap-2">
             <strong class="truncate text-xs">{{ node.name }}</strong>
             <S2VBadge tone="success">正常</S2VBadge>

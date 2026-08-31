@@ -6,6 +6,7 @@ import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VProgress from '@/shared/ui/S2VProgress.vue'
 
 const app = useAppStore()
 const metrics = [
@@ -15,10 +16,10 @@ const metrics = [
   { label: '存储健康', value: '99.99%', icon: HardDrive },
 ]
 const trends = [
-  { label: 'GPU 负载', value: '75%', width: '75%' },
-  { label: '队列吞吐', value: '68%', width: '68%' },
-  { label: '存储用量', value: '38%', width: '38%' },
-  { label: '错误率', value: '3.6%', width: '3.6%' },
+  { label: 'GPU 负载', value: '75%', percent: 75 },
+  { label: '队列吞吐', value: '68%', percent: 68 },
+  { label: '存储用量', value: '38%', percent: 38 },
+  { label: '错误率', value: '3.6%', percent: 3.6 },
 ]
 </script>
 
@@ -52,7 +53,7 @@ const trends = [
         </div>
         <div class="divide-y divide-s2v-line/70 px-4">
           <div v-for="provider in providers" :key="provider.name" class="flex items-center gap-3 py-4">
-            <span class="grid h-8 w-8 place-items-center rounded-full bg-s2v-primary-soft text-s2v-success"><Server class="h-4 w-4" /></span>
+            <span class="s2v-icon-well s2v-icon-well-success"><Server class="h-4 w-4" /></span>
             <div class="min-w-0 flex-1">
               <strong class="block text-xs">{{ provider.name }}</strong>
               <span class="mt-1 block text-[11px] text-s2v-muted">延迟 {{ provider.latency }} · 并发 {{ provider.concurrency }}</span>
@@ -75,7 +76,7 @@ const trends = [
               <span>{{ item.label }}</span>
               <strong class="font-mono text-s2v-ink">{{ item.value }}</strong>
             </div>
-            <div class="h-2 overflow-hidden rounded-full bg-s2v-line"><span class="block h-full rounded-full bg-s2v-primary" :style="{ width: item.width }" /></div>
+            <S2VProgress :value="item.percent" />
           </div>
         </div>
       </S2VCard>

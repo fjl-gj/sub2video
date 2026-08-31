@@ -25,7 +25,7 @@ const notices = [
     <div class="grid gap-4 lg:grid-cols-2">
       <S2VCard v-for="notice in notices" :key="notice.title" variant="padded">
         <div class="flex items-start justify-between gap-3">
-          <span class="grid h-9 w-9 place-items-center rounded-nav bg-s2v-primary-soft text-s2v-primary"><Megaphone class="h-4 w-4" /></span>
+          <span class="s2v-icon-well s2v-icon-well-nav"><Megaphone class="h-4 w-4" /></span>
           <S2VBadge :tone="notice.status === '已发布' ? 'success' : 'warning'">{{ notice.status }}</S2VBadge>
         </div>
         <h2 class="mt-4 text-sm font-bold">{{ notice.title }}</h2>

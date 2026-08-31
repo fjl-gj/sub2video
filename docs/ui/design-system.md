@@ -129,7 +129,8 @@ semantic state. One-off visual exceptions belong in a feature component.
 | Component | Recipe |
 | --- | --- |
 | `S2VButton` | `primary` is solid brand fill, no grey border, `font-bold`, micro-shadow. `secondary` is white + `slate-200` border + micro-shadow. `variant` is a real Vue prop. |
-| `S2VCard` | 16px radius, micro-shadow, `slate-200/80` border. `metric` is the overview stat cell. Pages must not pass `rounded-*`, `shadow-*`, `border-*`, or `bg-*`. |
+| `S2VCard` | 16px radius, micro-shadow, `slate-200/80` border. `metric` is the overview stat cell; `compact` is a dense row. Pages must not pass `rounded-*`, `shadow-*`, `border-*`, `bg-*`, or `p-*`. |
+| `S2VProgress` | Shared track + primary fill. Pages pass a 0–100 value only. |
 | `S2VNavItem` | Only sidebar row. Height 36px, 20px icon slot, 13px label, 8px radius. Optional trailing `font-mono` tag. |
 | `S2VPageHeader` | Row with optional badge, 20px title, bottom border. Not eyebrow + 23px + long subcopy. |
 | `S2VBadge` | Small rounded square (`rounded`), not a full pill, except status dots. Use semantic tones. |

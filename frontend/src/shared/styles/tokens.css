@@ -152,6 +152,20 @@
   }
   .s2v-dropzone:hover { border-color: rgb(var(--s2v-primary)); background: rgb(var(--s2v-primary-soft) / 0.4); }
   .s2v-note { padding: 12px; border-radius: var(--s2v-radius-nav); background: rgb(var(--s2v-canvas)); color: rgb(var(--s2v-muted)); font-size: 11px; line-height: 1.6; }
+  .s2v-inset { border: 1px solid rgb(var(--s2v-line) / 0.6); border-radius: var(--s2v-radius-control); background: rgb(var(--s2v-canvas)); padding: 14px; }
+  .s2v-inset-dashed { border: 1px dashed rgb(var(--s2v-line)); border-radius: var(--s2v-radius-control); padding: 20px; text-align: center; color: rgb(var(--s2v-muted)); font-size: 12px; }
+  .s2v-progress { width: 100%; height: 6px; overflow: hidden; border-radius: 9999px; background: rgb(var(--s2v-line)); }
+  .s2v-progress > span { display: block; height: 100%; border-radius: inherit; background: rgb(var(--s2v-primary)); }
+  .s2v-icon-well { display: grid; place-items: center; width: 2rem; height: 2rem; flex-shrink: 0; border-radius: 9999px; background: rgb(var(--s2v-primary-soft)); color: rgb(var(--s2v-primary)); }
+  .s2v-icon-well-nav { width: 2.25rem; height: 2.25rem; border-radius: var(--s2v-radius-nav); }
+  .s2v-icon-well-success { background: rgb(var(--s2v-success) / 0.12); color: rgb(var(--s2v-success)); }
+  .s2v-icon-well-muted { background: rgb(var(--s2v-canvas)); color: rgb(var(--s2v-muted)); }
+  .s2v-icon-well-inverse { width: 2.5rem; height: 2.5rem; border-radius: var(--s2v-radius-nav); background: rgb(var(--s2v-ink)); color: rgb(var(--s2v-primary-soft)); }
+  .s2v-avatar { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 9999px; background: rgb(var(--s2v-ink)); color: #fff; font-size: 12px; font-weight: 700; }
+  .s2v-avatar-lg { width: 3.5rem; height: 3.5rem; font-size: 18px; }
+  .s2v-media-tag { border-radius: var(--s2v-radius-nav); border: 1px solid rgb(255 255 255 / 0.3); background: rgb(15 23 42 / 0.2); padding: 4px 8px; }
+  .s2v-thumb { border-radius: var(--s2v-radius-nav); object-fit: cover; }
+  .s2v-panel-body-sm { padding: 12px; }
 }
 
 @keyframes s2v-pulse-ring {

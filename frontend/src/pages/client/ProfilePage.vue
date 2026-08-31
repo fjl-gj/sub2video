@@ -26,7 +26,7 @@ const rows = [
     <div class="grid gap-5 lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
       <S2VCard variant="padded">
         <div class="flex items-center gap-3">
-          <span class="grid h-14 w-14 place-items-center rounded-full bg-slate-700 text-lg font-bold text-white">林</span>
+          <span class="s2v-avatar s2v-avatar-lg">林</span>
           <div>
             <h2 class="text-base font-bold">林默</h2>
             <p class="mt-1 text-xs text-s2v-muted">linmo@example.com</p>
@@ -48,7 +48,7 @@ const rows = [
         </div>
         <div class="divide-y divide-s2v-line/70 px-4">
           <button v-for="row in rows" :key="row.title" class="flex w-full items-center gap-3 py-4 text-left" type="button" @click="router.push('/auth/verify-email')">
-            <span class="grid h-8 w-8 place-items-center rounded-full bg-s2v-primary-soft text-s2v-primary"><component :is="row.icon" class="h-4 w-4" /></span>
+            <span class="s2v-icon-well"><component :is="row.icon" class="h-4 w-4" /></span>
             <span class="min-w-0 flex-1">
               <strong class="block text-xs">{{ row.title }}</strong>
               <span class="mt-1 block text-[11px] text-s2v-muted">{{ row.desc }}</span>

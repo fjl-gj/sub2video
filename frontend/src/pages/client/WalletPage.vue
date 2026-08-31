@@ -78,7 +78,7 @@ function recharge() {
           </div>
           <div class="divide-y divide-s2v-line/70 px-4">
             <div v-for="item in transactions" :key="item.id" class="flex items-center gap-3 py-3">
-              <span :class="['grid h-7 w-7 place-items-center rounded-full', item.amount > 0 ? 'bg-emerald-50 text-s2v-success' : 'bg-s2v-canvas text-s2v-muted']">
+              <span :class="item.amount > 0 ? 's2v-icon-well s2v-icon-well-success' : 's2v-icon-well s2v-icon-well-muted'">
                 <ArrowDownLeft v-if="item.amount > 0" class="h-3.5 w-3.5" />
                 <ArrowUpRight v-else class="h-3.5 w-3.5" />
               </span>

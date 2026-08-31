@@ -62,7 +62,7 @@ function submit() {
         @click="workflow = item.id"
       >
         <div class="flex items-start justify-between">
-          <span class="grid h-8 w-8 place-items-center rounded-nav bg-s2v-primary-soft text-s2v-primary"><ImagePlus class="h-4 w-4" /></span>
+          <span class="s2v-icon-well s2v-icon-well-nav"><ImagePlus class="h-4 w-4" /></span>
           <S2VBadge v-if="item.enabled" tone="success">可用</S2VBadge>
           <S2VBadge v-else>即将开放</S2VBadge>
         </div>

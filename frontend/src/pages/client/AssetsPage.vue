@@ -9,6 +9,7 @@ import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
+import S2VProgress from '@/shared/ui/S2VProgress.vue'
 
 const app = useAppStore()
 const search = ref('')
@@ -38,7 +39,7 @@ const iconFor = (type: string) => type === '视频' ? FileVideo : type === '音�
             <strong class="text-xs">存储空间</strong>
             <S2VBadge tone="primary">1.9 / 5 GB</S2VBadge>
           </div>
-          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-s2v-line"><span class="block h-full w-2/5 rounded-full bg-s2v-primary" /></div>
+          <S2VProgress class="mt-3" :value="38" />
         </div>
         <span class="text-[11px] text-s2v-muted">任务输入 7 天自动清理 · 结果 30 天自动清理</span>
       </div>
@@ -56,7 +57,7 @@ const iconFor = (type: string) => type === '视频' ? FileVideo : type === '音�
         <div class="grid aspect-[4/3] place-items-center" :style="{ background: `linear-gradient(135deg, #${item.color}, #${item.accent})` }">
           <component :is="iconFor(item.type)" class="h-8 w-8 text-white/80" />
         </div>
-        <div class="p-3">
+        <div class="s2v-panel-body-sm">
           <div class="flex items-center justify-between gap-2">
             <strong class="truncate text-xs">{{ item.name }}</strong>
             <S2VBadge>{{ item.type }}</S2VBadge>

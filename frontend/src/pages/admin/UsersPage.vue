@@ -44,7 +44,7 @@ const search = ref('')
           <tr v-for="user in users.filter((row) => !search || `${row.id}${row.name}${row.email}`.includes(search))" :key="user.id">
             <td>
               <div class="flex items-center gap-2">
-                <span class="grid h-8 w-8 place-items-center rounded-full bg-slate-700 text-xs font-bold text-white">{{ user.name.slice(0, 1) }}</span>
+                <span class="s2v-avatar">{{ user.name.slice(0, 1) }}</span>
                 <div>
                   <strong class="block text-xs text-s2v-ink">{{ user.name }}</strong>
                   <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ user.id }}</span>

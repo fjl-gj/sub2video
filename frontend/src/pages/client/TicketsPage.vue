@@ -63,7 +63,7 @@ function submit() {
       </div>
       <div class="divide-y divide-s2v-line/70 px-4">
         <button v-for="item in tickets" :key="item.id" class="flex w-full items-center gap-3 py-4 text-left" type="button" @click="app.notify(`已打开 ${item.id}`)">
-          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-s2v-primary-soft text-s2v-primary"><Ticket class="h-4 w-4" /></span>
+          <span class="s2v-icon-well"><Ticket class="h-4 w-4" /></span>
           <span class="min-w-0 flex-1">
             <strong class="block truncate text-xs">{{ item.title }}</strong>
             <span class="mt-1 block text-[11px] text-s2v-muted">{{ item.id }} · {{ item.category }} · {{ item.updated }}</span>

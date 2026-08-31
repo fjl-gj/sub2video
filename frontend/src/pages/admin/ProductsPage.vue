@@ -22,7 +22,7 @@ const app = useAppStore()
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <S2VCard v-for="product in rechargeProducts" :key="product.id" variant="padded">
         <div class="flex items-start justify-between">
-          <span class="grid h-8 w-8 place-items-center rounded-full bg-s2v-primary-soft text-s2v-primary"><Coins class="h-4 w-4" /></span>
+          <span class="s2v-icon-well"><Coins class="h-4 w-4" /></span>
           <S2VBadge tone="success">上架中</S2VBadge>
         </div>
         <strong class="mt-4 block text-xl font-bold font-mono">¥{{ product.amount }}</strong>

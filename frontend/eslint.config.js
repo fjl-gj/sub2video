@@ -10,7 +10,7 @@ const s2vPagesPlugin = {
         docs: { description: 'Pages must not use arbitrary visual values or raw brand colors' },
       },
       create(context) {
-        const pattern = /rounded-\[[^\]]+\]|shadow-\[[^\]]+\]|(?:bg|text)-\[[#]|\bbg-indigo-|\btext-indigo-|\baccent-indigo-/
+        const pattern = /rounded-\[[^\]]+\]|shadow-\[[^\]]+\]|(?:bg|text)-\[[#]|\bbg-indigo-|\btext-indigo-|\baccent-indigo-|\brounded-(?:xl|lg)\b|\bbg-slate-|\bbg-emerald-50\b|\bbg-amber-/
         return {
           Program() {
             const lines = context.sourceCode.getText().split(/\n/)

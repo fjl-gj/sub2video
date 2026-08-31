@@ -45,7 +45,7 @@ function useScene(item: (typeof sceneTemplates)[number]) {
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <S2VCard v-for="item in filtered" :key="item.id" variant="media">
         <div class="grid aspect-video place-items-center text-xs font-mono text-white" :style="{ background: `linear-gradient(135deg, #${item.color}, #${item.accent})` }">
-          <span class="rounded-nav border border-white/30 bg-slate-900/20 px-2 py-1">{{ item.category }} · H3</span>
+          <span class="s2v-media-tag text-xs font-mono text-white">{{ item.category }} · H3</span>
         </div>
         <div class="s2v-panel-body">
           <h2 class="text-sm font-bold">{{ item.title }}</h2>

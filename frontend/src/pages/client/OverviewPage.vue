@@ -6,6 +6,7 @@ import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VProgress from '@/shared/ui/S2VProgress.vue'
 
 const router = useRouter()
 const app = useAppStore()
@@ -55,18 +56,18 @@ const metrics = [
         </div>
         <button type="button" class="text-[11px] font-semibold text-s2v-primary hover:underline" @click="router.push('/app/works')">进入完整任务中心 →</button>
       </div>
-      <div v-if="activeTask" class="mt-3 flex flex-col gap-3 rounded-xl border border-s2v-line/60 bg-s2v-canvas p-3.5 sm:flex-row sm:items-center">
-        <div class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-900 text-s2v-primary-soft"><Clock3 class="h-5 w-5" /></div>
+      <div v-if="activeTask" class="s2v-inset mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="s2v-icon-well s2v-icon-well-inverse"><Clock3 class="h-5 w-5" /></div>
         <div class="min-w-0 flex-1">
           <strong class="block truncate text-xs">{{ activeTask.title }} · {{ activeTask.resolution }} / {{ activeTask.duration }} (含音频)</strong>
           <span class="mt-1 block truncate text-[11px] text-s2v-muted">已预扣 ¥ {{ activeTask.cost.toFixed(2) }} · {{ activeTask.workflow }} · 进度 {{ activeTask.progress }}%</span>
         </div>
         <div class="flex items-center gap-3 sm:w-48">
-          <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-s2v-line"><span class="block h-full rounded-full bg-s2v-primary" :style="{ width: `${activeTask.progress}%` }" /></div>
+          <S2VProgress class="flex-1" :value="activeTask.progress" />
           <span class="s2v-mono text-[11px] text-s2v-primary">{{ activeTask.progress }}%</span>
         </div>
       </div>
-      <div v-else class="mt-3 rounded-xl border border-dashed border-s2v-line p-5 text-center text-xs text-s2v-muted">当前没有进行中的任务</div>
+      <div v-else class="s2v-inset-dashed mt-3">当前没有进行中的任务</div>
     </S2VCard>
 
     <div class="mt-6 flex items-center justify-between">
@@ -74,8 +75,8 @@ const metrics = [
       <button type="button" class="text-xs font-semibold text-s2v-primary hover:underline" @click="router.push('/app/works')">进入作品 →</button>
     </div>
     <div class="mt-3 grid gap-4 sm:grid-cols-2">
-      <S2VCard v-for="work in recentWorks" :key="work.id" class="flex items-center gap-3 p-3.5">
-        <img :src="work.thumb" :alt="work.title" class="h-16 w-24 shrink-0 rounded-lg object-cover" />
+      <S2VCard v-for="work in recentWorks" :key="work.id" variant="compact" class="flex items-center gap-3">
+        <img :src="work.thumb" :alt="work.title" class="s2v-thumb h-16 w-24 shrink-0" />
         <div class="min-w-0 flex-1">
           <strong class="block truncate text-xs">#{{ work.id.slice(-4) }}_{{ work.title }}.mp4</strong>
           <span class="mt-1 block text-[11px] text-s2v-muted">{{ work.resolution }} · {{ work.duration }} · ¥{{ work.cost.toFixed(2) }}</span>

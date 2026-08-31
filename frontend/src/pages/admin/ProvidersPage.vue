@@ -41,7 +41,7 @@ const metrics = [
       <S2VCard v-for="provider in providers" :key="provider.name" variant="padded">
         <div class="flex items-start justify-between">
           <div class="flex items-center gap-2">
-            <span class="grid h-8 w-8 place-items-center rounded-full bg-s2v-primary-soft text-s2v-primary"><Bot class="h-4 w-4" /></span>
+            <span class="s2v-icon-well"><Bot class="h-4 w-4" /></span>
             <div>
               <strong class="block text-xs">{{ provider.name }}</strong>
               <span class="mt-1 block text-[11px] text-s2v-muted">{{ provider.channel }}</span>

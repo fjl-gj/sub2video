@@ -25,7 +25,7 @@ const app = useAppStore()
     <div class="grid gap-4 lg:grid-cols-3">
       <S2VCard v-for="item in workflows" :key="item.id" variant="padded">
         <div class="flex items-start justify-between gap-3">
-          <span class="grid h-9 w-9 place-items-center rounded-nav bg-s2v-primary-soft text-s2v-primary"><Workflow class="h-4 w-4" /></span>
+          <span class="s2v-icon-well s2v-icon-well-nav"><Workflow class="h-4 w-4" /></span>
           <S2VBadge :tone="item.status === '已上架' ? 'success' : item.status === '草稿' ? 'warning' : 'neutral'">{{ item.status }}</S2VBadge>
         </div>
         <h2 class="mt-4 text-sm font-bold">{{ item.name }}</h2>

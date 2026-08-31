@@ -68,7 +68,7 @@ function confirmRefund() {
           <tr v-for="task in list" :key="task.id">
             <td>
               <div class="flex items-center gap-3">
-                <img :src="task.thumb" :alt="task.title" class="h-9 w-14 rounded-nav object-cover" />
+                <img :src="task.thumb" :alt="task.title" class="s2v-thumb h-9 w-14" />
                 <div>
                   <strong class="block text-xs text-s2v-ink">{{ task.title }}</strong>
                   <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ task.id }}</span>
