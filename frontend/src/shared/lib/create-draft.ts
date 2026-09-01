@@ -1,5 +1,7 @@
-export type CreateMode = 'image' | 'text' | 'video'
+export type CreateMode = 'image' | 'text'
 export type ImageVariant = 'keyframes' | 'multi'
+
+export const MAX_REF_IMAGES = 8
 
 export interface CreateFrameSlot {
   uploaded: boolean
@@ -8,7 +10,7 @@ export interface CreateFrameSlot {
 }
 
 export interface CreateDraft {
-  version: 1
+  version: 2
   mode: CreateMode
   imageVariant: ImageVariant
   prompt: string
@@ -16,19 +18,19 @@ export interface CreateDraft {
   durationSec: string
   firstFrame: CreateFrameSlot
   lastFrame: CreateFrameSlot
+  extraFrames: CreateFrameSlot[]
   multiFrames: CreateFrameSlot[]
-  referenceVideoUploaded: boolean
 }
 
 const STORAGE_KEY = 'sub2video.create-draft'
 
-function emptySlot(): CreateFrameSlot {
+export function emptySlot(): CreateFrameSlot {
   return { uploaded: false, assetId: '', picking: false }
 }
 
 export function emptyCreateDraft(): CreateDraft {
   return {
-    version: 1,
+    version: 2,
     mode: 'image',
     imageVariant: 'keyframes',
     prompt: '',
@@ -36,8 +38,8 @@ export function emptyCreateDraft(): CreateDraft {
     durationSec: '15',
     firstFrame: emptySlot(),
     lastFrame: emptySlot(),
-    multiFrames: [emptySlot(), emptySlot(), emptySlot()],
-    referenceVideoUploaded: false,
+    extraFrames: [],
+    multiFrames: [emptySlot()],
   }
 }
 
@@ -46,7 +48,7 @@ function sanitizeSlot(slot: CreateFrameSlot): CreateFrameSlot {
 }
 
 function isCreateMode(value: unknown): value is CreateMode {
-  return value === 'image' || value === 'text' || value === 'video'
+  return value === 'image' || value === 'text'
 }
 
 function isImageVariant(value: unknown): value is ImageVariant {
@@ -63,28 +65,55 @@ function parseSlot(value: unknown): CreateFrameSlot {
   }
 }
 
+function parseSlots(value: unknown, max: number, fallback: CreateFrameSlot[] = []): CreateFrameSlot[] {
+  if (!Array.isArray(value)) return fallback.map((slot) => sanitizeSlot(slot))
+  return value.slice(0, max).map(parseSlot)
+}
+
+type LegacyCreateDraft = Partial<Omit<CreateDraft, 'version'>> & {
+  version?: 1 | 2
+  mode?: CreateMode | 'video'
+  referenceVideoUploaded?: boolean
+}
+
+function normalizeMode(value: unknown): CreateMode | null {
+  if (value === 'video') return 'image'
+  return isCreateMode(value) ? value : null
+}
+
+function migrateDraft(parsed: LegacyCreateDraft): CreateDraft | null {
+  const mode = normalizeMode(parsed.mode)
+  if (!mode || !isImageVariant(parsed.imageVariant)) return null
+
+  const legacyMulti = Array.isArray(parsed.multiFrames) ? parsed.multiFrames : []
+
+  return {
+    version: 2,
+    mode,
+    imageVariant: parsed.imageVariant,
+    prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
+    ratio: typeof parsed.ratio === 'string' ? parsed.ratio : '16:9',
+    durationSec: typeof parsed.durationSec === 'string' ? parsed.durationSec : '15',
+    firstFrame: parseSlot(parsed.firstFrame),
+    lastFrame: parseSlot(parsed.lastFrame),
+    extraFrames: parseSlots(parsed.extraFrames, MAX_REF_IMAGES),
+    multiFrames: parsed.version === 2
+      ? parseSlots(parsed.multiFrames, MAX_REF_IMAGES, [emptySlot()])
+      : parseSlots(legacyMulti, MAX_REF_IMAGES, [emptySlot()]),
+  }
+}
+
 export function loadCreateDraft(): CreateDraft | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<CreateDraft>
-    if (parsed.version !== 1) return null
-    if (!isCreateMode(parsed.mode) || !isImageVariant(parsed.imageVariant)) return null
-    return {
-      version: 1,
-      mode: parsed.mode,
-      imageVariant: parsed.imageVariant,
-      prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
-      ratio: typeof parsed.ratio === 'string' ? parsed.ratio : '16:9',
-      durationSec: typeof parsed.durationSec === 'string' ? parsed.durationSec : '15',
-      firstFrame: parseSlot(parsed.firstFrame),
-      lastFrame: parseSlot(parsed.lastFrame),
-      multiFrames: Array.isArray(parsed.multiFrames)
-        ? parsed.multiFrames.slice(0, 3).map(parseSlot)
-        : emptyCreateDraft().multiFrames,
-      referenceVideoUploaded: Boolean(parsed.referenceVideoUploaded),
-    }
+    const parsed = JSON.parse(raw) as LegacyCreateDraft
+    if (parsed.version !== 1 && parsed.version !== 2) return null
+    const draft = migrateDraft(parsed)
+    if (!draft) return null
+    if (draft.imageVariant === 'multi' && !draft.multiFrames.length) draft.multiFrames = [emptySlot()]
+    return draft
   }
   catch {
     return null
@@ -94,7 +123,7 @@ export function loadCreateDraft(): CreateDraft | null {
 export function saveCreateDraft(draft: Omit<CreateDraft, 'version'>) {
   if (typeof window === 'undefined') return
   const payload: CreateDraft = {
-    version: 1,
+    version: 2,
     mode: draft.mode,
     imageVariant: draft.imageVariant,
     prompt: draft.prompt,
@@ -102,8 +131,8 @@ export function saveCreateDraft(draft: Omit<CreateDraft, 'version'>) {
     durationSec: draft.durationSec,
     firstFrame: sanitizeSlot(draft.firstFrame),
     lastFrame: sanitizeSlot(draft.lastFrame),
+    extraFrames: draft.extraFrames.map(sanitizeSlot),
     multiFrames: draft.multiFrames.map(sanitizeSlot),
-    referenceVideoUploaded: draft.referenceVideoUploaded,
   }
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
 }

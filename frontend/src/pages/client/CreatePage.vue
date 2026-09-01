@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Info, Lock } from 'lucide-vue-next'
+import { Info } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import AssetPickDialog from '@/features/create/AssetPickDialog.vue'
+import CreateModeCards from '@/features/create/CreateModeCards.vue'
 import CreateModeGate from '@/features/create/CreateModeGate.vue'
 import ImageStack from '@/features/create/ImageStack.vue'
 import {
   clearCreateDraft,
+  emptySlot,
   loadCreateDraft,
+  MAX_REF_IMAGES,
   saveCreateDraft,
   type CreateFrameSlot,
   type CreateMode,
@@ -28,7 +32,6 @@ interface FrameSlot extends CreateFrameSlot {}
 const router = useRouter()
 const app = useAppStore()
 const mode = ref<CreateMode>('image')
-const modeTab = ref('图生视频')
 const imageVariant = ref<ImageVariant>('keyframes')
 const prompt = ref('')
 const ratio = ref('16:9')
@@ -36,28 +39,21 @@ const durationSec = ref('15')
 const loading = ref(false)
 const draftReady = ref(false)
 
-const firstFrame = ref<FrameSlot>({ uploaded: false, assetId: '', picking: false })
-const lastFrame = ref<FrameSlot>({ uploaded: false, assetId: '', picking: false })
-const multiFrames = ref<FrameSlot[]>([
-  { uploaded: false, assetId: '', picking: false },
-  { uploaded: false, assetId: '', picking: false },
-  { uploaded: false, assetId: '', picking: false },
-])
-const referenceVideo = ref({ uploaded: false, picking: false })
+const firstFrame = ref<FrameSlot>(emptySlot())
+const lastFrame = ref<FrameSlot>(emptySlot())
+const extraFrames = ref<FrameSlot[]>([])
+const multiFrames = ref<FrameSlot[]>([emptySlot()])
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+const pickingSlotRef = ref<FrameSlot | null>(null)
 
-const modeTabs = ['图生视频', '文生视频', '视频生视频']
-const modeFromTab: Record<string, CreateMode> = {
-  图生视频: 'image',
-  文生视频: 'text',
-  视频生视频: 'video',
-}
-const tabFromMode: Record<CreateMode, string> = {
-  image: '图生视频',
-  text: '文生视频',
-  video: '视频生视频',
-}
+const assetDialogOpen = computed({
+  get: () => pickingSlotRef.value !== null,
+  set: (open: boolean) => {
+    if (!open) pickingSlotRef.value = null
+  },
+})
+
 const imageVariants = ['首尾帧', '多图参考']
 const ratioOptions = [
   { label: '16:9 横屏', value: '16:9' },
@@ -68,22 +64,16 @@ const ratioOptions = [
 const parsedDuration = computed(() => Number(durationSec.value))
 const durationValid = computed(() => Number.isFinite(parsedDuration.value) && parsedDuration.value >= 1 && parsedDuration.value <= 15)
 const cost = computed(() => durationValid.value ? parsedDuration.value * 0.5 : 0)
-const modeLocked = computed(() => mode.value !== 'image')
 const canSubmit = computed(() => mode.value === 'image' && durationValid.value && hasRequiredImageInput.value)
 const workflowLabel = computed(() => {
   if (mode.value === 'text') return 'H3 文生视频'
-  if (mode.value === 'video') return 'H3 视频生视频'
   return imageVariant.value === 'keyframes' ? 'H3 首尾帧图生视频' : 'H3 多图参考图生视频'
 })
 
 const hasRequiredImageInput = computed(() => {
   if (mode.value !== 'image') return false
   if (imageVariant.value === 'keyframes') return frameReady(firstFrame.value)
-  return multiFrames.value.filter((slot) => frameReady(slot)).length >= 1
-})
-
-watch(modeTab, (tab) => {
-  mode.value = modeFromTab[tab] ?? 'image'
+  return multiFrames.value.some((slot) => frameReady(slot))
 })
 
 function frameReady(slot: FrameSlot) {
@@ -93,25 +83,45 @@ function frameReady(slot: FrameSlot) {
 function markUpload(slot: FrameSlot) {
   slot.uploaded = true
   slot.assetId = ''
-  closePicking()
+  pickingSlotRef.value = null
 }
 
-function pickAsset(slot: FrameSlot, id: string) {
-  slot.assetId = id
-  slot.uploaded = true
-  closePicking()
+function openAssetPick(slot: FrameSlot) {
+  pickingSlotRef.value = slot
 }
 
-function togglePick(slot: FrameSlot) {
-  const next = !slot.picking
-  closePicking()
-  slot.picking = next
+function confirmAssetPick(assetId: string) {
+  if (!pickingSlotRef.value) return
+  pickingSlotRef.value.assetId = assetId
+  pickingSlotRef.value.uploaded = true
+  pickingSlotRef.value = null
 }
 
-function closePicking() {
-  firstFrame.value.picking = false
-  lastFrame.value.picking = false
-  multiFrames.value.forEach((slot) => { slot.picking = false })
+function clearSlot(slot: FrameSlot) {
+  slot.uploaded = false
+  slot.assetId = ''
+  if (pickingSlotRef.value === slot) pickingSlotRef.value = null
+}
+
+function addExtra() {
+  if (extraFrames.value.length >= MAX_REF_IMAGES) return
+  extraFrames.value.push(emptySlot())
+}
+
+function removeExtra(index: number) {
+  extraFrames.value.splice(index, 1)
+  pickingSlotRef.value = null
+}
+
+function addMulti() {
+  if (multiFrames.value.length >= MAX_REF_IMAGES) return
+  multiFrames.value.push(emptySlot())
+}
+
+function removeMulti(index: number) {
+  if (multiFrames.value.length <= 1) return
+  multiFrames.value.splice(index, 1)
+  pickingSlotRef.value = null
 }
 
 function chooseTemplate(text: string) {
@@ -119,7 +129,6 @@ function chooseTemplate(text: string) {
 }
 
 function switchToImageMode() {
-  modeTab.value = '图生视频'
   mode.value = 'image'
 }
 
@@ -132,7 +141,6 @@ function taskStamp() {
 function buildTaskTitle() {
   const seq = app.tasks.length + 1
   if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
-  if (mode.value === 'video') return `视频生 ${taskStamp()} #${seq}`
   const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
   return `图生·${variant} ${taskStamp()} #${seq}`
 }
@@ -142,14 +150,15 @@ function applyDraftFromStorage() {
   const saved = loadCreateDraft()
   if (saved) {
     mode.value = saved.mode
-    modeTab.value = tabFromMode[saved.mode]
     imageVariant.value = saved.imageVariant
     ratio.value = saved.ratio
     durationSec.value = saved.durationSec
     firstFrame.value = { ...saved.firstFrame, picking: false }
     lastFrame.value = { ...saved.lastFrame, picking: false }
-    multiFrames.value = saved.multiFrames.map((slot) => ({ ...slot, picking: false }))
-    referenceVideo.value = { uploaded: saved.referenceVideoUploaded, picking: false }
+    extraFrames.value = saved.extraFrames.map((slot) => ({ ...slot, picking: false }))
+    multiFrames.value = saved.multiFrames.length
+      ? saved.multiFrames.map((slot) => ({ ...slot, picking: false }))
+      : [emptySlot()]
     prompt.value = plazaPrompt || saved.prompt
   }
   else {
@@ -170,8 +179,8 @@ function scheduleDraftSave() {
       durationSec: durationSec.value,
       firstFrame: firstFrame.value,
       lastFrame: lastFrame.value,
+      extraFrames: extraFrames.value,
       multiFrames: multiFrames.value,
-      referenceVideoUploaded: referenceVideo.value.uploaded,
     })
   }, 320)
 }
@@ -185,7 +194,7 @@ onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
 })
 
-watch([mode, imageVariant, prompt, ratio, durationSec, firstFrame, lastFrame, multiFrames, referenceVideo], scheduleDraftSave, { deep: true })
+watch([mode, imageVariant, prompt, ratio, durationSec, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
 
 function submit() {
   if (!canSubmit.value) {
@@ -218,31 +227,33 @@ function submit() {
       </template>
     </S2VPageHeader>
 
-    <div class="mb-4 space-y-2">
-      <S2VSegmented v-model="modeTab" :options="modeTabs" />
-      <p v-if="modeLocked" class="flex items-center gap-1.5 text-xs text-s2v-muted">
-        <Lock class="h-3.5 w-3.5" />
-        当前模式即将开放，可先配置描述与参数；提交请使用图生视频。
-      </p>
-    </div>
+    <S2VCard class="mb-5">
+      <div class="s2v-panel-header">
+        <div>
+          <h2 class="s2v-section-title">选择生成形式</h2>
+          <p class="mt-1 text-xs text-s2v-muted">图生支持首尾帧或多张参考图；文生即将开放</p>
+        </div>
+      </div>
+      <div class="s2v-panel-body grid gap-4">
+        <CreateModeCards v-model:mode="mode" />
+        <div v-if="mode === 'image'" class="border-t border-s2v-line/60 pt-4">
+          <p class="mb-2 text-xs font-semibold text-s2v-ink">图生细分</p>
+          <S2VSegmented
+            :model-value="imageVariant === 'keyframes' ? '首尾帧' : '多图参考'"
+            :options="imageVariants"
+            @update:model-value="imageVariant = $event === '首尾帧' ? 'keyframes' : 'multi'"
+          />
+        </div>
+      </div>
+    </S2VCard>
 
-    <div v-if="mode === 'image'" class="mb-4">
-      <S2VSegmented
-        :model-value="imageVariant === 'keyframes' ? '首尾帧' : '多图参考'"
-        :options="imageVariants"
-        @update:model-value="imageVariant = $event === '首尾帧' ? 'keyframes' : 'multi'"
-      />
-    </div>
-
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,.75fr)]">
+    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,.8fr)]">
       <div class="grid gap-5">
         <S2VCard v-if="mode === 'image'">
           <div class="s2v-panel-header">
             <div>
               <h2 class="s2v-section-title">输入素材</h2>
-              <p class="mt-1 text-xs text-s2v-muted">
-                {{ imageVariant === 'keyframes' ? '首尾帧叠放预览，点击卡片上传或从资产选取。' : '参考图扇形叠放，至少选择 1 张。' }}
-              </p>
+              <p class="mt-1 text-xs text-s2v-muted">{{ workflowLabel }}</p>
             </div>
           </div>
           <div class="s2v-panel-body">
@@ -250,25 +261,23 @@ function submit() {
               :variant="imageVariant"
               :first-frame="firstFrame"
               :last-frame="lastFrame"
+              :extra-frames="extraFrames"
               :multi-frames="multiFrames"
               @upload="markUpload"
-              @pick="pickAsset"
-              @toggle-pick="togglePick"
+              @pick="openAssetPick"
+              @clear="clearSlot"
+              @add-extra="addExtra"
+              @remove-extra="removeExtra"
+              @add-multi="addMulti"
+              @remove-multi="removeMulti"
             />
           </div>
         </S2VCard>
 
         <CreateModeGate
-          v-else-if="mode === 'text'"
-          title="文生视频即将开放"
-          description="仅需画面描述即可生成视频，无需上传图片或视频素材。"
-          @switch-image="switchToImageMode"
-        />
-
-        <CreateModeGate
           v-else
-          title="视频生视频即将开放"
-          description="上传参考视频，配合描述进行风格化或镜头再创作。"
+          title="文生视频即将开放"
+          description="仅需画面描述即可生成视频，无需上传图片素材。"
           @switch-image="switchToImageMode"
         />
 
@@ -276,11 +285,11 @@ function submit() {
           <div class="s2v-panel-header">
             <div>
               <h2 class="s2v-section-title">画面描述</h2>
-              <p class="mt-1 text-xs text-s2v-muted">描述主体动作、镜头运动和环境变化。从广场套用时会预填到这里。</p>
+              <p class="mt-1 text-xs text-s2v-muted">描述主体动作、镜头运动和环境变化</p>
             </div>
           </div>
           <div class="s2v-panel-body">
-            <S2VTextarea v-model="prompt" :rows="8" placeholder="例如：镜头缓慢向前推进，雨滴落在玻璃上，霓虹灯在背景中柔和闪烁……" />
+            <S2VTextarea v-model="prompt" :rows="6" placeholder="例如：镜头缓慢向前推进，雨滴落在玻璃上，霓虹灯在背景中柔和闪烁……" />
             <div class="mt-3 flex flex-wrap gap-2">
               <S2VChoice v-for="tag in ['电影感', '缓慢推进', '自然光', '细节丰富']" :key="tag" class="px-2" @click="chooseTemplate(tag)">+ {{ tag }}</S2VChoice>
             </div>
@@ -290,31 +299,27 @@ function submit() {
 
       <S2VCard class="h-fit xl:sticky xl:top-6">
         <div class="s2v-panel-header">
-          <div>
-            <h2 class="s2v-section-title">生成设置</h2>
-            <p class="mt-1 text-xs text-s2v-muted">{{ workflowLabel }}</p>
-          </div>
+          <h2 class="s2v-section-title">生成设置</h2>
         </div>
         <div class="s2v-panel-body grid gap-4">
           <S2VSelect v-model="ratio" label="画面比例" :options="ratioOptions" />
           <S2VInput v-model="durationSec" label="视频时长" type="number" min="1" placeholder="1-15">
             <template #suffix><span class="text-[11px] text-s2v-muted">秒</span></template>
           </S2VInput>
-          <div class="s2v-note">
-            <div class="flex items-center justify-between text-xs">
-              <span>预计费用</span>
-              <strong class="s2v-mono text-lg text-s2v-ink">¥ {{ cost.toFixed(2) }}</strong>
+          <div class="s2v-create-submit-panel">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-s2v-ink">预计费用</span>
+              <strong class="s2v-mono text-xl text-s2v-ink">¥ {{ cost.toFixed(2) }}</strong>
             </div>
-            <div class="mt-1 flex items-center gap-1 text-[11px] text-s2v-muted"><Info class="h-3.5 w-3.5" />768P · ¥0.50/秒</div>
+            <div class="flex items-center gap-1 text-[11px] text-s2v-muted"><Info class="h-3.5 w-3.5" />768P · ¥0.50/秒</div>
+            <S2VButton variant="primary" size="lg" :loading="loading" :disabled="!canSubmit" :block="true" @click="submit">
+              提交生成任务
+            </S2VButton>
           </div>
-          <S2VButton variant="primary" size="lg" :loading="loading" :disabled="!canSubmit" :block="true" @click="submit">
-            提交生成任务
-          </S2VButton>
-          <p class="text-[11px] leading-5 text-s2v-muted">
-            任务名称按「模式 + 时间 + 序号」自动生成；未提交内容会静默保存在本机，提交成功后清除。
-          </p>
         </div>
       </S2VCard>
     </div>
+
+    <AssetPickDialog v-model:open="assetDialogOpen" @pick="confirmAssetPick" />
   </section>
 </template>
