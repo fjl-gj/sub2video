@@ -28,7 +28,7 @@ function confirmToggle() {
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Users" title="用户管理">
+    <S2VPageHeader title="用户管理">
       <template #description>查看账户状态、余额、任务和订单，处理需要人工介入的账户。</template>
       <template #actions>
         <S2VBadge tone="success"><UserRoundCheck class="h-3 w-3" />{{ activeCount }} 个正常账户</S2VBadge>

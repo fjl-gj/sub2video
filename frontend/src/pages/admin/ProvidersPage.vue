@@ -17,7 +17,7 @@ const metrics = computed(() => [
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Providers" title="模型与供应商">
+    <S2VPageHeader title="模型与供应商">
       <template #description>供应商凭据只在管理端使用，为工作流提供健康的生成能力。</template>
       <template #actions>
         <S2VButton variant="primary" @click="app.checkProvider('备用供应商')">

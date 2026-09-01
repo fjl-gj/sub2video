@@ -1,5 +1,4 @@
 export type TaskStatus = '排队中' | '生成中' | '已完成' | '失败'
-export type AssetType = '图片' | '视频' | '音频'
 export type TicketStatus = '待处理' | '处理中' | '已解决'
 
 export interface Task {
@@ -13,18 +12,6 @@ export interface Task {
   cost: number
   time: string
   thumb: string
-}
-
-export interface Asset {
-  id: string
-  name: string
-  type: AssetType
-  size: string
-  folder: string
-  color: string
-  accent: string
-  updated: string
-  sourceTask?: string
 }
 
 export interface LedgerEntry {
@@ -44,13 +31,47 @@ export interface ClientTicket {
   task: string
 }
 
-export const sceneTemplates = [
-  { id: 'scene-1', title: '雨夜霓虹漫步', category: '电影感', description: '潮湿街巷、霓虹反射和稳定跟拍，适合人物氛围片。', color: '1e293b', accent: '818cf8' },
-  { id: 'scene-2', title: '晨雾山谷航拍', category: '自然', description: '从云层穿行到山谷全景，强调空间和纵深。', color: '164e63', accent: '67e8f9' },
-  { id: 'scene-3', title: '产品桌面特写', category: '商业', description: '柔和侧光与微距移动，适合新品展示和电商素材。', color: '3f3f46', accent: 'fbbf24' },
-  { id: 'scene-4', title: '城市驶过窗边', category: '生活', description: '车窗视角的城市流动感，节奏轻快自然。', color: '334155', accent: 'fda4af' },
-  { id: 'scene-5', title: '纸上故事展开', category: '叙事', description: '手绘纸张逐帧展开，适合品牌故事和知识内容。', color: '713f12', accent: 'fde68a' },
-  { id: 'scene-6', title: '静物光影实验', category: '艺术', description: '光影在静物表面缓慢移动，突出材质和细节。', color: '312e81', accent: 'c4b5fd' },
+export type SceneAspectRatio = '16:9' | '9:16' | '1:1'
+
+export interface SceneTemplate {
+  id: string
+  title: string
+  category: string
+  description: string
+  color: string
+  accent: string
+  aspectRatio: SceneAspectRatio
+  duration: string
+  resolution: string
+  poster: string
+  preview: string
+}
+
+const scenePreviewSamples = [
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/beach.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/fruits.mp4',
+] as const
+
+export const sceneTemplates: SceneTemplate[] = [
+  { id: 'scene-1', title: '雨夜霓虹漫步', category: '电影感', description: '潮湿街巷、霓虹反射和稳定跟拍，适合人物氛围片。', color: '1e293b', accent: '818cf8', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[0] },
+  { id: 'scene-2', title: '晨雾山谷航拍', category: '自然', description: '从云层穿行到山谷全景，强调空间和纵深。', color: '164e63', accent: '67e8f9', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[1] },
+  { id: 'scene-3', title: '产品桌面特写', category: '商业', description: '柔和侧光与微距移动，适合新品展示和电商素材。', color: '3f3f46', accent: 'fbbf24', aspectRatio: '1:1', duration: '10 秒', resolution: '1080P', poster: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=720&h=720&q=80', preview: scenePreviewSamples[2] },
+  { id: 'scene-4', title: '城市驶过窗边', category: '生活', description: '车窗视角的城市流动感，节奏轻快自然。', color: '334155', accent: 'fda4af', aspectRatio: '9:16', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=540&h=960&q=80', preview: scenePreviewSamples[0] },
+  { id: 'scene-5', title: '纸上故事展开', category: '叙事', description: '手绘纸张逐帧展开，适合品牌故事和知识内容。', color: '713f12', accent: 'fde68a', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[1] },
+  { id: 'scene-6', title: '静物光影实验', category: '艺术', description: '光影在静物表面缓慢移动，突出材质和细节。', color: '312e81', accent: 'c4b5fd', aspectRatio: '1:1', duration: '10 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=720&h=720&q=80', preview: scenePreviewSamples[2] },
+  { id: 'scene-7', title: '赛博街区穿行', category: '电影感', description: '低角度跟拍与霓虹灯带，强调未来都市质感。', color: '0f172a', accent: '22d3ee', aspectRatio: '9:16', duration: '15 秒', resolution: '1080P', poster: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=540&h=960&q=80', preview: scenePreviewSamples[0] },
+  { id: 'scene-8', title: '海岸日落延时', category: '自然', description: '长镜头海面与天际线渐变，适合治愈系内容。', color: '0c4a6e', accent: 'fdba74', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[1] },
+  { id: 'scene-9', title: '美妆质地微距', category: '商业', description: '膏体拉丝与高光反射，突出产品质感。', color: '44403c', accent: 'f9a8d4', aspectRatio: '9:16', duration: '10 秒', resolution: '1080P', poster: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=540&h=960&q=80', preview: scenePreviewSamples[2] },
+  { id: 'scene-10', title: '咖啡馆窗边', category: '生活', description: '人物侧脸与窗外街景虚化，日常感叙事。', color: '57534e', accent: 'fcd34d', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[0] },
+  { id: 'scene-11', title: '品牌宣言快切', category: '叙事', description: '大字标题与节奏剪辑，适合活动开场。', color: '1e1b4b', accent: 'a78bfa', aspectRatio: '9:16', duration: '10 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=540&h=960&q=80', preview: scenePreviewSamples[1] },
+  { id: 'scene-12', title: '流体色彩实验', category: '艺术', description: '颜料在水中扩散，抽象视觉与慢节奏。', color: '4c1d95', accent: 'e879f9', aspectRatio: '16:9', duration: '10 秒', resolution: '1080P', poster: 'https://images.unsplash.com/photo-1541701494587-46f7f5a4df22?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[2] },
+  { id: 'scene-13', title: '复古胶片人像', category: '电影感', description: '颗粒感与暖色偏移，适合情绪短片。', color: '292524', accent: 'fb923c', aspectRatio: '9:16', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=540&h=960&q=80', preview: scenePreviewSamples[0] },
+  { id: 'scene-14', title: '森林小径漫步', category: '自然', description: '第一人称穿行林间，光影斑驳。', color: '14532d', accent: '86efac', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[1] },
+  { id: 'scene-15', title: '手表细节旋转', category: '商业', description: '金属表圈反光与慢速旋转展示。', color: '27272a', accent: 'fde047', aspectRatio: '1:1', duration: '10 秒', resolution: '1080P', poster: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=720&h=720&q=80', preview: scenePreviewSamples[2] },
+  { id: 'scene-16', title: '地铁通勤一瞥', category: '生活', description: '车厢内人物与窗外掠影，城市节奏。', color: '1f2937', accent: '93c5fd', aspectRatio: '9:16', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=540&h=960&q=80', preview: scenePreviewSamples[0] },
+  { id: 'scene-17', title: '历史档案翻阅', category: '叙事', description: '旧照片与文字叠化，纪录片式开场。', color: '422006', accent: 'fbbf24', aspectRatio: '16:9', duration: '15 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1457369804613-52ec61db2eba?auto=format&fit=crop&w=960&h=540&q=80', preview: scenePreviewSamples[1] },
+  { id: 'scene-18', title: '几何构图实验', category: '艺术', description: '建筑线条与对称构图，极简视觉。', color: '18181b', accent: '38bdf8', aspectRatio: '1:1', duration: '10 秒', resolution: '768P', poster: 'https://images.unsplash.com/photo-1487958449943-2429d8be8625?auto=format&fit=crop&w=720&h=720&q=80', preview: scenePreviewSamples[2] },
 ]
 
 export const initialTasks: Task[] = [
@@ -58,15 +79,6 @@ export const initialTasks: Task[] = [
   { id: 'tsk_88918', title: '产品桌面柔光展示', workflow: 'H3 图生视频', status: '已完成', progress: 100, duration: '15 秒', resolution: '768P', cost: 4.5, time: '今天 13:42', thumb: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=480&q=80' },
   { id: 'tsk_88840', title: '晨雾山谷全景', workflow: 'H3 图生视频', status: '失败', progress: 0, duration: '15 秒', resolution: '768P', cost: 4.5, time: '昨天 18:09', thumb: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=480&q=80' },
   { id: 'tsk_88812', title: '咖啡店窗边人物', workflow: 'H3 图生视频', status: '已完成', progress: 100, duration: '15 秒', resolution: '768P', cost: 4.5, time: '昨天 15:31', thumb: 'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=480&q=80' },
-]
-
-export const assets: Asset[] = [
-  { id: 'ast-1', name: '雨夜街景参考', type: '图片', size: '2.4 MB', folder: '场景', color: '1e293b', accent: '818cf8', updated: '今天 14:18' },
-  { id: 'ast-2', name: '产品主视觉', type: '图片', size: '1.8 MB', folder: '产品', color: '3f3f46', accent: 'fbbf24', updated: '今天 13:36' },
-  { id: 'ast-3', name: '人物侧脸素材', type: '图片', size: '3.1 MB', folder: '人物', color: '7f1d1d', accent: 'fca5a5', updated: '昨天 19:22' },
-  { id: 'ast-4', name: '山谷航拍片段', type: '视频', size: '18.6 MB', folder: '视频', color: '164e63', accent: '67e8f9', updated: '昨天 17:04' },
-  { id: 'ast-5', name: '品牌 Logo', type: '图片', size: '84 KB', folder: '品牌', color: '312e81', accent: 'c4b5fd', updated: '8 月 28 日' },
-  { id: 'ast-6', name: '咖啡店环境音', type: '音频', size: '4.2 MB', folder: '音频', color: '713f12', accent: 'fde68a', updated: '8 月 27 日' },
 ]
 
 export const transactions: LedgerEntry[] = [

@@ -28,7 +28,7 @@ function confirmRefund() {
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Tickets" title="工单中心">
+    <S2VPageHeader title="工单中心">
       <template #description>处理退款、生成异常和售前咨询，支持关联任务后再执行操作。</template>
       <template #actions>
         <S2VBadge tone="warning"><CircleAlert class="h-3 w-3" />{{ openCount }} 条待处理</S2VBadge>

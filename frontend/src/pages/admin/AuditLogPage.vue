@@ -11,7 +11,7 @@ const app = useAppStore()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Audit" title="操作日志">
+    <S2VPageHeader title="操作日志">
       <template #description>记录管理员对任务、定价、工作流和用户做过的关键操作。</template>
       <template #actions>
         <S2VBadge tone="primary"><ShieldCheck class="h-3 w-3" />审计留痕</S2VBadge>

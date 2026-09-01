@@ -11,7 +11,7 @@ const app = useAppStore()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="System" title="系统设置">
+    <S2VPageHeader title="系统设置">
       <template #description>管理存储留存、通知和系统级开关，不包含供应商业务配置。</template>
       <template #actions>
         <S2VButton variant="primary" @click="app.saveSettings()"><Save class="h-3.5 w-3.5" />保存设置</S2VButton>

@@ -30,7 +30,7 @@ function confirmStop() {
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Task Hub" title="任务中心">
+    <S2VPageHeader title="任务中心">
       <template #description>查看全站生成任务，处理卡住、失败和退款任务。</template>
       <template #actions>
         <S2VBadge tone="primary">{{ app.adminTasks.length }} 条任务</S2VBadge>

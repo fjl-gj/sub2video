@@ -15,7 +15,7 @@ const list = computed(() => app.transactions.filter((row) => !search.value || `$
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Ledger" title="订单管理">
+    <S2VPageHeader title="订单管理">
       <template #description>充值、任务扣费和退款统一留痕，方便按用户和订单追溯。</template>
       <template #actions>
         <S2VIconButton label="导出订单" @click="app.notify('已生成订单导出文件（原型）')"><Download class="h-4 w-4" /></S2VIconButton>

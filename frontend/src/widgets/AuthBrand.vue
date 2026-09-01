@@ -1,13 +1,9 @@
 <script setup lang="ts">
-import { Film } from 'lucide-vue-next'
+import S2VLogo from '@/shared/ui/S2VLogo.vue'
 
-withDefaults(defineProps<{ size?: 'sm' | 'md' }>(), { size: 'md' })
+withDefaults(defineProps<{ size?: 'sm' | 'md' | 'lg'; variant?: 'wordmark' | 'compact' }>(), { size: 'md', variant: 'wordmark' })
 </script>
 
 <template>
-  <span
-    :class="['grid place-items-center rounded-control bg-s2v-primary text-white shadow-subtle', size === 'sm' ? 'h-9 w-9' : 'h-11 w-11']"
-  >
-    <Film :class="size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'" />
-  </span>
+  <S2VLogo :size="size" :variant="variant" />
 </template>

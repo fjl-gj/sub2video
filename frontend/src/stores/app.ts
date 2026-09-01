@@ -4,7 +4,6 @@ import {
   adminTasks as seedAdminTasks,
   adminTickets as seedAdminTickets,
   announcements as seedAnnouncements,
-  assets as seedAssets,
   auditLogs as seedAuditLogs,
   initialTasks,
   platformSettings as seedSettings,
@@ -16,12 +15,24 @@ import {
   transactions as seedTransactions,
   users as seedUsers,
   workflows as seedWorkflows,
-  type Asset,
   type ClientTicket,
   type LedgerEntry,
   type Task,
   type TicketStatus,
 } from '@/data/mock'
+import {
+  cloneFolders,
+  countProjectFiles,
+  createStandardFolders,
+  DEFAULT_PROJECT_ID,
+  DEFAULT_VIDEO_ALBUM,
+  findFileInProject,
+  flattenProject,
+  initialProjects,
+  resolveNode,
+  type FsItem,
+  type WorkProject,
+} from '@/data/projects'
 
 export type AdminTask = (typeof seedAdminTasks)[number]
 export type AdminTicket = (typeof seedAdminTickets)[number]
@@ -35,7 +46,11 @@ export const useAppStore = defineStore('app', () => {
   const adminTasks = ref<AdminTask[]>(seedAdminTasks.map((task) => ({ ...task })))
   const adminTickets = ref<AdminTicket[]>(seedAdminTickets.map((ticket) => ({ ...ticket })))
   const tickets = ref<ClientTicket[]>(seedTickets.map((ticket) => ({ ...ticket })))
-  const assets = ref<Asset[]>(seedAssets.map((item) => ({ ...item })))
+  const projects = ref<WorkProject[]>(initialProjects.map((project) => ({
+    ...project,
+    folders: cloneFolders(project.folders),
+  })))
+  const currentProjectId = ref(DEFAULT_PROJECT_ID)
   const transactions = ref<LedgerEntry[]>(seedTransactions.map((item) => ({ ...item })))
   const users = ref<UserAccount[]>(seedUsers.map((item) => ({ ...item })))
   const usedCodes = ref<string[]>([])
@@ -58,17 +73,40 @@ export const useAppStore = defineStore('app', () => {
   const settings = ref({ ...seedSettings })
   const auditLogs = ref(seedAuditLogs.map((item) => ({ ...item })))
   const openTicketCount = computed(() => adminTickets.value.filter((item) => item.status !== '已解决').length)
+  const openClientTicketCount = computed(() => tickets.value.filter((item) => item.status !== '已解决').length)
   const toast = ref('')
   let toastTimer: ReturnType<typeof setTimeout> | undefined
-  let assetSeq = seedAssets.length + 1
+  let assetSeq = 7
+  let projectSeq = 2
   let ticketSeq = 1030
   let ledgerSeq = 90200
 
   const activeTasks = computed(() => tasks.value.filter((task) => task.status === '生成中' || task.status === '排队中'))
   const completedTasks = computed(() => tasks.value.filter((task) => task.status === '已完成'))
-  const storageUsed = computed(() => Number((1.6 + assets.value.length * 0.05).toFixed(1)))
+  const activeProjects = computed(() => projects.value.filter((project) => !project.trashed))
+  const trashedProjects = computed(() => projects.value.filter((project) => project.trashed))
+  const currentProject = computed(() => activeProjects.value.find((project) => project.id === currentProjectId.value) ?? activeProjects.value[0] ?? null)
+  const assets = computed(() => (currentProject.value ? flattenProject(currentProject.value) : []))
+  const fileCount = computed(() => activeProjects.value.reduce((sum, project) => sum + countProjectFiles(project), 0))
+  const storageUsed = computed(() => Number((1.6 + fileCount.value * 0.05).toFixed(1)))
   const storageQuota = 5
   const storagePercent = computed(() => Math.min(100, Math.round((storageUsed.value / storageQuota) * 100)))
+
+  function selectProject(id: string) {
+    const project = activeProjects.value.find((item) => item.id === id)
+    if (!project) return false
+    currentProjectId.value = id
+    return true
+  }
+
+  function ensureCurrentProject() {
+    if (currentProject.value) {
+      currentProjectId.value = currentProject.value.id
+      return currentProject.value
+    }
+    currentProjectId.value = ''
+    return null
+  }
 
   function notify(message: string) {
     toast.value = message
@@ -105,23 +143,97 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function isWorkSaved(taskId: string) {
-    return assets.value.some((item) => item.sourceTask === taskId)
+    return projects.value.some((project) => flattenProject(project).some((item) => item.sourceTask === taskId))
   }
 
-  function createTask(title: string, cost: number) {
+  function createProject(name: string) {
+    const trimmed = name.trim() || `未命名作品 ${projectSeq}`
+    const project: WorkProject = {
+      id: `prj_${projectSeq++}`,
+      name: trimmed,
+      desc: '按标准工程模板创建',
+      createdAt: '刚刚',
+      trashed: false,
+      folders: cloneFolders(createStandardFolders()),
+    }
+    projects.value.unshift(project)
+    currentProjectId.value = project.id
+    notify(`已按标准模板创建「${project.name}」`)
+    return project.id
+  }
+
+  function trashProject(id: string) {
+    if (id === DEFAULT_PROJECT_ID) {
+      notify('默认作品不能移入回收站')
+      return false
+    }
+    const project = projects.value.find((item) => item.id === id)
+    if (!project || project.trashed) {
+      notify('该作品无法移入回收站')
+      return false
+    }
+    project.trashed = true
+    project.trashedAt = '刚刚'
+    if (currentProjectId.value === id) ensureCurrentProject()
+    notify(`「${project.name}」已移入回收站`)
+    return true
+  }
+
+  function restoreProject(id: string) {
+    const project = projects.value.find((item) => item.id === id)
+    if (!project || !project.trashed) {
+      notify('该作品不在回收站')
+      return false
+    }
+    project.trashed = false
+    project.trashedAt = undefined
+    if (!currentProjectId.value) currentProjectId.value = project.id
+    notify(`已恢复「${project.name}」`)
+    return true
+  }
+
+  function purgeProject(id: string) {
+    const index = projects.value.findIndex((item) => item.id === id && item.trashed)
+    if (index < 0) {
+      notify('只能从回收站彻底删除作品')
+      return false
+    }
+    const project = projects.value[index]
+    if (!project) return false
+    projects.value.splice(index, 1)
+    if (currentProjectId.value === id) ensureCurrentProject()
+    notify(`已彻底删除「${project.name}」`)
+    return true
+  }
+
+  function targetFolderForSave(project: WorkProject) {
+    const video = project.folders['视频']
+    return video?.folders[DEFAULT_VIDEO_ALBUM] ?? video
+  }
+
+  function createTask(
+    cost: number,
+    options?: {
+      title?: string
+      workflow?: string
+      durationSec?: number
+      aspectRatio?: string
+    },
+  ) {
     if (balance.value < cost) {
       notify('钱包余额不足，请先充值')
       return false
     }
+    const durationSec = options?.durationSec ?? 15
     balance.value -= cost
     syncCreatorBalance()
     const task: Task = {
       id: `tsk_${89000 + tasks.value.length}`,
-      title: title || '未命名创作',
-      workflow: 'H3 图生视频',
+      title: options?.title || '未命名创作',
+      workflow: options?.workflow || 'H3 图生视频',
       status: '排队中',
       progress: 0,
-      duration: '15 秒',
+      duration: `${durationSec} 秒`,
       resolution: '768P',
       cost,
       time: '刚刚',
@@ -203,51 +315,69 @@ export const useAppStore = defineStore('app', () => {
   function saveWorkToAsset(id: string) {
     const task = tasks.value.find((item) => item.id === id)
     if (!task || task.status !== '已完成') {
-      notify('只能保存已完成的作品')
+      notify('只能保存已完成的任务结果')
       return false
     }
     if (isWorkSaved(id)) {
-      notify('该作品已经在资产库中')
+      notify('该结果已经保存在作品中')
       return false
     }
-    assets.value.unshift({
+    const project = ensureCurrentProject()
+    if (!project) {
+      notify('请先新建或恢复一个作品')
+      return false
+    }
+    const folder = targetFolderForSave(project)
+    if (!folder) {
+      notify('当前作品缺少视频目录')
+      return false
+    }
+    folder.items.unshift({
       id: `ast-${assetSeq++}`,
-      name: task.title,
-      type: '视频',
+      name: `${task.title}.mp4`,
+      type: 'video',
       size: '12.0 MB',
-      folder: '视频',
-      color: '164e63',
-      accent: '67e8f9',
-      updated: '刚刚',
+      time: '刚刚',
+      meta: `${task.resolution} · ${task.duration}`,
       sourceTask: task.id,
     })
-    notify(`已将「${task.title}」保存到资产`)
+    notify(`已将「${task.title}」保存到「${project.name} / 视频」`)
     return true
   }
 
-  function uploadAsset() {
-    assets.value.unshift({
+  function uploadAsset(projectId?: string, path: string[] = []) {
+    const project = projects.value.find((item) => item.id === (projectId || currentProject.value?.id) && !item.trashed)
+    if (!project) {
+      notify('请先进入一个作品再上传')
+      return false
+    }
+    const targetPath = path.length ? path : ['资产', '素材']
+    const node = resolveNode(project, targetPath)
+    if (!node.folder) {
+      notify('当前目录不可上传')
+      return false
+    }
+    const item: FsItem = {
       id: `ast-${assetSeq++}`,
-      name: `本地上传素材 ${assetSeq - 1}`,
-      type: '图片',
+      name: `本地上传素材 ${assetSeq - 1}.png`,
+      type: 'image',
       size: '1.2 MB',
-      folder: '场景',
-      color: '1e293b',
-      accent: '818cf8',
-      updated: '刚刚',
-    })
-    notify('已添加本地素材（原型）')
+      time: '刚刚',
+    }
+    node.folder.items.unshift(item)
+    notify(`已上传到「${targetPath.join(' / ')}」`)
     return true
   }
 
   function removeAsset(id: string) {
-    const index = assets.value.findIndex((item) => item.id === id)
-    if (index < 0) return false
-    const item = assets.value[index]
-    if (!item) return false
-    assets.value.splice(index, 1)
-    notify(`已从资产库移除「${item.name}」`)
-    return true
+    for (const project of projects.value) {
+      const found = findFileInProject(project, id)
+      if (!found) continue
+      found.folder.items.splice(found.index, 1)
+      notify(`已移除「${found.item.name}」`)
+      return true
+    }
+    return false
   }
 
   function createTicket(title: string, category: string, task = '-') {
@@ -443,6 +573,12 @@ export const useAppStore = defineStore('app', () => {
     adminTasks,
     adminTickets,
     tickets,
+    projects,
+    currentProjectId,
+    currentProject,
+    activeProjects,
+    trashedProjects,
+    fileCount,
     assets,
     transactions,
     users,
@@ -465,6 +601,11 @@ export const useAppStore = defineStore('app', () => {
     isWorkSaved,
     uploadAsset,
     removeAsset,
+    createProject,
+    selectProject,
+    trashProject,
+    restoreProject,
+    purgeProject,
     createTicket,
     approveTicketRefund,
     resolveTicket,
@@ -479,6 +620,7 @@ export const useAppStore = defineStore('app', () => {
     settings,
     auditLogs,
     openTicketCount,
+    openClientTicketCount,
     toggleWorkflow,
     createWorkflow,
     checkProvider,

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ChevronRight, CircleHelp, MessageSquarePlus, Send, Ticket } from 'lucide-vue-next'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { PAGE_SIZE, slicePage } from '@/shared/lib/paginate'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VPagination from '@/shared/ui/S2VPagination.vue'
 import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
 import S2VTextarea from '@/shared/ui/S2VTextarea.vue'
 
@@ -16,7 +18,9 @@ const title = ref('')
 const detail = ref('')
 const taskId = ref('')
 const category = ref('售后支持')
+const page = ref(1)
 const categories = ['售后支持', '生成异常', '售前咨询', '充值问题']
+const paged = computed(() => slicePage(app.tickets, page.value, PAGE_SIZE))
 
 function submit() {
   if (!title.value.trim()) return
@@ -25,12 +29,13 @@ function submit() {
   detail.value = ''
   taskId.value = ''
   showForm.value = false
+  page.value = 1
 }
 </script>
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Support" title="帮助与工单">
+    <S2VPageHeader title="帮助与工单">
       <template #description>遇到生成异常、退款或售前问题，可以关联任务和订单提交给我们。</template>
       <template #actions>
         <S2VButton variant="primary" @click="showForm = !showForm">
@@ -60,15 +65,8 @@ function submit() {
     </S2VCard>
 
     <S2VCard>
-      <div class="s2v-panel-header">
-        <div>
-          <h2 class="s2v-section-title">我的工单</h2>
-          <p class="mt-1 text-xs text-s2v-muted">{{ app.tickets.length }} 条历史记录</p>
-        </div>
-        <Ticket class="h-4 w-4 text-s2v-muted" />
-      </div>
       <div class="divide-y divide-s2v-line/70 px-4">
-        <button v-for="item in app.tickets" :key="item.id" class="flex w-full items-center gap-3 py-4 text-left" type="button" @click="app.notify(`${item.id} · ${item.task}`)">
+        <button v-for="item in paged" :key="item.id" class="flex w-full items-center gap-3 py-4 text-left" type="button" @click="app.notify(`${item.id} · ${item.task}`)">
           <span class="s2v-icon-well"><Ticket class="h-4 w-4" /></span>
           <span class="min-w-0 flex-1">
             <strong class="block truncate text-xs">{{ item.title }}</strong>
@@ -77,6 +75,9 @@ function submit() {
           <S2VBadge :tone="item.status === '已解决' ? 'success' : item.status === '待处理' ? 'warning' : 'primary'">{{ item.status }}</S2VBadge>
           <ChevronRight class="h-4 w-4 text-s2v-muted" />
         </button>
+      </div>
+      <div v-if="app.tickets.length" class="border-t border-s2v-line px-4 py-3">
+        <S2VPagination v-model="page" :total="app.tickets.length" :page-size="PAGE_SIZE" />
       </div>
     </S2VCard>
   </section>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { LayoutDashboard, PanelsTopLeft, Sparkles, UserRound, WalletCards } from 'lucide-vue-next'
+import { LayoutDashboard, ListChecks, Sparkles, UserRound, WalletCards } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const items = [
   { label: '概览', to: '/app/overview', icon: LayoutDashboard },
   { label: '创作', to: '/app/create', icon: Sparkles },
-  { label: '作品', to: '/app/works', icon: PanelsTopLeft },
+  { label: '任务', to: '/app/works', icon: ListChecks },
   { label: '钱包', to: '/app/wallet', icon: WalletCards },
   { label: '资料', to: '/app/profile', icon: UserRound },
 ]

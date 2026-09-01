@@ -9,7 +9,7 @@ surface in `docs/原型设计/sub2video-client.html` or
 `docs/原型设计/sub2video-admin.html`.
 
 - Visual chrome follows those HTML files. Menus and object model follow
-  `docs/产品方案总览.md`. Do not copy HTML sidebar structure into Vue.
+  `docs/产品方案总览.md`. Do not copy HTML-only names (创作台 / 作品集) into Vue.
 - Use `shared/ui` components before writing new markup.
 - Pages may compose layout utilities, but may not define visual decisions.
 - Do not use arbitrary Tailwind values or raw color literals in business code.

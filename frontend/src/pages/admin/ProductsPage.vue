@@ -12,7 +12,7 @@ const app = useAppStore()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Catalog" title="充值商品">
+    <S2VPageHeader title="充值商品">
       <template #description>配置用户可以买到的余额档位，不在这里直接修改用户余额。</template>
       <template #actions>
         <S2VButton variant="primary" @click="app.addProduct()"><Plus class="h-3.5 w-3.5" />新增商品</S2VButton>

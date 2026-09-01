@@ -11,7 +11,7 @@ const app = useAppStore()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Notice" title="公告">
+    <S2VPageHeader title="公告">
       <template #description>向创作者同步价格、服务状态和规则变更。</template>
       <template #actions>
         <S2VButton variant="primary" @click="app.createAnnouncement()"><Plus class="h-3.5 w-3.5" />新建公告</S2VButton>

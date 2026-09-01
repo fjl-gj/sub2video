@@ -15,7 +15,7 @@ const app = useAppStore()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Account" title="个人资料">
+    <S2VPageHeader title="个人资料">
       <template #description>管理账号信息、登录安全和设备，不占用创作主导航。</template>
       <template #actions>
         <S2VButton variant="ghost" @click="router.push('/auth/login')"><LogOut class="h-3.5 w-3.5" />退出登录</S2VButton>

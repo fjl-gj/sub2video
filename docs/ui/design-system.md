@@ -10,11 +10,11 @@ Two sources, two jobs. Do not mix them.
 | Concern | Source of truth | Do not |
 | --- | --- | --- |
 | Color, type, radius, shadow, density, chrome | `docs/原型设计/sub2video-client.html` and `docs/原型设计/sub2video-admin.html` | Invent a third visual language |
-| Menus, routes, works/assets object model | `docs/产品方案总览.md` | Copy HTML sidebar names (广场 / 创作台 / 作品集) into Vue |
+| Menus, routes, works/assets object model | `docs/产品方案总览.md` | Copy HTML-only names (创作台 / 作品集) into Vue |
 
 The HTML files are visual baselines only. Production pages are Vue. Keep product
-IA (创作 / 创意园 / 作品 / 资产) even while matching HTML chrome, type, and
-component recipes.
+IA (创作 / 广场 / 任务 / 资产 / 回收站) even while matching HTML chrome, type,
+and component recipes.
 
 ## AI change checklist
 
@@ -32,7 +32,7 @@ name the HTML baseline in the review.
 
 ## Product Surfaces
 
-- Client: creator workflow, assets, works, wallet, support, and profile.
+- Client: creator workflow, plaza, tasks, project files, trash, wallet, support, and profile.
 - Admin: workflow supply, providers, pricing, tasks, users, support, and system
   operations.
 - Client and admin use separate layouts and route namespaces. They share
@@ -45,28 +45,34 @@ Compact frosted white top bar (`h-14`, `bg-white/95`, `backdrop-blur-md`), white
 micro-shadows, dense information surfaces.
 
 Client emphasis is indigo (`#4f46e5`). Admin emphasis is emerald (`#059669`).
-Health, online, and success states stay green on both surfaces. Do not paint the
-GPU cluster pill with `--s2v-primary` on the client.
+Health, online, and success states stay green on both surfaces. Do not show
+supplier, GPU, or cluster status in client or admin top-bar chrome. Supply
+metrics belong on admin monitoring pages, not the global header.
 
 ### Typography
 
-Self-host Inter and JetBrains Mono under `frontend/public/fonts` with
-`font-display: swap`. Load them with `@font-face` and Latin `unicode-range` so
-Latin letters and numerals never fall through to a CJK face.
+UI reading type is system-native so Chinese is not painted with Inter. Inter is
+only for Latin brand marks (`.s2v-latin`). Money, IDs, duration, resolution,
+GPU counts, and nav trailing tags use self-hosted JetBrains Mono (`.s2v-mono`).
 
 ```css
-/* Latin + numerals only. Do not put Microsoft YaHei on this family. */
-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-  sans-serif;
+/* Client: CJK-first, warmer workspace. */
+font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+  "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif;
 
-/* CJK runs use the next face per glyph, not the whole line. */
-font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+/* Admin: Windows UI-first, closer to ops consoles. */
+font-family: "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
+  "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+
+/* Brand Latin only. */
+font-family: Inter, "Segoe UI Variable Text", "Segoe UI", sans-serif;
 
 font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 ```
 
-Money, IDs, duration, resolution, GPU counts, and nav trailing tags use
-`font-mono`. Do not declare `font-mono` without the Mono `@font-face` files.
+Self-host Inter and JetBrains Mono under `frontend/public/fonts` with
+`font-display: swap` and Latin `unicode-range`. Do not paint the whole UI with
+Inter. Body line-height is **1.6**; page titles use weight **600**, not 700.
 
 ### Token values (from the HTML, measured)
 
@@ -82,7 +88,7 @@ Money, IDs, duration, resolution, GPU counts, and nav trailing tags use
 | Card radius | **16px** (`rounded-2xl`) |
 | Control radius | **8px** nav item / chips; **12px** buttons (`rounded-xl`) |
 | Nav item | height **36px**, icon slot **20px**, icon **16px**, label **13px** |
-| Page title | **20px** / `font-bold` |
+| Page title | **20px** / `font-semibold` (600) |
 | Content | `max-w-6xl` (1152px), main padding 32px |
 | Micro-shadow | `0 1px 3px rgba(0,0,0,0.04), 0 1px 2px -1px rgba(0,0,0,0.02)` |
 | Top bar | 56px, frosted white, no solid slab |
@@ -100,8 +106,9 @@ how those values are used. Pages only compose components and layout.
 | Brand colors, type, radii, shadows | `shared/styles/tokens.css` and `tailwind.config.ts` | primary, canvas, card radius |
 | Button states and sizes | `shared/ui/S2VButton.vue` | primary, danger, loading |
 | Card density and emphasis | `shared/ui/S2VCard.vue` | default, metric, muted, highlight |
-| Nav item slot and badges | `shared/ui/S2VNavItem.vue` | active, trailing mono tag |
-| Page header chrome | `shared/ui/S2VPageHeader.vue` | badge + 20px title + rule |
+| Nav item slot and badges | `shared/ui/S2VNavItem.vue` | active; live counts only |
+| Page header chrome | `shared/ui/S2VPageHeader.vue` | Chinese title + optional description; no English product tags |
+| List pagination | `shared/ui/S2VPagination.vue` | page + total; used by task, ticket, and ledger lists |
 | Dialog / toast | `shared/ui/S2VDialog.vue`, `S2VToast.vue` | confirm, success, danger |
 | Page grid and responsive composition | `widgets/` and `pages/` | columns, gaps, max width |
 | Product-specific special treatment | `features/` | upload card, task refund action |

@@ -20,7 +20,7 @@ function save() {
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Pricing" title="定价规则">
+    <S2VPageHeader title="定价规则">
       <template #description>成本价和销售价分开维护，任务创建时会固化价格快照。</template>
       <template #actions>
         <S2VButton @click="app.notify(`当前 ${app.pricingRules.length} 条规则`)"><History class="h-3.5 w-3.5" />版本记录</S2VButton>

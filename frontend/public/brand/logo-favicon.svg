@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="Sub2Video">
+  <defs>
+    <linearGradient id="s2v-brand" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="9" fill="url(#s2v-brand)"/>
+  <text x="16" y="21.5" text-anchor="middle" fill="#fff" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="800" letter-spacing="-0.04em">S‚</text>
+</svg>

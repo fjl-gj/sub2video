@@ -3,3 +3,5 @@ dist/
 *.tsbuildinfo
 test-results/
 .tmp_playwright_report/
+src/**/*.js
+src/**/*.vue.js

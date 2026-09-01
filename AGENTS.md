@@ -12,7 +12,8 @@ AI-assisted changes.
 
 Visual chrome follows `docs/原型设计/sub2video-client.html` and
 `docs/原型设计/sub2video-admin.html`. Menus, routes, and the works/assets model
-follow `docs/产品方案总览.md`. Do not copy HTML sidebar names into Vue.
+follow `docs/产品方案总览.md`. Do not copy HTML-only sidebar names (创作台 /
+作品集) into Vue.
 
 Recipe-level visual alignment with those HTML files must update Playwright
 snapshots in the same change. Do not update snapshots only to hide drift.

@@ -2,11 +2,12 @@ import { expect, test } from '@playwright/test'
 
 const cases = [
   { name: 'client-overview', path: '/app/overview', heading: '欢迎回来，李维工作室' },
-  { name: 'client-create', path: '/app/create', heading: '创建视频生成任务' },
-  { name: 'client-garden', path: '/app/garden', heading: '从灵感开始' },
-  { name: 'client-works', path: '/app/works', heading: '我的作品' },
-  { name: 'client-assets', path: '/app/assets', heading: '资产库' },
-  { name: 'client-wallet', path: '/app/wallet', heading: 'RMB 钱包中心' },
+  { name: 'client-create', path: '/app/create', heading: '创作' },
+  { name: 'client-garden', path: '/app/garden', heading: '广场' },
+  { name: 'client-works', path: '/app/works', heading: '任务' },
+  { name: 'client-assets', path: '/app/assets', heading: '资产' },
+  { name: 'client-trash', path: '/app/trash', heading: '回收站' },
+  { name: 'client-wallet', path: '/app/wallet', heading: '钱包' },
   { name: 'client-tickets', path: '/app/tickets', heading: '帮助与工单' },
   { name: 'client-profile', path: '/app/profile', heading: '个人资料' },
   { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘' },

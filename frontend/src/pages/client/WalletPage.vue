@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { ArrowDownLeft, ArrowUpRight, Check, Coins, CreditCard, Gift, History } from 'lucide-vue-next'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { rechargeProducts } from '@/data/mock'
+import { PAGE_SIZE, slicePage } from '@/shared/lib/paginate'
 import { useAppStore } from '@/stores/app'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VChoice from '@/shared/ui/S2VChoice.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VPagination from '@/shared/ui/S2VPagination.vue'
 
 const router = useRouter()
 const app = useAppStore()
 const selected = ref(rechargeProducts[1].id)
 const code = ref('')
+const page = ref(1)
+const pagedTransactions = computed(() => slicePage(app.transactions, page.value, PAGE_SIZE))
 
 function recharge() {
   const product = rechargeProducts.find((item) => item.id === selected.value)
@@ -26,8 +30,8 @@ function recharge() {
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader title="RMB 钱包中心">
-      <template #description>支持 RMB 在线充值、余额实时抵扣、生成预扣与账本流水</template>
+    <S2VPageHeader title="钱包">
+      <template #description>充值、兑换和余额流水。</template>
       <template #actions>
         <div class="text-right">
           <span class="text-xs text-s2v-muted">可用余额:</span>
@@ -82,7 +86,7 @@ function recharge() {
             <History class="h-4 w-4 text-s2v-muted" />
           </div>
           <div class="divide-y divide-s2v-line/70 px-4">
-            <div v-for="item in app.transactions" :key="item.id" class="flex items-center gap-3 py-3">
+            <div v-for="item in pagedTransactions" :key="item.id" class="flex items-center gap-3 py-3">
               <span :class="item.amount > 0 ? 's2v-icon-well s2v-icon-well-success' : 's2v-icon-well s2v-icon-well-muted'">
                 <ArrowDownLeft v-if="item.amount > 0" class="h-3.5 w-3.5" />
                 <ArrowUpRight v-else class="h-3.5 w-3.5" />
@@ -96,6 +100,9 @@ function recharge() {
                 <span class="mt-1 block text-[10px] text-s2v-muted">{{ item.time }}</span>
               </div>
             </div>
+          </div>
+          <div v-if="app.transactions.length" class="border-t border-s2v-line px-4 py-3">
+            <S2VPagination v-model="page" :total="app.transactions.length" :page-size="PAGE_SIZE" />
           </div>
           <div class="border-t border-s2v-line px-4 py-3">
             <button class="flex items-center gap-1 text-xs font-semibold text-s2v-primary" type="button" @click="app.notify('生成任务提交时预扣费用，失败或主动终止后原路退回钱包。')">了解余额扣费规则</button>

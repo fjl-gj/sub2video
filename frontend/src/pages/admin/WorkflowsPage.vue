@@ -11,7 +11,7 @@ const app = useAppStore()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Workflows" title="工作流">
+    <S2VPageHeader title="工作流">
       <template #description>定义客户端能看到的输入、参数、输出规格和上架状态。</template>
       <template #actions>
         <S2VButton variant="primary" @click="app.createWorkflow()">

@@ -10,19 +10,19 @@ const router = useRouter()
 const nodes = [
   { name: '上海张江 H100 集群', detail: '16 卡在线 · 负载 68% · 延迟 12ms' },
   { name: '北京亦庄 A100 集群', detail: '12 卡在线 · 负载 45% · 延迟 18ms' },
-  { name: '前端与多模态网关', detail: '4 节点 · 延迟 24ms · 吞吐 420 音轨/分钟' },
+  { name: '音频与多模态合成网关', detail: '4 节点 · 延迟 24ms · 吞吐 420 音轨/分' },
 ]
 const metrics = [
   { label: '全网今日产出视频', value: '1,842', unit: '支', note: '较昨日增长 +18.4%' },
-  { label: '今日充值实收流水 (GMV)', value: '¥ 18,920.00', note: '含活动赠送补贴成本 ¥1,420.00', tone: 'success' as const },
-  { label: '推理预扣净结算额 (Revenue)', value: '¥ 5,120.00', note: '全网异常退款率 0.42% (原路退还)', tone: 'primary' as const },
-  { label: 'GPU 算力集群总并发负载', value: '24 / 32', unit: '卡', note: '综合集群利用率 75.0% · 极佳' },
+  { label: '今日充值实收', value: '¥ 18,920.00', note: '含活动赠送补贴成本 ¥1,420.00', tone: 'success' as const },
+  { label: '任务结算额', value: '¥ 5,120.00', note: '全网异常退款率 0.42%', tone: 'primary' as const },
+  { label: 'GPU 算力集群总并发负载', value: '24 / 32', unit: '卡', note: '综合集群利用率 75.0% · 极佳', noteTone: 'success' as const },
 ]
 </script>
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="Dashboard · BI" kicker="全站吞吐、算力消耗与财务收益实时中枢" title="运行大盘">
+    <S2VPageHeader title="运行大盘">
       <template #actions>
         <S2VButton @click="router.push('/admin/monitoring')"><RefreshCw class="h-3.5 w-3.5" />实时刷新</S2VButton>
       </template>
@@ -32,9 +32,9 @@ const metrics = [
       <S2VCard v-for="item in metrics" :key="item.label" variant="metric">
         <div class="text-xs font-medium text-s2v-muted">{{ item.label }}</div>
         <strong :class="['s2v-mono mt-2 block text-2xl font-bold tabular-nums', item.tone === 'success' ? 'text-s2v-success' : item.tone === 'primary' ? 'text-s2v-primary' : 'text-s2v-ink']">
-          {{ item.value }} <span v-if="item.unit" class="text-xs font-normal text-s2v-muted">{{ item.unit }}</span>
+          {{ item.value }} <span v-if="item.unit" class="text-xs font-normal text-s2v-label">{{ item.unit }}</span>
         </strong>
-        <span class="mt-1 block text-[10px] text-s2v-muted">{{ item.note }}</span>
+        <span :class="['mt-1 block text-[10px]', item.noteTone === 'success' ? 'text-s2v-success' : 'text-s2v-label']">{{ item.note }}</span>
       </S2VCard>
     </div>
 

@@ -24,7 +24,7 @@ const trends = [
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader badge="GPU Clusters" kicker="监控全网智算节点显存占用与实时执行队列" title="运维监控">
+    <S2VPageHeader title="运维监控">
       <template #actions>
         <S2VButton @click="app.refreshMonitoring()"><RefreshCw class="h-3.5 w-3.5" />刷新数据</S2VButton>
       </template>
