@@ -68,10 +68,11 @@
 
 @layer base {
   * { box-sizing: border-box; }
-  html { min-width: 320px; background: rgb(var(--s2v-canvas) / 0.7); }
+  html { min-width: 320px; height: 100%; background: rgb(var(--s2v-canvas) / 0.7); }
   body {
     margin: 0;
     min-width: 320px;
+    height: 100%;
     color: rgb(var(--s2v-body));
     background: rgb(var(--s2v-canvas) / 0.7);
     font-family: 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
@@ -80,6 +81,9 @@
     font-optical-sizing: auto;
     text-rendering: optimizeLegibility;
   }
+  body:has(.s2v-shell) { height: 100dvh; overflow: hidden; }
+  #app:has(.s2v-shell),
+  #app:has(.s2v-shell) > [data-surface] { height: 100%; min-height: 0; }
   [data-surface='client'] {
     font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei', sans-serif;
   }
@@ -94,12 +98,55 @@
 }
 
 @layer components {
-  .s2v-shell { min-height: 100vh; display: grid; grid-template-rows: 56px minmax(0, 1fr); }
+  .s2v-shell {
+    display: grid;
+    grid-template-rows: 56px minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
   .s2v-main { min-width: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 0; }
-  .s2v-sidebar { position: sticky; top: 56px; display: flex; height: calc(100vh - 56px); min-height: 0; flex-direction: column; background: rgb(var(--s2v-surface)); border-right: 1px solid rgb(var(--s2v-line) / 0.8); }
-  .s2v-content { min-width: 0; overflow: auto; padding: 32px; background: rgb(var(--s2v-canvas) / 0.5); }
+  .s2v-sidebar {
+    position: sticky;
+    top: 56px;
+    display: flex;
+    height: calc(100dvh - 56px);
+    height: calc(100vh - 56px);
+    min-height: 0;
+    flex-direction: column;
+    background: rgb(var(--s2v-surface));
+    border-right: 1px solid rgb(var(--s2v-line) / 0.8);
+  }
+  .s2v-content {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 32px;
+    background: rgb(var(--s2v-canvas) / 0.5);
+  }
+  .s2v-content:has(.s2v-page-fill) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 20px 24px;
+  }
   .s2v-page { width: 100%; max-width: 72rem; margin: 0 auto; }
-  .s2v-page-studio { max-width: none; margin: 0; }
+  .s2v-page-fill {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+    overflow: hidden;
+  }
+  .s2v-page-fill .s2v-page-header {
+    flex-shrink: 0;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+  .s2v-page-fill .s2v-wb-card { flex: 1; min-height: 0; }
   .s2v-panel { border: 1px solid rgb(var(--s2v-line) / 0.8); border-radius: var(--s2v-radius); background: rgb(var(--s2v-surface)); box-shadow: var(--s2v-shadow); }
   .s2v-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid rgb(var(--s2v-line) / 0.58); }
   .s2v-panel-body { padding: 20px; }
@@ -356,7 +403,7 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    min-height: 560px;
+    min-height: 0;
     overflow: hidden;
     border: 1px solid rgb(var(--s2v-line) / 0.8);
     border-radius: 14px;
@@ -897,17 +944,18 @@
 
 @media (max-width: 1024px) {
   .s2v-content { padding: 24px; }
+  .s2v-content:has(.s2v-page-fill) { padding: 16px 20px; }
   .s2v-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .s2v-wb-body { grid-template-columns: 1fr; }
   .s2v-wb-stage-col { border-right: 0; border-bottom: 1px solid rgb(var(--s2v-line) / 0.8); }
-  .s2v-wb-card { min-height: auto; }
 }
 
 @media (max-width: 760px) {
   .s2v-shell { grid-template-rows: 56px minmax(0, 1fr); }
-  .s2v-main { display: block; }
+  .s2v-main { display: block; min-height: 0; }
   .s2v-sidebar { position: static; display: none; height: auto; }
   .s2v-content { padding: 16px 16px 82px; }
+  .s2v-content:has(.s2v-page-fill) { overflow: auto; padding: 12px 12px 82px; }
   .s2v-page-header { flex-direction: column; margin-bottom: 18px; }
   .s2v-page-title { font-size: 20px; }
   .s2v-grid-2, .s2v-grid-3 { grid-template-columns: 1fr; }

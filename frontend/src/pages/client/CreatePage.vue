@@ -268,7 +268,7 @@ function submit() {
 </script>
 
 <template>
-  <section class="s2v-page s2v-page-studio flex min-h-0 flex-1 flex-col">
+  <section class="s2v-page s2v-page-fill">
     <S2VPageHeader title="创作">
       <template #actions>
         <S2VBadge tone="success">钱包余额: ¥ {{ app.balance.toFixed(2) }}</S2VBadge>
