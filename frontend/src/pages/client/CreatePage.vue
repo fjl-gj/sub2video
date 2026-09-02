@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Info } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
-import { useAppStore } from '@/stores/app'
 import AssetPickDialog from '@/features/create/AssetPickDialog.vue'
-import CreateModeCards from '@/features/create/CreateModeCards.vue'
-import CreateModeGate from '@/features/create/CreateModeGate.vue'
-import ImageStack from '@/features/create/ImageStack.vue'
+import CreateFilmstrip from '@/features/create/workbench/CreateFilmstrip.vue'
+import CreatePromptSubmit from '@/features/create/workbench/CreatePromptSubmit.vue'
+import CreateSettingsPills from '@/features/create/workbench/CreateSettingsPills.vue'
+import CreateSlotsTrack, { type SlotDescriptor } from '@/features/create/workbench/CreateSlotsTrack.vue'
+import CreateStagePlayer from '@/features/create/workbench/CreateStagePlayer.vue'
+import CreateWorkbenchToolbar from '@/features/create/workbench/CreateWorkbenchToolbar.vue'
+import { assetPreviewUrl } from '@/shared/lib/asset-preview'
+import { estimateCreateCost } from '@/shared/lib/create-cost'
+import type { CreateResolution } from '@/shared/lib/create-cost'
 import {
   clearCreateDraft,
   emptySlot,
   loadCreateDraft,
+  MAX_KEYFRAME_EXTRAS,
   MAX_REF_IMAGES,
   saveCreateDraft,
   type CreateFrameSlot,
@@ -18,24 +23,20 @@ import {
   type ImageVariant,
 } from '@/shared/lib/create-draft'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
-import S2VButton from '@/shared/ui/S2VButton.vue'
-import S2VCard from '@/shared/ui/S2VCard.vue'
-import S2VChoice from '@/shared/ui/S2VChoice.vue'
-import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
-import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
-import S2VSelect from '@/shared/ui/S2VSelect.vue'
-import S2VTextarea from '@/shared/ui/S2VTextarea.vue'
+import { useAppStore } from '@/stores/app'
 
 interface FrameSlot extends CreateFrameSlot {}
 
 const router = useRouter()
 const app = useAppStore()
+
 const mode = ref<CreateMode>('image')
 const imageVariant = ref<ImageVariant>('keyframes')
 const prompt = ref('')
-const ratio = ref('16:9')
+const ratio = ref('9:16')
 const durationSec = ref('15')
+const resolution = ref<CreateResolution>('768P')
 const loading = ref(false)
 const draftReady = ref(false)
 
@@ -44,8 +45,15 @@ const lastFrame = ref<FrameSlot>(emptySlot())
 const extraFrames = ref<FrameSlot[]>([])
 const multiFrames = ref<FrameSlot[]>([emptySlot()])
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null
+const activeSlotKey = ref<string | null>(null)
+const activeTaskId = ref<string | null>(null)
 const pickingSlotRef = ref<FrameSlot | null>(null)
+
+const stageTitle = ref('等待装填素材')
+const stageSubtitle = ref('768P · 24fps')
+const stagePreviewUrl = ref<string | undefined>(undefined)
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 const assetDialogOpen = computed({
   get: () => pickingSlotRef.value !== null,
@@ -54,21 +62,12 @@ const assetDialogOpen = computed({
   },
 })
 
-const imageVariants = ['首尾帧', '多图参考']
-const ratioOptions = [
-  { label: '16:9 横屏', value: '16:9' },
-  { label: '9:16 竖屏', value: '9:16' },
-  { label: '1:1 方形', value: '1:1' },
-]
-
 const parsedDuration = computed(() => Number(durationSec.value))
-const durationValid = computed(() => Number.isFinite(parsedDuration.value) && parsedDuration.value >= 1 && parsedDuration.value <= 15)
-const cost = computed(() => durationValid.value ? parsedDuration.value * 0.5 : 0)
+const durationValid = computed(() => [5, 10, 15].includes(parsedDuration.value))
+const cost = computed(() => estimateCreateCost(parsedDuration.value, resolution.value))
+const recentTasks = computed(() => app.tasks.slice(0, 3))
+
 const canSubmit = computed(() => mode.value === 'image' && durationValid.value && hasRequiredImageInput.value)
-const workflowLabel = computed(() => {
-  if (mode.value === 'text') return 'H3 文生视频'
-  return imageVariant.value === 'keyframes' ? 'H3 首尾帧图生视频' : 'H3 多图参考图生视频'
-})
 
 const hasRequiredImageInput = computed(() => {
   if (mode.value !== 'image') return false
@@ -80,37 +79,85 @@ function frameReady(slot: FrameSlot) {
   return slot.uploaded || Boolean(slot.assetId)
 }
 
-function markUpload(slot: FrameSlot) {
-  slot.uploaded = true
-  slot.assetId = ''
-  pickingSlotRef.value = null
+function slotLabel(descriptor: SlotDescriptor) {
+  if (descriptor.key === 'first') return '首帧关键图'
+  if (descriptor.key === 'last') return '尾帧关键图'
+  return '参考素材'
 }
 
-function openAssetPick(slot: FrameSlot) {
+function setStageFromSlot(slot: FrameSlot, descriptor: SlotDescriptor) {
+  activeTaskId.value = null
+  activeSlotKey.value = descriptor.key
+  stagePreviewUrl.value = frameReady(slot) ? assetPreviewUrl(slot.assetId, slot.previewUrl) : undefined
+  if (frameReady(slot)) {
+    const asset = app.assets.find((item) => item.id === slot.assetId)
+    stageTitle.value = slot.fileName || asset?.name || '已选取素材'
+    stageSubtitle.value = slotLabel(descriptor)
+  }
+}
+
+function setStageFromTask(taskId: string) {
+  const task = app.tasks.find((item) => item.id === taskId)
+  if (!task) return
+  activeTaskId.value = taskId
+  activeSlotKey.value = null
+  stagePreviewUrl.value = task.thumb
+  stageTitle.value = task.title
+  stageSubtitle.value = `${task.status} · ${task.duration}`
+}
+
+function resetStageIdle() {
+  activeTaskId.value = null
+  activeSlotKey.value = null
+  stagePreviewUrl.value = undefined
+  stageTitle.value = '等待装填素材'
+  stageSubtitle.value = `${resolution.value} · 24fps`
+}
+
+function fillSlot(slot: FrameSlot, payload: { assetId?: string; fileName?: string; previewUrl?: string }) {
+  slot.uploaded = true
+  slot.assetId = payload.assetId ?? ''
+  slot.fileName = payload.fileName
+  slot.previewUrl = payload.previewUrl
+}
+
+function handleSlotClick(descriptor: SlotDescriptor) {
+  const slot = descriptor.slot
+  if (!slot) return
+  if (frameReady(slot)) {
+    setStageFromSlot(slot, descriptor)
+    return
+  }
   pickingSlotRef.value = slot
+  activeSlotKey.value = descriptor.key
 }
 
 function confirmAssetPick(assetId: string) {
   if (!pickingSlotRef.value) return
-  pickingSlotRef.value.assetId = assetId
-  pickingSlotRef.value.uploaded = true
+  const asset = app.assets.find((item) => item.id === assetId)
+  fillSlot(pickingSlotRef.value, { assetId })
+  stageTitle.value = asset?.name ?? '已选取素材'
+  stageSubtitle.value = '素材预览就绪'
+  stagePreviewUrl.value = assetPreviewUrl(assetId)
+  activeTaskId.value = null
   pickingSlotRef.value = null
+  app.notify(`已装入素材: ${asset?.name ?? '图片'}`)
 }
 
-function clearSlot(slot: FrameSlot) {
-  slot.uploaded = false
-  slot.assetId = ''
-  if (pickingSlotRef.value === slot) pickingSlotRef.value = null
+function confirmLocalUpload(payload: { fileName: string; previewUrl: string }) {
+  if (!pickingSlotRef.value) return
+  fillSlot(pickingSlotRef.value, payload)
+  stageTitle.value = payload.fileName
+  stageSubtitle.value = '素材预览就绪'
+  stagePreviewUrl.value = payload.previewUrl
+  activeTaskId.value = null
+  pickingSlotRef.value = null
+  app.notify(`已装入素材: ${payload.fileName}`)
 }
 
 function addExtra() {
-  if (extraFrames.value.length >= MAX_REF_IMAGES) return
+  if (extraFrames.value.length >= MAX_KEYFRAME_EXTRAS) return
   extraFrames.value.push(emptySlot())
-}
-
-function removeExtra(index: number) {
-  extraFrames.value.splice(index, 1)
-  pickingSlotRef.value = null
 }
 
 function addMulti() {
@@ -118,18 +165,9 @@ function addMulti() {
   multiFrames.value.push(emptySlot())
 }
 
-function removeMulti(index: number) {
-  if (multiFrames.value.length <= 1) return
-  multiFrames.value.splice(index, 1)
-  pickingSlotRef.value = null
-}
-
-function chooseTemplate(text: string) {
-  prompt.value = prompt.value ? `${prompt.value}，${text}` : text
-}
-
-function switchToImageMode() {
-  mode.value = 'image'
+function workflowLabel() {
+  if (mode.value === 'text') return 'H3 文生视频'
+  return imageVariant.value === 'keyframes' ? 'H3 首尾帧图生视频' : 'H3 多图参考图生视频'
 }
 
 function taskStamp() {
@@ -140,7 +178,6 @@ function taskStamp() {
 
 function buildTaskTitle() {
   const seq = app.tasks.length + 1
-  if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
   const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
   return `图生·${variant} ${taskStamp()} #${seq}`
 }
@@ -153,6 +190,7 @@ function applyDraftFromStorage() {
     imageVariant.value = saved.imageVariant
     ratio.value = saved.ratio
     durationSec.value = saved.durationSec
+    resolution.value = saved.resolution
     firstFrame.value = { ...saved.firstFrame, picking: false }
     lastFrame.value = { ...saved.lastFrame, picking: false }
     extraFrames.value = saved.extraFrames.map((slot) => ({ ...slot, picking: false }))
@@ -165,6 +203,7 @@ function applyDraftFromStorage() {
     prompt.value = plazaPrompt
   }
   if (plazaPrompt) app.draftPrompt = ''
+  stageSubtitle.value = `${resolution.value} · 24fps`
 }
 
 function scheduleDraftSave() {
@@ -177,6 +216,7 @@ function scheduleDraftSave() {
       prompt: prompt.value,
       ratio: ratio.value,
       durationSec: durationSec.value,
+      resolution: resolution.value,
       firstFrame: firstFrame.value,
       lastFrame: lastFrame.value,
       extraFrames: extraFrames.value,
@@ -194,7 +234,15 @@ onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
 })
 
-watch([mode, imageVariant, prompt, ratio, durationSec, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
+watch([mode, imageVariant, prompt, ratio, durationSec, resolution, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
+
+watch([resolution, durationSec], () => {
+  if (stageTitle.value === '等待装填素材') stageSubtitle.value = `${resolution.value} · 24fps`
+})
+
+watch(imageVariant, () => {
+  activeSlotKey.value = null
+})
 
 function submit() {
   if (!canSubmit.value) {
@@ -206,7 +254,7 @@ function submit() {
     loading.value = false
     if (app.createTask(cost.value, {
       title: buildTaskTitle(),
-      workflow: workflowLabel.value,
+      workflow: workflowLabel(),
       durationSec: parsedDuration.value,
       aspectRatio: ratio.value,
     })) {
@@ -220,106 +268,76 @@ function submit() {
 </script>
 
 <template>
-  <section class="s2v-page s2v-page-studio">
+  <section class="s2v-page s2v-page-studio flex min-h-0 flex-1 flex-col">
     <S2VPageHeader title="创作">
       <template #actions>
         <S2VBadge tone="success">钱包余额: ¥ {{ app.balance.toFixed(2) }}</S2VBadge>
       </template>
     </S2VPageHeader>
 
-    <S2VCard class="mb-5">
-      <div class="s2v-panel-header">
-        <div>
-          <h2 class="s2v-section-title">选择生成形式</h2>
-          <p class="mt-1 text-xs text-s2v-muted">图生支持首尾帧或多张参考图；文生即将开放</p>
+    <div class="s2v-wb-card">
+      <CreateWorkbenchToolbar
+        :mode="mode"
+        :image-variant="imageVariant"
+        @update:mode="mode = $event"
+        @update:image-variant="imageVariant = $event"
+        @locked-text="app.notify('文生视频即将开放')"
+      />
+
+      <div class="s2v-wb-body">
+        <div class="s2v-wb-stage-col">
+          <CreateStagePlayer
+            :ratio="ratio"
+            :duration-sec="parsedDuration"
+            :resolution="resolution"
+            :title="stageTitle"
+            :subtitle="stageSubtitle"
+            :preview-url="stagePreviewUrl"
+            @reset="resetStageIdle"
+          />
+          <CreateFilmstrip
+            :tasks="recentTasks"
+            :active-task-id="activeTaskId"
+            @select="setStageFromTask"
+            @view-all="router.push('/app/works')"
+          />
         </div>
-      </div>
-      <div class="s2v-panel-body grid gap-4">
-        <CreateModeCards v-model:mode="mode" />
-        <div v-if="mode === 'image'" class="border-t border-s2v-line/60 pt-4">
-          <p class="mb-2 text-xs font-semibold text-s2v-ink">图生细分</p>
-          <S2VSegmented
-            :model-value="imageVariant === 'keyframes' ? '首尾帧' : '多图参考'"
-            :options="imageVariants"
-            @update:model-value="imageVariant = $event === '首尾帧' ? 'keyframes' : 'multi'"
+
+        <div class="s2v-wb-panel-col">
+          <CreateSlotsTrack
+            :variant="imageVariant"
+            :first-frame="firstFrame"
+            :last-frame="lastFrame"
+            :extra-frames="extraFrames"
+            :multi-frames="multiFrames"
+            :active-slot-key="activeSlotKey"
+            @slot-click="handleSlotClick"
+            @add-extra="addExtra"
+            @add-multi="addMulti"
+          />
+          <CreateSettingsPills
+            :ratio="ratio"
+            :duration-sec="durationSec"
+            :resolution="resolution"
+            @update:ratio="ratio = $event"
+            @update:duration-sec="durationSec = $event"
+            @update:resolution="resolution = $event"
+          />
+          <CreatePromptSubmit
+            v-model:prompt="prompt"
+            :cost="cost"
+            :loading="loading"
+            :disabled="!canSubmit"
+            @submit="submit"
           />
         </div>
       </div>
-    </S2VCard>
-
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,.8fr)]">
-      <div class="grid gap-5">
-        <S2VCard v-if="mode === 'image'">
-          <div class="s2v-panel-header">
-            <div>
-              <h2 class="s2v-section-title">输入素材</h2>
-              <p class="mt-1 text-xs text-s2v-muted">{{ workflowLabel }}</p>
-            </div>
-          </div>
-          <div class="s2v-panel-body">
-            <ImageStack
-              :variant="imageVariant"
-              :first-frame="firstFrame"
-              :last-frame="lastFrame"
-              :extra-frames="extraFrames"
-              :multi-frames="multiFrames"
-              @upload="markUpload"
-              @pick="openAssetPick"
-              @clear="clearSlot"
-              @add-extra="addExtra"
-              @remove-extra="removeExtra"
-              @add-multi="addMulti"
-              @remove-multi="removeMulti"
-            />
-          </div>
-        </S2VCard>
-
-        <CreateModeGate
-          v-else
-          title="文生视频即将开放"
-          description="仅需画面描述即可生成视频，无需上传图片素材。"
-          @switch-image="switchToImageMode"
-        />
-
-        <S2VCard>
-          <div class="s2v-panel-header">
-            <div>
-              <h2 class="s2v-section-title">画面描述</h2>
-              <p class="mt-1 text-xs text-s2v-muted">描述主体动作、镜头运动和环境变化</p>
-            </div>
-          </div>
-          <div class="s2v-panel-body">
-            <S2VTextarea v-model="prompt" :rows="6" placeholder="例如：镜头缓慢向前推进，雨滴落在玻璃上，霓虹灯在背景中柔和闪烁……" />
-            <div class="mt-3 flex flex-wrap gap-2">
-              <S2VChoice v-for="tag in ['电影感', '缓慢推进', '自然光', '细节丰富']" :key="tag" class="px-2" @click="chooseTemplate(tag)">+ {{ tag }}</S2VChoice>
-            </div>
-          </div>
-        </S2VCard>
-      </div>
-
-      <S2VCard class="h-fit xl:sticky xl:top-6">
-        <div class="s2v-panel-header">
-          <h2 class="s2v-section-title">生成设置</h2>
-        </div>
-        <div class="s2v-panel-body grid gap-4">
-          <S2VSelect v-model="ratio" label="画面比例" :options="ratioOptions" />
-          <S2VInput v-model="durationSec" label="视频时长" type="number" min="1" placeholder="1-15">
-            <template #suffix><span class="text-[11px] text-s2v-muted">秒</span></template>
-          </S2VInput>
-          <div class="s2v-create-submit-panel">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-semibold text-s2v-ink">预计费用</span>
-              <strong class="s2v-mono text-xl text-s2v-ink">¥ {{ cost.toFixed(2) }}</strong>
-            </div>
-            <div class="flex items-center gap-1 text-[11px] text-s2v-muted"><Info class="h-3.5 w-3.5" />768P · ¥0.50/秒</div>
-            <S2VButton variant="primary" size="lg" :loading="loading" :disabled="!canSubmit" :block="true" @click="submit">
-              提交生成任务
-            </S2VButton>
-          </div>
-        </div>
-      </S2VCard>
     </div>
 
-    <AssetPickDialog v-model:open="assetDialogOpen" @pick="confirmAssetPick" />
+    <AssetPickDialog
+      v-model:open="assetDialogOpen"
+      @pick="confirmAssetPick"
+      @upload="confirmLocalUpload"
+    />
   </section>
 </template>
