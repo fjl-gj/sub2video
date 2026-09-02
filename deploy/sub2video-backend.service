@@ -1,0 +1,22 @@
+[Unit]
+Description=Sub2Video API Server
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sub2video/backend
+Environment=GIN_MODE=release
+Environment=SUB2VIDEO_ADDR=127.0.0.1:12080
+Environment=SUB2VIDEO_DATABASE_URL=postgres://sub2video:sub2video@127.0.0.1:15432/sub2video?sslmode=disable
+Environment=SUB2VIDEO_REDIS_URL=redis://127.0.0.1:16379/0
+Environment=SUB2VIDEO_JWT_SECRET=change-me-in-production
+Environment=SUB2VIDEO_CORS_ORIGIN=*
+ExecStartPre=/bin/bash -c 'until docker exec sub2video-postgres pg_isready -U sub2video >/dev/null 2>&1; do sleep 1; done'
+ExecStart=/opt/sub2video/backend/sub2video-server
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

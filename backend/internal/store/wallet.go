@@ -1,0 +1,92 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type RechargeProduct struct {
+	ID     string  `json:"id"`
+	Amount float64 `json:"amount"`
+	Bonus  float64 `json:"bonus"`
+	Price  float64 `json:"price"`
+}
+
+func (s *Store) ListRechargeProducts(ctx context.Context) ([]RechargeProduct, error) {
+	rows, err := s.Pool.Query(ctx, `
+SELECT public_id, amount::float8, bonus::float8, price::float8
+FROM recharge_products WHERE enabled = TRUE ORDER BY sort_order`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RechargeProduct
+	for rows.Next() {
+		var p RechargeProduct
+		if err := rows.Scan(&p.ID, &p.Amount, &p.Bonus, &p.Price); err != nil {
+			return nil, err
+		}
+		items = append(items, p)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) Redeem(ctx context.Context, userID int64, code string) (amount, balance float64, err error) {
+	normalized := strings.ToUpper(strings.TrimSpace(code))
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	var codeID int64
+	var label string
+	var maxUses *int
+	var usedCount int
+	err = tx.QueryRow(ctx, `
+SELECT id, amount::float8, label, max_uses, used_count FROM redeem_codes
+WHERE code = $1 AND (expires_at IS NULL OR expires_at > NOW())`, normalized).Scan(&codeID, &amount, &label, &maxUses, &usedCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, 0, errors.New("兑换码无效或已过期")
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	if maxUses != nil && usedCount >= *maxUses {
+		return 0, 0, errors.New("兑换码已达使用上限")
+	}
+
+	var used int
+	_ = tx.QueryRow(ctx, `SELECT COUNT(*) FROM redeem_code_uses WHERE code_id = $1 AND user_id = $2`, codeID, userID).Scan(&used)
+	if used > 0 {
+		return 0, 0, errors.New("该兑换码已经使用过")
+	}
+
+	if _, err = tx.Exec(ctx, `INSERT INTO redeem_code_uses (code_id, user_id) VALUES ($1, $2)`, codeID, userID); err != nil {
+		return 0, 0, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE redeem_codes SET used_count = used_count + 1 WHERE id = $1`, codeID); err != nil {
+		return 0, 0, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE wallets SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2`, amount, userID); err != nil {
+		return 0, 0, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT balance::float8 FROM wallets WHERE user_id = $1`, userID).Scan(&balance); err != nil {
+		return 0, 0, err
+	}
+	ledgerID := "TX_" + shortID()
+	if _, err = tx.Exec(ctx, `
+INSERT INTO wallet_ledger (public_id, user_id, type, amount, balance_after, ref_type, ref_id, description)
+VALUES ($1, $2, 'redeem', $3, $4, 'redeem_code', $5, $6)`,
+		ledgerID, userID, amount, balance, normalized, fmt.Sprintf("%s · %s", normalized, label)); err != nil {
+		return 0, 0, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return amount, balance, nil
+}

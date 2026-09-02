@@ -35,7 +35,7 @@
 - 金额单位为元（`number`，保留两位小数）；存储单位为 GB（`number`）。
 - 时间字段对外使用 ISO 8601；页面展示文案由前端按 locale 格式化。
 - 列表分页默认 `pageSize = 10`，响应含 `total`、`page`、`pageSize`。
-- 本文档描述**产品语义**，不等同于已实现的后端；当前前端为 Pinia mock。
+- 本文档描述**产品语义**；客户端 API 已在 `backend/` 实现（SQLite + Go），前端仍为 Pinia mock，尚未切 API。
 
 ## 共享领域对象
 

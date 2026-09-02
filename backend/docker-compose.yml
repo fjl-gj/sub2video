@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: docker.m.daocloud.io/library/postgres:16-alpine
+    container_name: sub2video-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sub2video
+      POSTGRES_PASSWORD: sub2video
+      POSTGRES_DB: sub2video
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - sub2video_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sub2video -d sub2video"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7.4-alpine
+    container_name: sub2video-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:16379:6379"
+    volumes:
+      - sub2video_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sub2video_pgdata:
+  sub2video_redis:
