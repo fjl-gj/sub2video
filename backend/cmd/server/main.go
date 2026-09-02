@@ -13,6 +13,7 @@ import (
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/db"
 	"github.com/sbu2video/backend/internal/server"
+	"github.com/sbu2video/backend/internal/simulator"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -39,6 +40,10 @@ func main() {
 	}
 
 	authSvc := auth.NewService(st, cfg)
+	simCtx, simCancel := context.WithCancel(context.Background())
+	defer simCancel()
+	simulator.Start(simCtx, st, 4*time.Second)
+
 	r := server.NewRouter(cfg, st, authSvc)
 
 	srv := &http.Server{

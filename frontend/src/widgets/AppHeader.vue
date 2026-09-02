@@ -3,13 +3,18 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Menu, Wallet } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
 import S2VLogo from '@/shared/ui/S2VLogo.vue'
 
 const props = defineProps<{ surface: 'client' | 'admin'; onMenu?: () => void }>()
 const router = useRouter()
 const app = useAppStore()
+const auth = useAuthStore()
 const isClient = computed(() => props.surface === 'client')
+const balance = computed(() => (auth.user ? auth.balance : app.balance))
+const label = computed(() => auth.displayName || (isClient.value ? '李维工作室' : '超级管理员'))
+const avatar = computed(() => (label.value ? label.value.slice(0, 1) : isClient.value ? '李' : '管'))
 </script>
 
 <template>
@@ -22,11 +27,11 @@ const isClient = computed(() => props.surface === 'client')
     </div>
     <div class="flex items-center gap-3">
       <button v-if="isClient" type="button" class="s2v-mono hidden items-center gap-1.5 rounded-lg border border-s2v-primary/25 bg-s2v-primary-soft/80 px-3 py-1 text-xs font-bold text-s2v-primary-hover transition hover:bg-s2v-primary-soft md:flex" @click="router.push('/app/wallet')">
-        <Wallet class="h-3.5 w-3.5" />¥ {{ app.balance.toFixed(2) }}
+        <Wallet class="h-3.5 w-3.5" />¥ {{ balance.toFixed(2) }}
       </button>
       <button type="button" class="flex items-center gap-2.5 border-l border-s2v-line pl-2" :aria-label="isClient ? '打开个人资料' : '管理员账户'" @click="isClient ? router.push('/app/profile') : undefined">
-        <span :class="['grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-white', isClient ? 'bg-slate-900' : 'bg-emerald-900']">{{ isClient ? '李' : '管' }}</span>
-        <strong class="hidden text-xs font-semibold text-s2v-ink sm:block">{{ isClient ? '李维工作室' : '超级管理员' }}</strong>
+        <span :class="['grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-white', isClient ? 'bg-slate-900' : 'bg-emerald-900']">{{ avatar }}</span>
+        <strong class="hidden text-xs font-semibold text-s2v-ink sm:block">{{ label }}</strong>
       </button>
     </div>
   </header>

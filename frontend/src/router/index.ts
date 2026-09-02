@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getAccessToken } from '@/api/http'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -7,8 +9,8 @@ const router = createRouter({
     { path: '/', redirect: '/app/overview' },
     { path: '/login', redirect: '/auth/login' },
     { path: '/auth', component: () => import('@/layouts/AuthLayout.vue'), children: [
-      { path: 'login', component: () => import('@/pages/auth/LoginPage.vue') },
-      { path: 'register', component: () => import('@/pages/auth/RegisterPage.vue') },
+      { path: 'login', component: () => import('@/pages/auth/LoginPage.vue'), meta: { guest: true } },
+      { path: 'register', component: () => import('@/pages/auth/RegisterPage.vue'), meta: { guest: true } },
       { path: 'verify-email', component: () => import('@/pages/auth/VerifyEmailPage.vue') },
       { path: 'forgot-password', component: () => import('@/pages/auth/ForgotPasswordPage.vue') },
       { path: 'reset-password', component: () => import('@/pages/auth/ResetPasswordPage.vue') },
@@ -19,7 +21,7 @@ const router = createRouter({
       { path: 'maintenance', component: () => import('@/pages/auth/MaintenancePage.vue') },
       { path: '404', component: () => import('@/pages/auth/NotFoundPage.vue') },
     ] },
-    { path: '/app', component: () => import('@/layouts/ClientLayout.vue'), redirect: '/app/overview', children: [
+    { path: '/app', component: () => import('@/layouts/ClientLayout.vue'), redirect: '/app/overview', meta: { requiresAuth: true }, children: [
       { path: 'overview', component: () => import('@/pages/client/OverviewPage.vue'), meta: { surface: 'client', title: '首页概览' } },
       { path: 'create', component: () => import('@/pages/client/CreatePage.vue'), meta: { surface: 'client', title: '创作' } },
       { path: 'garden', component: () => import('@/pages/client/GardenPage.vue'), meta: { surface: 'client', title: '广场' } },
@@ -47,6 +49,25 @@ const router = createRouter({
     ] },
     { path: '/:pathMatch(.*)*', redirect: '/auth/404' },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const needsAuth = to.matched.some((r) => r.meta.requiresAuth)
+  const isGuest = to.matched.some((r) => r.meta.guest)
+  const hasToken = Boolean(getAccessToken())
+  const auth = useAuthStore()
+
+  if (!auth.bootstrapped) {
+    await auth.bootstrap()
+  }
+
+  if (needsAuth && !hasToken) {
+    return { path: '/auth/login', query: { redirect: to.fullPath } }
+  }
+  if (isGuest && hasToken && auth.isAuthenticated) {
+    return '/app/overview'
+  }
+  return true
 })
 
 export default router

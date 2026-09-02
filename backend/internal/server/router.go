@@ -43,6 +43,12 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 			client := authed.Group("/client")
 			{
 				client.GET("/overview", clientH.Overview)
+				client.GET("/create/form", clientH.CreateForm)
+				client.POST("/tasks/quote", clientH.QuoteTask)
+				client.POST("/tasks", clientH.CreateTask)
+				client.GET("/tasks", clientH.ListTasks)
+				client.POST("/tasks/:id/cancel", clientH.CancelTask)
+				client.POST("/tasks/:id/retry", clientH.RetryTask)
 				client.GET("/wallet", clientH.Wallet)
 				client.POST("/wallet/redeem", clientH.Redeem)
 			}

@@ -2,6 +2,7 @@
 import { Bell, KeyRound, LogOut, Mail, MonitorSmartphone, ShieldCheck, UserRound } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
@@ -11,6 +12,12 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 
 const router = useRouter()
 const app = useAppStore()
+const auth = useAuthStore()
+
+async function logout() {
+  await auth.logout()
+  await router.push('/auth/login')
+}
 </script>
 
 <template>
@@ -18,7 +25,7 @@ const app = useAppStore()
     <S2VPageHeader title="个人资料">
       <template #description>管理账号信息、登录安全和设备，不占用创作主导航。</template>
       <template #actions>
-        <S2VButton variant="ghost" @click="router.push('/auth/login')"><LogOut class="h-3.5 w-3.5" />退出登录</S2VButton>
+        <S2VButton variant="ghost" @click="logout"><LogOut class="h-3.5 w-3.5" />退出登录</S2VButton>
       </template>
     </S2VPageHeader>
 
