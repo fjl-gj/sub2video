@@ -10,7 +10,6 @@ defineProps<{
 const emit = defineEmits<{
   'update:mode': [value: CreateMode]
   'update:imageVariant': [value: ImageVariant]
-  lockedText: []
 }>()
 
 const app = useAppStore()
@@ -30,34 +29,37 @@ const app = useAppStore()
       </button>
       <button
         type="button"
-        class="s2v-wb-segment s2v-wb-segment-locked"
-        @click="emit('lockedText')"
+        class="s2v-wb-segment"
+        :class="{ 's2v-wb-segment-active': mode === 'text' }"
+        @click="emit('update:mode', 'text')"
       >
         文生视频
       </button>
     </div>
 
-    <div class="s2v-wb-toolbar-divider" />
+    <template v-if="mode === 'image'">
+      <div class="s2v-wb-toolbar-divider" />
 
-    <span class="s2v-wb-strip-label">细分</span>
-    <div class="s2v-wb-segmented">
-      <button
-        type="button"
-        class="s2v-wb-segment"
-        :class="{ 's2v-wb-segment-active': imageVariant === 'keyframes' }"
-        @click="emit('update:imageVariant', 'keyframes')"
-      >
-        首尾帧
-      </button>
-      <button
-        type="button"
-        class="s2v-wb-segment"
-        :class="{ 's2v-wb-segment-active': imageVariant === 'multi' }"
-        @click="emit('update:imageVariant', 'multi')"
-      >
-        多图参考
-      </button>
-    </div>
+      <span class="s2v-wb-strip-label">细分</span>
+      <div class="s2v-wb-segmented">
+        <button
+          type="button"
+          class="s2v-wb-segment"
+          :class="{ 's2v-wb-segment-active': imageVariant === 'keyframes' }"
+          @click="emit('update:imageVariant', 'keyframes')"
+        >
+          首尾帧
+        </button>
+        <button
+          type="button"
+          class="s2v-wb-segment"
+          :class="{ 's2v-wb-segment-active': imageVariant === 'multi' }"
+          @click="emit('update:imageVariant', 'multi')"
+        >
+          多图参考
+        </button>
+      </div>
+    </template>
 
     <select
       class="s2v-wb-project-select"

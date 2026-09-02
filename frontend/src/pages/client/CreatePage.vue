@@ -67,7 +67,11 @@ const durationValid = computed(() => [5, 10, 15].includes(parsedDuration.value))
 const cost = computed(() => estimateCreateCost(parsedDuration.value, resolution.value))
 const recentTasks = computed(() => app.tasks.slice(0, 3))
 
-const canSubmit = computed(() => mode.value === 'image' && durationValid.value && hasRequiredImageInput.value)
+const canSubmit = computed(() => {
+  if (!durationValid.value) return false
+  if (mode.value === 'text') return prompt.value.trim().length > 0
+  return mode.value === 'image' && hasRequiredImageInput.value
+})
 
 const hasRequiredImageInput = computed(() => {
   if (mode.value !== 'image') return false
@@ -178,8 +182,17 @@ function taskStamp() {
 
 function buildTaskTitle() {
   const seq = app.tasks.length + 1
+  if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
   const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
   return `图生·${variant} ${taskStamp()} #${seq}`
+}
+
+function syncTextStage() {
+  activeTaskId.value = null
+  activeSlotKey.value = null
+  stagePreviewUrl.value = undefined
+  stageTitle.value = prompt.value.trim() ? '文生描述已就绪' : '等待输入描述'
+  stageSubtitle.value = `${resolution.value} · 文生视频`
 }
 
 function applyDraftFromStorage() {
@@ -227,6 +240,7 @@ function scheduleDraftSave() {
 
 onMounted(() => {
   applyDraftFromStorage()
+  if (mode.value === 'text') syncTextStage()
   draftReady.value = true
 })
 
@@ -244,9 +258,20 @@ watch(imageVariant, () => {
   activeSlotKey.value = null
 })
 
+watch(mode, (next) => {
+  if (next === 'text') syncTextStage()
+  else resetStageIdle()
+})
+
+watch(prompt, () => {
+  if (mode.value !== 'text') return
+  stageTitle.value = prompt.value.trim() ? '文生描述已就绪' : '等待输入描述'
+})
+
 function submit() {
   if (!canSubmit.value) {
-    app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧图片' : '请至少选择一张参考图')
+    if (mode.value === 'text') app.notify('请先填写画面描述')
+    else app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧图片' : '请至少选择一张参考图')
     return
   }
   loading.value = true
@@ -281,7 +306,6 @@ function submit() {
         :image-variant="imageVariant"
         @update:mode="mode = $event"
         @update:image-variant="imageVariant = $event"
-        @locked-text="app.notify('文生视频即将开放')"
       />
 
       <div class="s2v-wb-body">
@@ -305,6 +329,7 @@ function submit() {
 
         <div class="s2v-wb-panel-col">
           <CreateSlotsTrack
+            v-if="mode === 'image'"
             :variant="imageVariant"
             :first-frame="firstFrame"
             :last-frame="lastFrame"
