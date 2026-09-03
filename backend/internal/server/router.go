@@ -26,6 +26,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 	authH := &handler.AuthHandler{Auth: authSvc, Store: st}
 	clientH := &handler.ClientHandler{Store: st}
 	uploadH := &handler.UploadHandler{Store: st, UploadDir: cfg.UploadDir}
+	adminH := &handler.AdminHandler{Store: st, Cfg: cfg}
 
 	v1 := r.Group("/api/v1")
 	{
@@ -56,6 +57,16 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 				client.GET("/wallet", clientH.Wallet)
 				client.GET("/wallet/transactions", clientH.WalletTransactions)
 				client.POST("/wallet/redeem", clientH.Redeem)
+			}
+
+			admin := authed.Group("/admin")
+			admin.Use(middleware.RequireAdmin())
+			{
+				admin.GET("/carriers", adminH.ListCarriers)
+				admin.GET("/suppliers", adminH.ListSuppliers)
+				admin.PATCH("/suppliers/:id", adminH.UpdateSupplier)
+				admin.GET("/routes", adminH.ListRoutes)
+				admin.PATCH("/routes/:id", adminH.UpdateRoute)
 			}
 		}
 	}

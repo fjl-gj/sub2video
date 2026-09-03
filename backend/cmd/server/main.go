@@ -13,8 +13,8 @@ import (
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/db"
 	"github.com/sbu2video/backend/internal/server"
-	"github.com/sbu2video/backend/internal/simulator"
 	"github.com/sbu2video/backend/internal/store"
+	"github.com/sbu2video/backend/internal/worker"
 )
 
 func main() {
@@ -39,14 +39,22 @@ func main() {
 	if err := st.SeedBasics(ctx); err != nil {
 		log.Fatalf("seed: %v", err)
 	}
+	if err := st.SeedSupplyChain(ctx, cfg.SecretKey); err != nil {
+		log.Fatalf("seed supply: %v", err)
+	}
 	if err := ensureDemoUser(ctx, st, cfg); err != nil {
 		log.Fatalf("seed user: %v", err)
 	}
+	if cfg.PromoteAdminEmail != "" {
+		if err := st.PromoteUserRole(ctx, cfg.PromoteAdminEmail, "admin"); err != nil {
+			log.Printf("promote admin %s: %v", cfg.PromoteAdminEmail, err)
+		}
+	}
 
 	authSvc := auth.NewService(st, cfg)
-	simCtx, simCancel := context.WithCancel(context.Background())
-	defer simCancel()
-	simulator.Start(simCtx, st, 4*time.Second)
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	worker.Start(workerCtx, st, cfg, 4*time.Second)
 
 	r := server.NewRouter(cfg, st, authSvc)
 
@@ -60,6 +68,12 @@ func main() {
 
 	go func() {
 		log.Printf("sub2video api listening on %s", cfg.Addr)
+		if cfg.AutoDLToken == "" {
+			log.Printf("autodl token empty: text tasks fall back to simulator until admin/env configures token")
+		}
+		if cfg.COSSecretID == "" || cfg.COSBucket == "" {
+			log.Printf("cos not configured: image workflows stay on simulator until credentials arrive")
+		}
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}

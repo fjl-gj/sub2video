@@ -12,8 +12,17 @@ Environment=SUB2VIDEO_ADDR=127.0.0.1:12080
 Environment=SUB2VIDEO_DATABASE_URL=postgres://sub2video:sub2video@127.0.0.1:15432/sub2video?sslmode=disable
 Environment=SUB2VIDEO_REDIS_URL=redis://127.0.0.1:16379/0
 Environment=SUB2VIDEO_JWT_SECRET=change-me-in-production
+Environment=SUB2VIDEO_SECRET_KEY=change-me-in-production-secret
 Environment=SUB2VIDEO_CORS_ORIGIN=*
 Environment=SUB2VIDEO_UPLOAD_DIR=/opt/sub2video/backend/data/uploads
+# Fill later — leave empty to keep simulator fallback for text; image needs COS.
+# Environment=SUB2VIDEO_AUTODL_TOKEN=
+# Environment=SUB2VIDEO_AUTODL_BASE_URL=https://autodl.art
+# Environment=SUB2VIDEO_COS_SECRET_ID=
+# Environment=SUB2VIDEO_COS_SECRET_KEY=
+# Environment=SUB2VIDEO_COS_BUCKET=
+# Environment=SUB2VIDEO_COS_REGION=
+Environment=SUB2VIDEO_PROMOTE_ADMIN_EMAIL=demo@sub2video.local
 ExecStartPre=/bin/bash -c 'until docker exec sub2video-postgres pg_isready -U sub2video >/dev/null 2>&1; do sleep 1; done'
 ExecStart=/opt/sub2video/backend/sub2video-server
 Restart=on-failure

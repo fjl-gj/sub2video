@@ -342,7 +342,13 @@ func (s *Store) RetryTask(ctx context.Context, userID int64, taskPublicID string
 	if status != "failed" {
 		return nil, errors.New("仅失败任务可重试")
 	}
-	_, err = s.Pool.Exec(ctx, `UPDATE generation_tasks SET status = 'queued', progress = 0, updated_at = NOW() WHERE public_id = $1`, taskPublicID)
+	_, err = s.Pool.Exec(ctx, `
+UPDATE generation_tasks SET
+  status = 'queued', progress = 0, fail_reason = '',
+  upstream_task_id = '', upstream_status = '', result_url = '', result_oss_url = '',
+  supplier_code = '', supplier_route_id = '', upstream_workflow_id = '',
+  started_at = NULL, completed_at = NULL, updated_at = NOW()
+WHERE public_id = $1`, taskPublicID)
 	if err != nil {
 		return nil, err
 	}
