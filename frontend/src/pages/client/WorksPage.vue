@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { Ban, BookmarkPlus, Download, ExternalLink, MoreHorizontal, Plus, RefreshCw } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { cancelTask as cancelTaskApi, listTasks, retryTask as retryTaskApi } from '@/api/client'
 import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
-import { PAGE_SIZE, slicePage } from '@/shared/lib/paginate'
+import type { Task, TaskStatus } from '@/data/mock'
+import { PAGE_SIZE } from '@/shared/lib/paginate'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
@@ -14,31 +17,155 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import S2VPagination from '@/shared/ui/S2VPagination.vue'
 import S2VSegmented from '@/shared/ui/S2VSegmented.vue'
 
+type WorksTask = Task & { savedToProject?: boolean }
+
 const router = useRouter()
 const app = useAppStore()
+const auth = useAuthStore()
+
 const filter = ref('全部')
 const page = ref(1)
+const loading = ref(false)
 const tabs = ['全部', '排队中', '生成中', '已完成', '失败']
 const refundOpen = ref(false)
-const refundTask = ref<(typeof app.tasks)[number] | null>(null)
-const list = computed(() => filter.value === '全部' ? app.tasks : app.tasks.filter((task) => task.status === filter.value))
-const paged = computed(() => slicePage(list.value, page.value, PAGE_SIZE))
-const counts = computed(() => Object.fromEntries(tabs.map((tab) => [tab, tab === '全部' ? app.tasks.length : app.tasks.filter((task) => task.status === tab).length])))
+const refundTask = ref<WorksTask | null>(null)
 
-watch(filter, () => { page.value = 1 })
+const items = ref<WorksTask[]>([])
+const total = ref(0)
+const counts = ref<Record<string, number>>(Object.fromEntries(tabs.map((tab) => [tab, 0])))
 
-function retry(id: string) {
-  app.retryTask(id)
+const paged = computed(() => items.value)
+const empty = computed(() => !loading.value && items.value.length === 0)
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function mapTask(raw: {
+  id: string
+  title: string
+  workflow: string
+  status: string
+  progress: number
+  duration: string
+  resolution: string
+  cost: number
+  time: string
+  thumbUrl: string
+  savedToProject?: boolean
+}): WorksTask {
+  return {
+    id: raw.id,
+    title: raw.title,
+    workflow: raw.workflow,
+    status: raw.status as TaskStatus,
+    progress: raw.progress,
+    duration: raw.duration,
+    resolution: raw.resolution,
+    cost: raw.cost,
+    time: raw.time,
+    thumb: raw.thumbUrl,
+    savedToProject: raw.savedToProject,
+  }
 }
 
-function askRefund(task: (typeof app.tasks)[number]) {
+function apiErrorMessage(error: unknown, fallback: string) {
+  const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
+  return err.response?.data?.message || err.response?.data?.error || err.message || fallback
+}
+
+function syncBalance(balance: number) {
+  app.balance = balance
+  auth.setBalance(balance)
+}
+
+async function loadTasks() {
+  loading.value = true
+  try {
+    const data = await listTasks({
+      status: filter.value === '全部' ? undefined : filter.value,
+      page: page.value,
+      pageSize: PAGE_SIZE,
+    })
+    items.value = data.items.map(mapTask)
+    total.value = data.total
+    counts.value = {
+      全部: data.counts['全部'] ?? data.total,
+      排队中: data.counts['排队中'] ?? 0,
+      生成中: data.counts['生成中'] ?? 0,
+      已完成: data.counts['已完成'] ?? 0,
+      失败: data.counts['失败'] ?? 0,
+    }
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '加载任务失败'))
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function retry(id: string) {
+  try {
+    await retryTaskApi(id)
+    app.notify('任务已重新排队，费用不会重复扣除')
+    await loadTasks()
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '重试失败'))
+  }
+}
+
+function askRefund(task: WorksTask) {
   refundTask.value = task
   refundOpen.value = true
 }
 
-function confirmRefund() {
-  if (refundTask.value) app.cancelTask(refundTask.value.id)
+async function confirmRefund() {
+  if (!refundTask.value) return
+  try {
+    const result = await cancelTaskApi(refundTask.value.id)
+    syncBalance(result.wallet.balance)
+    app.notify(`已终止 ${result.task.id}，预扣费用已退回钱包`)
+    await loadTasks()
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '终止失败'))
+  }
+  finally {
+    refundTask.value = null
+  }
 }
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(() => {
+    const active = (counts.value['排队中'] ?? 0) + (counts.value['生成中'] ?? 0)
+    if (active > 0) void loadTasks()
+  }, 4000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+watch(filter, () => {
+  page.value = 1
+})
+
+watch([filter, page], () => {
+  void loadTasks()
+})
+
+onMounted(() => {
+  void loadTasks()
+  startPolling()
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
+})
 </script>
 
 <template>
@@ -74,7 +201,7 @@ function confirmRefund() {
           <tr v-for="task in paged" :key="task.id">
             <td>
               <div class="flex items-center gap-3">
-                <img :src="task.thumb" :alt="task.title" class="s2v-thumb h-9 w-14" />
+                <img :src="task.thumb" :alt="task.title" class="s2v-thumb h-9 w-14">
                 <div>
                   <strong class="block text-xs text-s2v-ink">{{ task.title }}</strong>
                   <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ task.id }}</span>
@@ -96,7 +223,7 @@ function confirmRefund() {
                 <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
                 <template v-else>
                   <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
-                  <S2VIconButton :label="app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
+                  <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
                 </template>
                 <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
               </div>
@@ -119,16 +246,16 @@ function confirmRefund() {
           <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
           <template v-else>
             <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
-            <S2VIconButton :label="app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
+            <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
           </template>
           <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
         </template>
       </MobileRecordCard>
     </div>
 
-    <S2VPagination v-if="list.length" v-model="page" class="mt-4" :total="list.length" :page-size="PAGE_SIZE" />
+    <S2VPagination v-if="total" v-model="page" class="mt-4" :total="total" :page-size="PAGE_SIZE" />
 
-    <S2VCard v-if="!list.length" variant="padded" class="mt-4 grid place-items-center text-center">
+    <S2VCard v-if="empty" variant="padded" class="mt-4 grid place-items-center text-center">
       <MoreHorizontal class="h-6 w-6 text-s2v-muted" />
       <p class="mt-2 text-xs text-s2v-muted">暂无符合条件的任务</p>
     </S2VCard>

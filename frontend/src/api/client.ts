@@ -50,5 +50,37 @@ export async function uploadImage(file: File) {
 
 export async function listTasks(params?: { status?: string; page?: number; pageSize?: number }) {
   const { data } = await http.get('/client/tasks', { params })
-  return data
+  return data as {
+    items: Array<{
+      id: string
+      title: string
+      workflow: string
+      status: string
+      progress: number
+      duration: string
+      resolution: string
+      cost: number
+      time: string
+      thumbUrl: string
+      savedToProject?: boolean
+    }>
+    total: number
+    page: number
+    pageSize: number
+    counts: Record<string, number>
+  }
+}
+
+export async function cancelTask(id: string) {
+  const { data } = await http.post(`/client/tasks/${id}/cancel`)
+  return data as {
+    task: { id: string; status: string }
+    refundAmount: number
+    wallet: { balance: number }
+  }
+}
+
+export async function retryTask(id: string) {
+  const { data } = await http.post(`/client/tasks/${id}/retry`)
+  return data as { task: { id: string; status: string } }
 }
