@@ -94,3 +94,27 @@ export async function retryTask(id: string) {
   const { data } = await http.post(`/client/tasks/${id}/retry`)
   return data as { task: { id: string; status: string } }
 }
+
+export type ClientTicketItem = {
+  id: string
+  title: string
+  category: string
+  status: string
+  task: string
+  updated: string
+}
+
+export async function fetchTickets(params?: { page?: number; pageSize?: number }) {
+  const { data } = await http.get('/client/tickets', { params })
+  return data as { items: ClientTicketItem[]; total: number; page: number; pageSize: number }
+}
+
+export async function createTicket(payload: {
+  title: string
+  category?: string
+  taskId?: string
+  detail?: string
+}) {
+  const { data } = await http.post('/client/tickets', payload)
+  return data as { ticket: { id: string; title: string; status: string } }
+}

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/provider/autodl"
 	"github.com/sbu2video/backend/internal/routing"
+	"github.com/sbu2video/backend/internal/storage/cos"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -159,9 +161,28 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 				break
 			}
 		}
-		// COS pull not implemented yet — keep ephemeral URL for now and log.
-		log.Printf("task %s success; result url retained (COS pull pending)", t.PublicID)
-		return r.Store.CompleteTaskUpstream(ctx, t.ID, url, "", res.Duration)
+		ossURL := ""
+		cfg := r.Store.LoadCOSConfig(ctx, r.Cfg.SecretKey)
+		if cfg.SecretID == "" && r.Cfg.COSSecretID != "" {
+			cfg = cos.Config{
+				SecretID: r.Cfg.COSSecretID, SecretKey: r.Cfg.COSSecretKey,
+				Bucket: r.Cfg.COSBucket, Region: r.Cfg.COSRegion,
+			}
+		}
+		cosClient := cos.New(cfg)
+		if cosClient.Configured() && url != "" {
+			key := fmt.Sprintf("results/%s/%s.mp4", time.Now().UTC().Format("20060102"), t.PublicID)
+			pulled, err := cosClient.PullURL(ctx, url, key, "video/mp4")
+			if err != nil {
+				log.Printf("cos pull %s: %v (keep ephemeral url)", t.PublicID, err)
+			} else {
+				ossURL = pulled
+				log.Printf("task %s pulled to cos %s", t.PublicID, ossURL)
+			}
+		} else {
+			log.Printf("task %s success; cos not configured, keep ephemeral url", t.PublicID)
+		}
+		return r.Store.CompleteTaskUpstream(ctx, t.ID, url, ossURL, res.Duration)
 	case "FAILED", "ERROR", "CANCELLED", "CANCELED":
 		return r.Store.FailTaskUpstream(ctx, t.ID, "upstream "+status)
 	case "QUEUED", "PENDING":

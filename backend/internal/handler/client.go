@@ -303,6 +303,51 @@ func (h *ClientHandler) Redeem(c *gin.Context) {
 	response.OK(c, gin.H{"credited": amount, "wallet": gin.H{"balance": balance}})
 }
 
+func (h *ClientHandler) ListTickets(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+	items, total, err := h.Store.ListTickets(c.Request.Context(), user.ID, page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	list := make([]gin.H, 0, len(items))
+	for _, t := range items {
+		list = append(list, gin.H{
+			"id": t.ID, "title": t.Title, "category": t.Category, "status": t.Status,
+			"task": t.TaskRef, "updated": t.UpdatedAt.Local().Format("01-02 15:04"),
+		})
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	response.OK(c, gin.H{"items": list, "total": total, "page": page, "pageSize": pageSize})
+}
+
+func (h *ClientHandler) CreateTicket(c *gin.Context) {
+	var req struct {
+		Title    string `json:"title" binding:"required"`
+		Category string `json:"category"`
+		TaskRef  string `json:"taskId"`
+		Detail   string `json:"detail"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	user := middleware.CurrentUser(c)
+	t, err := h.Store.CreateTicket(c.Request.Context(), user.ID, req.Title, req.Category, req.TaskRef, req.Detail)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.Created(c, gin.H{"ticket": gin.H{"id": t.ID, "title": t.Title, "status": t.Status}})
+}
+
 func taskDTO(t *store.Task) gin.H {
 	return gin.H{
 		"id": t.ID, "title": t.Title, "workflow": t.Workflow, "status": t.Status,

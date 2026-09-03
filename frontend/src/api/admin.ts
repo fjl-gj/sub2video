@@ -45,6 +45,11 @@ export type AdminSettings = {
   resultRetentionDays: string
   notifyTask: boolean
   auditEnabled: boolean
+  cosSecretId: string
+  cosBucket: string
+  cosRegion: string
+  cosUseIntranet: boolean
+  cosSecretKeyConfigured: boolean
 }
 
 export async function fetchAdminSuppliers() {
@@ -93,7 +98,9 @@ export async function fetchAdminSettings() {
   return data
 }
 
-export async function updateAdminSettings(payload: Partial<AdminSettings> & { smtpPassword?: string }) {
+export async function updateAdminSettings(
+  payload: Partial<AdminSettings> & { smtpPassword?: string; cosSecretKey?: string },
+) {
   const { data } = await http.put<AdminSettings>('/admin/settings', payload)
   return data
 }
@@ -171,4 +178,53 @@ export async function updateAdminPricing(id: string, payload: { pricePerSec: num
 export async function fetchAdminTasks(params?: { status?: string; page?: number; pageSize?: number }) {
   const { data } = await http.get('/admin/tasks', { params })
   return data as { items: AdminTaskItem[]; total: number; page: number; pageSize: number }
+}
+
+export type AdminTaskDetail = AdminTaskItem & {
+  pricePerSec: number
+  costPerSec: number
+  supplierCode: string
+  upstreamWorkflowId: string
+  resultUrl: string
+  resultOssUrl: string
+  priceSnapshot: Record<string, unknown>
+  routeSnapshot: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export async function fetchAdminTask(id: string) {
+  const { data } = await http.get<AdminTaskDetail>(`/admin/tasks/${id}`)
+  return data
+}
+
+export async function cancelAdminTask(id: string) {
+  const { data } = await http.post(`/admin/tasks/${id}/cancel`)
+  return data as { task: { id: string; status: string }; refund: number }
+}
+
+export async function retryAdminTask(id: string) {
+  const { data } = await http.post(`/admin/tasks/${id}/retry`)
+  return data as { task: { id: string; status: string } }
+}
+
+export type AdminTicketItem = {
+  id: string
+  title: string
+  category: string
+  status: string
+  task: string
+  user: string
+  userEmail: string
+  updated: string
+}
+
+export async function fetchAdminTickets(params?: { page?: number; pageSize?: number }) {
+  const { data } = await http.get('/admin/tickets', { params })
+  return data as { items: AdminTicketItem[]; total: number }
+}
+
+export async function updateAdminTicket(id: string, payload: { status: string }) {
+  const { data } = await http.patch(`/admin/tickets/${id}`, payload)
+  return data as { id: string; status: string }
 }

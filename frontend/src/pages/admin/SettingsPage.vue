@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, LockKeyhole, Mail, Save, Send, Server } from 'lucide-vue-next'
+import { Bell, Cloud, LockKeyhole, Mail, Save, Send, Server } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
 import {
   fetchAdminSettings,
@@ -30,8 +30,14 @@ const settings = ref<AdminSettings>({
   resultRetentionDays: '30',
   notifyTask: true,
   auditEnabled: true,
+  cosSecretId: '',
+  cosBucket: '',
+  cosRegion: '',
+  cosUseIntranet: false,
+  cosSecretKeyConfigured: false,
 })
 const smtpPassword = ref('')
+const cosSecretKey = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
@@ -58,13 +64,19 @@ async function save() {
   saving.value = true
   error.value = ''
   try {
-    const { smtpPasswordConfigured: _configured, ...payload } = settings.value
+    const {
+      smtpPasswordConfigured: _smtpConfigured,
+      cosSecretKeyConfigured: _cosConfigured,
+      ...payload
+    } = settings.value
     const next = await updateAdminSettings({
       ...payload,
       ...(smtpPassword.value.trim() ? { smtpPassword: smtpPassword.value.trim() } : {}),
+      ...(cosSecretKey.value.trim() ? { cosSecretKey: cosSecretKey.value.trim() } : {}),
     })
     settings.value = next
     smtpPassword.value = ''
+    cosSecretKey.value = ''
     app.notify('系统设置已保存')
   } catch (e: unknown) {
     error.value = apiErrorMessage(e, '保存系统设置失败')
@@ -94,7 +106,7 @@ onMounted(() => {
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="系统设置">
-      <template #description>配置邮件发送与注册邮箱验证。</template>
+      <template #description>配置邮件发送、腾讯云 COS 与注册邮箱验证。</template>
       <template #actions>
         <S2VButton variant="primary" :loading="saving" :disabled="loading" @click="save"><Save class="h-3.5 w-3.5" />保存设置</S2VButton>
       </template>
@@ -129,6 +141,34 @@ onMounted(() => {
             <input v-model="settings.smtpUseTls" type="checkbox" class="h-4 w-4 accent-s2v-primary" :disabled="loading" />
           </label>
           <S2VButton :loading="testing" :disabled="loading || testing" @click="testSMTP"><Send class="h-3.5 w-3.5" />测试 SMTP 连接</S2VButton>
+        </div>
+      </S2VCard>
+
+      <S2VCard>
+        <div class="s2v-panel-header">
+          <div>
+            <h2 class="s2v-section-title">腾讯云 COS</h2>
+            <p class="mt-1 text-xs text-s2v-muted">用于上传素材与拉取生成结果。SecretKey 加密存储。</p>
+          </div>
+          <Cloud class="h-4 w-4 text-s2v-primary" />
+        </div>
+        <div class="s2v-panel-body grid gap-4">
+          <S2VInput v-model="settings.cosSecretId" label="SecretId" placeholder="AKIDxxxxxxxx" :disabled="loading" />
+          <S2VInput v-model="cosSecretKey" label="SecretKey" type="password" :placeholder="settings.cosSecretKeyConfigured ? '留空以保持现有密钥' : 'COS SecretKey'" :disabled="loading">
+            <template #prefix><LockKeyhole class="h-4 w-4 text-s2v-muted" /></template>
+          </S2VInput>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <S2VInput v-model="settings.cosBucket" label="Bucket" placeholder="example-1250000000" :disabled="loading" />
+            <S2VInput v-model="settings.cosRegion" label="Region" placeholder="ap-shanghai" :disabled="loading" />
+          </div>
+          <label class="flex items-center justify-between gap-3 text-xs">
+            <span class="flex items-center gap-2"><Cloud class="h-4 w-4 text-s2v-muted" />使用内网域名（同地域机器）</span>
+            <input v-model="settings.cosUseIntranet" type="checkbox" class="h-4 w-4 accent-s2v-primary" :disabled="loading" />
+          </label>
+          <p class="text-[11px] text-s2v-muted">
+            {{ settings.cosSecretKeyConfigured ? '已配置 SecretKey。' : '尚未配置 SecretKey。' }}
+            AutoDL Token 请到「供应商」页填写。
+          </p>
         </div>
       </S2VCard>
 

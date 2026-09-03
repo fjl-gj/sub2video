@@ -62,6 +62,8 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				client.GET("/wallet", clientH.Wallet)
 				client.GET("/wallet/transactions", clientH.WalletTransactions)
 				client.POST("/wallet/redeem", clientH.Redeem)
+				client.GET("/tickets", clientH.ListTickets)
+				client.POST("/tickets", clientH.CreateTicket)
 			}
 
 			admin := authed.Group("/admin")
@@ -77,6 +79,11 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				admin.GET("/pricing", adminH.ListPricing)
 				admin.PATCH("/pricing/:id", adminH.UpdatePricing)
 				admin.GET("/tasks", adminH.ListTasks)
+				admin.GET("/tasks/:id", adminH.GetTask)
+				admin.POST("/tasks/:id/cancel", adminH.CancelTask)
+				admin.POST("/tasks/:id/retry", adminH.RetryTask)
+				admin.GET("/tickets", adminH.ListTickets)
+				admin.PATCH("/tickets/:id", adminH.UpdateTicket)
 				admin.GET("/settings", adminH.GetSettings)
 				admin.PUT("/settings", adminH.UpdateSettings)
 				admin.POST("/settings/test-smtp", adminH.TestSMTP)

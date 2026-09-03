@@ -10,6 +10,7 @@ import (
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/mail"
 	"github.com/sbu2video/backend/internal/response"
+	"github.com/sbu2video/backend/internal/storage/cos"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -141,7 +142,7 @@ func (h *AdminHandler) ListCarriers(c *gin.Context) {
 	}
 	response.OK(c, gin.H{
 		"carriers": cOut, "models": mOut,
-		"cosConfigured": h.Cfg.COSSecretID != "" && h.Cfg.COSBucket != "",
+		"cosConfigured": cos.New(h.Store.LoadCOSConfig(c.Request.Context(), h.Cfg.SecretKey)).Configured() || (h.Cfg.COSSecretID != "" && h.Cfg.COSBucket != ""),
 		"autodlEnvToken": h.Cfg.AutoDLToken != "",
 	})
 }
@@ -151,6 +152,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		"smtp_host", "smtp_port", "smtp_username", "smtp_from", "smtp_from_name", "smtp_use_tls",
 		"email_verify_enabled", "password_reset_enabled", "registration_enabled", "frontend_url",
 		"input_retention_days", "result_retention_days", "notify_task", "audit_enabled",
+		"cos_secret_id", "cos_bucket", "cos_region", "cos_use_intranet",
 	}
 	m, err := h.Store.GetSettings(c.Request.Context(), keys)
 	if err != nil {
@@ -158,6 +160,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		return
 	}
 	pwd, _ := h.Store.GetSetting(c.Request.Context(), "smtp_password")
+	cosKey, _ := h.Store.GetSetting(c.Request.Context(), "cos_secret_key")
 	response.OK(c, gin.H{
 		"smtpHost": m["smtp_host"], "smtpPort": m["smtp_port"], "smtpUsername": m["smtp_username"],
 		"smtpFrom": m["smtp_from"], "smtpFromName": m["smtp_from_name"],
@@ -171,6 +174,9 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		"resultRetentionDays": m["result_retention_days"],
 		"notifyTask": m["notify_task"] != "false",
 		"auditEnabled": m["audit_enabled"] != "false",
+		"cosSecretId": m["cos_secret_id"], "cosBucket": m["cos_bucket"], "cosRegion": m["cos_region"],
+		"cosUseIntranet": m["cos_use_intranet"] == "true",
+		"cosSecretKeyConfigured": cosKey != "",
 	})
 }
 
@@ -211,12 +217,22 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	mapStr("resultRetentionDays", "result_retention_days")
 	mapStr("notifyTask", "notify_task")
 	mapStr("auditEnabled", "audit_enabled")
+	mapStr("cosSecretId", "cos_secret_id")
+	mapStr("cosBucket", "cos_bucket")
+	mapStr("cosRegion", "cos_region")
+	mapStr("cosUseIntranet", "cos_use_intranet")
 	if v, ok := req["smtpPassword"].(string); ok && strings.TrimSpace(v) != "" {
 		kv["smtp_password"] = strings.TrimSpace(v)
 	}
 	if err := h.Store.SetSettings(c.Request.Context(), kv); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
+	}
+	if v, ok := req["cosSecretKey"].(string); ok && strings.TrimSpace(v) != "" {
+		if err := h.Store.SaveCOSSecretKey(c.Request.Context(), h.Cfg.SecretKey, strings.TrimSpace(v)); err != nil {
+			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
 	}
 	h.GetSettings(c)
 }
@@ -301,15 +317,37 @@ func (h *AdminHandler) ListPricing(c *gin.Context) {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
+	routes, _ := h.Store.ListRoutes(c.Request.Context())
+	routeCost := map[string]float64{} // modelCode -> min peak cost among enabled
+	for _, rt := range routes {
+		if !rt.Enabled {
+			continue
+		}
+		if cur, ok := routeCost[rt.ModelCode]; !ok || rt.CostPerSecPeak < cur {
+			routeCost[rt.ModelCode] = rt.CostPerSecPeak
+		}
+	}
+	// map workflow -> model via workflows list
+	wfs, _ := h.Store.ListPlatformWorkflows(c.Request.Context(), false)
+	wfModel := map[string]string{}
+	for _, w := range wfs {
+		wfModel[w.Code] = w.ModelCode
+	}
 	out := make([]gin.H, 0, len(items))
 	for _, r := range items {
 		statusCN := "草稿"
 		if r.Status == "active" {
 			statusCN = "生效中"
 		}
+		cost := r.CostHintPerSec
+		if mc := wfModel[r.WorkflowCode]; mc != "" {
+			if v, ok := routeCost[mc]; ok {
+				cost = v
+			}
+		}
 		out = append(out, gin.H{
 			"id": r.ID, "name": r.Name, "workflowId": r.WorkflowID, "workflowCode": r.WorkflowCode,
-			"resolution": r.Resolution, "cost": fmt.Sprintf("%.2f", r.CostHintPerSec),
+			"resolution": r.Resolution, "cost": fmt.Sprintf("%.2f", cost),
 			"price": fmt.Sprintf("%.2f", r.PricePerSec), "pricePerSec": r.PricePerSec,
 			"duration": "按秒", "status": statusCN, "version": r.Version,
 		})
@@ -381,4 +419,69 @@ func (h *AdminHandler) ListTasks(c *gin.Context) {
 		pageSize = 20
 	}
 	response.OK(c, gin.H{"items": out, "total": total, "page": page, "pageSize": pageSize})
+}
+
+func (h *AdminHandler) GetTask(c *gin.Context) {
+	detail, err := h.Store.GetAdminTaskDetail(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == store.ErrNotFound {
+			response.Fail(c, http.StatusNotFound, "NOT_FOUND", "任务不存在")
+			return
+		}
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	response.OK(c, detail)
+}
+
+func (h *AdminHandler) CancelTask(c *gin.Context) {
+	task, refund, err := h.Store.AdminCancelTask(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"task": gin.H{"id": task.ID, "status": task.Status}, "refund": refund})
+}
+
+func (h *AdminHandler) RetryTask(c *gin.Context) {
+	task, err := h.Store.AdminRetryTask(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"task": gin.H{"id": task.ID, "status": task.Status}})
+}
+
+func (h *AdminHandler) ListTickets(c *gin.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+	items, total, err := h.Store.ListAdminTickets(c.Request.Context(), page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, t := range items {
+		out = append(out, gin.H{
+			"id": t.ID, "title": t.Title, "category": t.Category, "status": t.Status,
+			"task": t.TaskRef, "user": t.UserName, "userEmail": t.UserEmail,
+			"updated": t.UpdatedAt.Local().Format("01-02 15:04"),
+		})
+	}
+	response.OK(c, gin.H{"items": out, "total": total})
+}
+
+func (h *AdminHandler) UpdateTicket(c *gin.Context) {
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	if err := h.Store.UpdateTicketStatus(c.Request.Context(), c.Param("id"), req.Status); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": c.Param("id"), "status": req.Status})
 }
