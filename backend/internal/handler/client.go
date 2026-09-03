@@ -20,24 +20,31 @@ func (h *ClientHandler) Overview(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	ws, _ := h.Store.GetWorkspaceName(c.Request.Context(), user.ID)
 	bal, _ := h.Store.GetBalance(c.Request.Context(), user.ID)
-	items, _, counts, _ := h.Store.ListTasks(c.Request.Context(), user.ID, "", 1, 5)
+	totalSpent, monthSpent, _ := h.Store.SpentTotals(c.Request.Context(), user.ID)
+
+	activeItems, _, counts, _ := h.Store.ListTasks(c.Request.Context(), user.ID, "生成中", 1, 1)
+	if len(activeItems) == 0 {
+		activeItems, _, _, _ = h.Store.ListTasks(c.Request.Context(), user.ID, "排队中", 1, 1)
+	}
 	activeCount := counts["排队中"] + counts["生成中"]
 	var active any
-	var recent []gin.H
-	for _, t := range items {
-		if (t.Status == "排队中" || t.Status == "生成中") && active == nil {
-			active = taskDTO(&t)
-		}
-		if t.Status == "已完成" && len(recent) < 2 {
-			recent = append(recent, gin.H{
-				"id": t.ID, "title": t.Title, "status": t.Status, "resolution": t.Resolution,
-				"duration": fmt.Sprintf("%d 秒", t.DurationSec), "cost": t.Cost, "thumbUrl": t.ThumbURL,
-			})
-		}
+	if len(activeItems) > 0 {
+		active = taskDTO(&activeItems[0])
 	}
+
+	completed, _, _, _ := h.Store.ListTasks(c.Request.Context(), user.ID, "已完成", 1, 2)
+	recent := make([]gin.H, 0, len(completed))
+	for i := range completed {
+		t := &completed[i]
+		recent = append(recent, gin.H{
+			"id": t.ID, "title": t.Title, "status": t.Status, "resolution": t.Resolution,
+			"duration": fmt.Sprintf("%d 秒", t.DurationSec), "cost": t.Cost, "thumbUrl": t.ThumbURL,
+		})
+	}
+
 	response.OK(c, gin.H{
 		"workspace": gin.H{"displayName": ws},
-		"billing":   gin.H{"totalSpent": 0, "monthSpent": 0},
+		"billing":   gin.H{"totalSpent": totalSpent, "monthSpent": monthSpent},
 		"wallet":    gin.H{"balance": bal},
 		"pricing": gin.H{
 			"referencePricePerSecond": 0.5,
@@ -227,6 +234,31 @@ func (h *ClientHandler) Wallet(c *gin.Context) {
 	response.OK(c, gin.H{
 		"balance": bal, "products": products, "paymentMethods": []string{"wechat_pay"},
 	})
+}
+
+func (h *ClientHandler) WalletTransactions(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+	items, total, err := h.Store.ListLedger(c.Request.Context(), user.ID, page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	list := make([]gin.H, 0, len(items))
+	for _, e := range items {
+		list = append(list, gin.H{
+			"id": e.ID, "type": e.Type, "amount": e.Amount, "desc": e.Desc,
+			"time": e.Time.Local().Format("01-02 15:04"),
+		})
+	}
+	response.OK(c, gin.H{"items": list, "total": total, "page": page, "pageSize": pageSize})
 }
 
 func (h *ClientHandler) Redeem(c *gin.Context) {

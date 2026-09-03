@@ -5,9 +5,77 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
+
+type LedgerEntry struct {
+	ID      string
+	Type    string
+	Amount  float64
+	Desc    string
+	Time    time.Time
+}
+
+func ledgerTypeCN(t string) string {
+	switch t {
+	case "task_charge":
+		return "任务消费"
+	case "task_refund":
+		return "任务退款"
+	case "redeem":
+		return "兑换到账"
+	case "recharge":
+		return "充值到账"
+	case "ticket_refund":
+		return "工单退款"
+	default:
+		return t
+	}
+}
+
+func (s *Store) ListLedger(ctx context.Context, userID int64, page, pageSize int) ([]LedgerEntry, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	var total int
+	if err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id = $1`, userID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.Pool.Query(ctx, `
+SELECT public_id, type, amount::float8, description, created_at
+FROM wallet_ledger WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3`, userID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var items []LedgerEntry
+	for rows.Next() {
+		var e LedgerEntry
+		var rawType string
+		if err := rows.Scan(&e.ID, &rawType, &e.Amount, &e.Desc, &e.Time); err != nil {
+			return nil, 0, err
+		}
+		e.Type = ledgerTypeCN(rawType)
+		items = append(items, e)
+	}
+	return items, total, rows.Err()
+}
+
+func (s *Store) SpentTotals(ctx context.Context, userID int64) (totalSpent, monthSpent float64, err error) {
+	err = s.Pool.QueryRow(ctx, `
+SELECT
+  COALESCE(SUM(CASE WHEN type = 'task_charge' THEN -amount ELSE 0 END), 0)::float8,
+  COALESCE(SUM(CASE WHEN type = 'task_charge' AND created_at >= date_trunc('month', NOW()) THEN -amount ELSE 0 END), 0)::float8
+FROM wallet_ledger WHERE user_id = $1`, userID).Scan(&totalSpent, &monthSpent)
+	return
+}
 
 type RechargeProduct struct {
 	ID     string  `json:"id"`

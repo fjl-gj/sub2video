@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ArrowDownLeft, ArrowUpRight, Check, Coins, CreditCard, Gift, History } from 'lucide-vue-next'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { rechargeProducts } from '@/data/mock'
-import { PAGE_SIZE, slicePage } from '@/shared/lib/paginate'
+import { fetchWallet, fetchWalletTransactions, redeemCode } from '@/api/client'
+import type { LedgerEntry } from '@/data/mock'
+import { PAGE_SIZE } from '@/shared/lib/paginate'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VChoice from '@/shared/ui/S2VChoice.vue'
@@ -12,20 +14,94 @@ import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import S2VPagination from '@/shared/ui/S2VPagination.vue'
 
+type Product = { id: string; amount: number; bonus: number; price: number }
+
 const router = useRouter()
 const app = useAppStore()
-const selected = ref(rechargeProducts[1].id)
+const auth = useAuthStore()
+
+const balance = ref(auth.balance || app.balance)
+const products = ref<Product[]>([])
+const selected = ref('')
 const code = ref('')
 const page = ref(1)
-const pagedTransactions = computed(() => slicePage(app.transactions, page.value, PAGE_SIZE))
+const redeeming = ref(false)
+const transactions = ref<LedgerEntry[]>([])
+const transactionTotal = ref(0)
+
+const pagedTransactions = computed(() => transactions.value)
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
+  return err.response?.data?.message || err.response?.data?.error || err.message || fallback
+}
+
+function syncBalance(value: number) {
+  balance.value = value
+  app.balance = value
+  auth.setBalance(value)
+}
+
+async function loadWallet() {
+  try {
+    const data = await fetchWallet()
+    syncBalance(data.balance)
+    products.value = data.products
+    if (!selected.value && data.products.length) {
+      selected.value = data.products[Math.min(1, data.products.length - 1)]?.id || data.products[0].id
+    }
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '加载钱包失败'))
+  }
+}
+
+async function loadTransactions() {
+  try {
+    const data = await fetchWalletTransactions({ page: page.value, pageSize: PAGE_SIZE })
+    transactions.value = data.items
+    transactionTotal.value = data.total
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '加载流水失败'))
+  }
+}
 
 function recharge() {
-  const product = rechargeProducts.find((item) => item.id === selected.value)
+  const product = products.value.find((item) => item.id === selected.value)
   if (!product) return
   const amount = product.amount + product.bonus
-  app.recharge(amount)
+  // 真支付未接；跳转结果页仅作原型占位，不改后端余额
   void router.push({ path: '/auth/payment-result', query: { amount: String(amount) } })
 }
+
+async function redeem() {
+  if (!code.value.trim() || redeeming.value) return
+  redeeming.value = true
+  try {
+    const result = await redeemCode(code.value.trim())
+    syncBalance(result.wallet.balance)
+    app.notify(`兑换成功，余额增加 ¥${result.credited.toFixed(2)}`)
+    code.value = ''
+    page.value = 1
+    await loadTransactions()
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '兑换失败'))
+  }
+  finally {
+    redeeming.value = false
+  }
+}
+
+watch(page, () => {
+  void loadTransactions()
+})
+
+onMounted(() => {
+  void loadWallet()
+  void loadTransactions()
+})
 </script>
 
 <template>
@@ -35,7 +111,7 @@ function recharge() {
       <template #actions>
         <div class="text-right">
           <span class="text-xs text-s2v-muted">可用余额:</span>
-          <div class="s2v-mono text-2xl font-bold text-s2v-success">¥ {{ app.balance.toFixed(2) }}</div>
+          <div class="s2v-mono text-2xl font-bold text-s2v-success">¥ {{ balance.toFixed(2) }}</div>
         </div>
       </template>
     </S2VPageHeader>
@@ -50,15 +126,16 @@ function recharge() {
           <Coins class="h-4 w-4 text-s2v-primary" />
         </div>
         <div class="s2v-panel-body grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <S2VChoice v-for="product in rechargeProducts" :key="product.id" variant="tile" :selected="selected === product.id" @click="selected = product.id">
+          <S2VChoice v-for="product in products" :key="product.id" variant="tile" :selected="selected === product.id" @click="selected = product.id">
             <strong class="block text-lg text-s2v-ink">¥{{ product.amount }}</strong>
             <span class="mt-1 block text-[11px] font-normal text-s2v-muted">{{ product.bonus ? `赠 ¥${product.bonus}` : '无额外赠送' }}</span>
             <Check v-if="selected === product.id" class="mt-2 h-3.5 w-3.5" />
           </S2VChoice>
+          <p v-if="!products.length" class="col-span-2 text-xs text-s2v-muted sm:col-span-4">暂无可用充值档位</p>
         </div>
         <div class="flex items-center justify-between gap-3 border-t border-s2v-line px-4 py-3">
           <span class="text-xs text-s2v-muted">支付方式：微信支付（原型）</span>
-          <S2VButton variant="primary" @click="recharge"><CreditCard class="h-3.5 w-3.5" />立即充值</S2VButton>
+          <S2VButton variant="primary" :disabled="!selected" @click="recharge"><CreditCard class="h-3.5 w-3.5" />立即充值</S2VButton>
         </div>
       </S2VCard>
 
@@ -73,7 +150,7 @@ function recharge() {
           </div>
           <div class="s2v-panel-body grid gap-3">
             <S2VInput v-model="code" placeholder="例如 S2V-WELCOME-20" />
-            <S2VButton :disabled="!code" @click="app.redeem(code) && (code = '')">确认兑换</S2VButton>
+            <S2VButton :disabled="!code.trim() || redeeming" :loading="redeeming" @click="redeem">确认兑换</S2VButton>
           </div>
         </S2VCard>
 
@@ -100,9 +177,10 @@ function recharge() {
                 <span class="mt-1 block text-[10px] text-s2v-muted">{{ item.time }}</span>
               </div>
             </div>
+            <p v-if="!transactions.length" class="py-6 text-center text-xs text-s2v-muted">暂无流水记录</p>
           </div>
-          <div v-if="app.transactions.length" class="border-t border-s2v-line px-4 py-3">
-            <S2VPagination v-model="page" :total="app.transactions.length" :page-size="PAGE_SIZE" />
+          <div v-if="transactionTotal" class="border-t border-s2v-line px-4 py-3">
+            <S2VPagination v-model="page" :total="transactionTotal" :page-size="PAGE_SIZE" />
           </div>
           <div class="border-t border-s2v-line px-4 py-3">
             <button class="flex items-center gap-1 text-xs font-semibold text-s2v-primary" type="button" @click="app.notify('生成任务提交时预扣费用，失败或主动终止后原路退回钱包。')">了解余额扣费规则</button>

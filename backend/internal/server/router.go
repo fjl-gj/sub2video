@@ -54,6 +54,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 				client.POST("/tasks/:id/cancel", clientH.CancelTask)
 				client.POST("/tasks/:id/retry", clientH.RetryTask)
 				client.GET("/wallet", clientH.Wallet)
+				client.GET("/wallet/transactions", clientH.WalletTransactions)
 				client.POST("/wallet/redeem", clientH.Redeem)
 			}
 		}

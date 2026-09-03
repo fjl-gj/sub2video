@@ -10,6 +10,16 @@ export async function fetchWallet() {
   return data as { balance: number; products: Array<{ id: string; amount: number; bonus: number; price: number }> }
 }
 
+export async function fetchWalletTransactions(params?: { page?: number; pageSize?: number }) {
+  const { data } = await http.get('/client/wallet/transactions', { params })
+  return data as {
+    items: Array<{ id: string; type: string; amount: number; desc: string; time: string }>
+    total: number
+    page: number
+    pageSize: number
+  }
+}
+
 export async function redeemCode(code: string) {
   const { data } = await http.post('/client/wallet/redeem', { code })
   return data as { credited: number; wallet: { balance: number } }
