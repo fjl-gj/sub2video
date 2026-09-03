@@ -32,5 +32,6 @@ const app = useAppStore()
         </div>
       </S2VCard>
     </div>
+    <p v-if="!app.announcements.length" class="s2v-inset-dashed">暂无公告，等待后端数据接入。</p>
   </section>
 </template>

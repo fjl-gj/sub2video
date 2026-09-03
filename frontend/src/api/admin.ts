@@ -29,6 +29,24 @@ export type AdminRoute = {
   priority: number
 }
 
+export type AdminSettings = {
+  smtpHost: string
+  smtpPort: string
+  smtpUsername: string
+  smtpFrom: string
+  smtpFromName: string
+  smtpUseTls: boolean
+  smtpPasswordConfigured: boolean
+  emailVerifyEnabled: boolean
+  passwordResetEnabled: boolean
+  registrationEnabled: boolean
+  frontendUrl: string
+  inputRetentionDays: string
+  resultRetentionDays: string
+  notifyTask: boolean
+  auditEnabled: boolean
+}
+
 export async function fetchAdminSuppliers() {
   const { data } = await http.get('/admin/suppliers')
   return data as { items: AdminSupplier[] }
@@ -68,4 +86,19 @@ export async function fetchAdminCarriers() {
     cosConfigured: boolean
     autodlEnvToken: boolean
   }
+}
+
+export async function fetchAdminSettings() {
+  const { data } = await http.get<AdminSettings>('/admin/settings')
+  return data
+}
+
+export async function updateAdminSettings(payload: Partial<AdminSettings> & { smtpPassword?: string }) {
+  const { data } = await http.put<AdminSettings>('/admin/settings', payload)
+  return data
+}
+
+export async function testAdminSMTP() {
+  const { data } = await http.post<{ status: string }>('/admin/settings/test-smtp')
+  return data
 }

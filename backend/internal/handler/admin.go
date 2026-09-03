@@ -2,9 +2,12 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sbu2video/backend/internal/config"
+	"github.com/sbu2video/backend/internal/mail"
 	"github.com/sbu2video/backend/internal/response"
 	"github.com/sbu2video/backend/internal/store"
 )
@@ -12,6 +15,7 @@ import (
 type AdminHandler struct {
 	Store *store.Store
 	Cfg   config.Config
+	Mail  *mail.Service
 }
 
 func (h *AdminHandler) ListSuppliers(c *gin.Context) {
@@ -139,4 +143,91 @@ func (h *AdminHandler) ListCarriers(c *gin.Context) {
 		"cosConfigured": h.Cfg.COSSecretID != "" && h.Cfg.COSBucket != "",
 		"autodlEnvToken": h.Cfg.AutoDLToken != "",
 	})
+}
+
+func (h *AdminHandler) GetSettings(c *gin.Context) {
+	keys := []string{
+		"smtp_host", "smtp_port", "smtp_username", "smtp_from", "smtp_from_name", "smtp_use_tls",
+		"email_verify_enabled", "password_reset_enabled", "registration_enabled", "frontend_url",
+		"input_retention_days", "result_retention_days", "notify_task", "audit_enabled",
+	}
+	m, err := h.Store.GetSettings(c.Request.Context(), keys)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	pwd, _ := h.Store.GetSetting(c.Request.Context(), "smtp_password")
+	response.OK(c, gin.H{
+		"smtpHost": m["smtp_host"], "smtpPort": m["smtp_port"], "smtpUsername": m["smtp_username"],
+		"smtpFrom": m["smtp_from"], "smtpFromName": m["smtp_from_name"],
+		"smtpUseTls": m["smtp_use_tls"] != "false",
+		"smtpPasswordConfigured": pwd != "",
+		"emailVerifyEnabled": m["email_verify_enabled"] == "true",
+		"passwordResetEnabled": m["password_reset_enabled"] == "true",
+		"registrationEnabled": m["registration_enabled"] != "false",
+		"frontendUrl": m["frontend_url"],
+		"inputRetentionDays": m["input_retention_days"],
+		"resultRetentionDays": m["result_retention_days"],
+		"notifyTask": m["notify_task"] != "false",
+		"auditEnabled": m["audit_enabled"] != "false",
+	})
+}
+
+func (h *AdminHandler) UpdateSettings(c *gin.Context) {
+	var req map[string]any
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	kv := map[string]string{}
+	mapStr := func(jsonKey, dbKey string) {
+		if v, ok := req[jsonKey]; ok {
+			switch t := v.(type) {
+			case string:
+				kv[dbKey] = t
+			case bool:
+				if t {
+					kv[dbKey] = "true"
+				} else {
+					kv[dbKey] = "false"
+				}
+			case float64:
+				kv[dbKey] = strconv.FormatInt(int64(t), 10)
+			}
+		}
+	}
+	mapStr("smtpHost", "smtp_host")
+	mapStr("smtpPort", "smtp_port")
+	mapStr("smtpUsername", "smtp_username")
+	mapStr("smtpFrom", "smtp_from")
+	mapStr("smtpFromName", "smtp_from_name")
+	mapStr("smtpUseTls", "smtp_use_tls")
+	mapStr("emailVerifyEnabled", "email_verify_enabled")
+	mapStr("passwordResetEnabled", "password_reset_enabled")
+	mapStr("registrationEnabled", "registration_enabled")
+	mapStr("frontendUrl", "frontend_url")
+	mapStr("inputRetentionDays", "input_retention_days")
+	mapStr("resultRetentionDays", "result_retention_days")
+	mapStr("notifyTask", "notify_task")
+	mapStr("auditEnabled", "audit_enabled")
+	if v, ok := req["smtpPassword"].(string); ok && strings.TrimSpace(v) != "" {
+		kv["smtp_password"] = strings.TrimSpace(v)
+	}
+	if err := h.Store.SetSettings(c.Request.Context(), kv); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	h.GetSettings(c)
+}
+
+func (h *AdminHandler) TestSMTP(c *gin.Context) {
+	if h.Mail == nil {
+		response.Fail(c, http.StatusServiceUnavailable, "EMAIL_NOT_CONFIGURED", "mail service unavailable")
+		return
+	}
+	if err := h.Mail.TestConnection(c.Request.Context()); err != nil {
+		response.Fail(c, http.StatusBadRequest, "SMTP_TEST_FAILED", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"status": "ok"})
 }

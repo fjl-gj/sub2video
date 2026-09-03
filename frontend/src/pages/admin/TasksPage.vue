@@ -76,6 +76,9 @@ function confirmStop() {
               </div>
             </td>
           </tr>
+          <tr v-if="!list.length">
+            <td colspan="7" class="text-center text-s2v-muted">暂无任务数据，等待后端数据接入。</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -92,6 +95,7 @@ function confirmStop() {
           <S2VIconButton label="导出任务记录" @click="app.notify('已生成任务记录（原型）')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
         </template>
       </MobileRecordCard>
+      <p v-if="!list.length" class="text-xs text-s2v-muted">暂无任务数据。</p>
     </div>
 
     <S2VDialog

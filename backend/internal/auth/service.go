@@ -23,12 +23,23 @@ var (
 	ErrTokenExpired       = errors.New("token expired")
 	ErrTokenInvalid       = errors.New("token invalid")
 	ErrRefreshInvalid     = errors.New("refresh token invalid")
+	ErrVerifyRequired     = errors.New("verification code required")
+	ErrRegistrationClosed = errors.New("registration closed")
 )
 
 type Service struct {
 	store  *store.Store
 	cfg    config.Config
 	secret []byte
+	Mail   Mailer
+}
+
+type Mailer interface {
+	SendVerifyCode(ctx context.Context, email, siteName string) error
+	VerifyCode(ctx context.Context, email, code string) error
+	SendPasswordReset(ctx context.Context, email, siteName, resetBaseURL string) error
+	ConsumeResetToken(ctx context.Context, email, token string) error
+	Configured(ctx context.Context) bool
 }
 
 type Claims struct {
@@ -59,10 +70,25 @@ func (s *Service) CheckPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-func (s *Service) Register(ctx context.Context, email, password, displayName string) (*TokenPair, *store.User, error) {
+func (s *Service) Register(ctx context.Context, email, password, displayName, verifyCode string) (*TokenPair, *store.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" || len(password) < 8 {
 		return nil, nil, fmt.Errorf("invalid email or password")
+	}
+	if !s.store.SettingBool(ctx, "registration_enabled", true) {
+		return nil, nil, ErrRegistrationClosed
+	}
+	verifyEnabled := s.store.SettingBool(ctx, "email_verify_enabled", false)
+	if verifyEnabled {
+		if strings.TrimSpace(verifyCode) == "" {
+			return nil, nil, ErrVerifyRequired
+		}
+		if s.Mail == nil {
+			return nil, nil, fmt.Errorf("mail service unavailable")
+		}
+		if err := s.Mail.VerifyCode(ctx, email, verifyCode); err != nil {
+			return nil, nil, err
+		}
 	}
 	exists, err := s.store.EmailExists(ctx, email)
 	if err != nil {
@@ -82,8 +108,74 @@ func (s *Service) Register(ctx context.Context, email, password, displayName str
 	if err != nil {
 		return nil, nil, err
 	}
+	if verifyEnabled {
+		_ = s.store.MarkEmailVerified(ctx, user.ID)
+	}
 	pair, err := s.issuePair(ctx, user)
 	return pair, user, err
+}
+
+func (s *Service) SendVerifyCode(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return fmt.Errorf("email required")
+	}
+	if !s.store.SettingBool(ctx, "registration_enabled", true) {
+		return ErrRegistrationClosed
+	}
+	if s.Mail == nil {
+		return fmt.Errorf("mail service unavailable")
+	}
+	exists, err := s.store.EmailExists(ctx, email)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return ErrEmailExists
+	}
+	return s.Mail.SendVerifyCode(ctx, email, "Sub2Video")
+}
+
+func (s *Service) ForgotPassword(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if !s.store.SettingBool(ctx, "password_reset_enabled", false) {
+		return nil // silent
+	}
+	if s.Mail == nil {
+		return nil
+	}
+	_, err := s.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil // silent — don't reveal
+	}
+	front := "http://192.168.0.107:12000"
+	if v, _ := s.store.GetSetting(ctx, "frontend_url"); v != "" {
+		front = strings.TrimRight(v, "/")
+	}
+	resetURL := front + "/auth/reset-password"
+	return s.Mail.SendPasswordReset(ctx, email, "Sub2Video", resetURL)
+}
+
+func (s *Service) ResetPassword(ctx context.Context, email, token, newPassword string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if len(newPassword) < 8 {
+		return fmt.Errorf("password too short")
+	}
+	if s.Mail == nil {
+		return fmt.Errorf("mail service unavailable")
+	}
+	if err := s.Mail.ConsumeResetToken(ctx, email, token); err != nil {
+		return err
+	}
+	user, err := s.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		return ErrInvalidCredentials
+	}
+	hash, err := s.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	return s.store.UpdatePasswordHash(ctx, user.ID, hash)
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (*TokenPair, *store.User, error) {

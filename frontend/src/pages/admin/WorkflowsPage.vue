@@ -37,5 +37,6 @@ const app = useAppStore()
         <S2VButton class="mt-4" size="sm" :block="true" @click="app.toggleWorkflow(item.id)"><Edit3 class="h-3.5 w-3.5" />{{ item.status === '已上架' ? '下架' : '上架' }}</S2VButton>
       </S2VCard>
     </div>
+    <p v-if="!app.workflows.length" class="s2v-inset-dashed">暂无工作流，等待后端数据接入。</p>
   </section>
 </template>

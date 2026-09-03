@@ -73,6 +73,9 @@ function confirmRefund() {
               </div>
             </td>
           </tr>
+          <tr v-if="!list.length">
+            <td colspan="7" class="text-center text-s2v-muted">暂无工单数据，等待后端数据接入。</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -89,6 +92,7 @@ function confirmRefund() {
           <S2VIconButton v-else-if="item.status !== '已解决'" label="标记已解决" @click="app.resolveTicket(item.id)"><Check class="h-3.5 w-3.5" /></S2VIconButton>
         </template>
       </MobileRecordCard>
+      <p v-if="!list.length" class="text-xs text-s2v-muted">暂无工单数据。</p>
     </div>
 
     <S2VDialog

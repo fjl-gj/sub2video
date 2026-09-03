@@ -154,6 +154,16 @@ func (s *Store) BumpTokenVersion(ctx context.Context, userID int64) error {
 	return err
 }
 
+func (s *Store) MarkEmailVerified(ctx context.Context, userID int64) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = $1`, userID)
+	return err
+}
+
+func (s *Store) UpdatePasswordHash(ctx context.Context, userID int64, passwordHash string) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET password_hash = $1, token_version = token_version + 1, updated_at = NOW() WHERE id = $2`, passwordHash, userID)
+	return err
+}
+
 func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	var n int
 	err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`).Scan(&n)

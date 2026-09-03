@@ -8,11 +8,12 @@ import (
 	"github.com/sbu2video/backend/internal/auth"
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/handler"
+	"github.com/sbu2video/backend/internal/mail"
 	"github.com/sbu2video/backend/internal/middleware"
 	"github.com/sbu2video/backend/internal/store"
 )
 
-func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.Engine {
+func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSvc *mail.Service) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
@@ -26,7 +27,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 	authH := &handler.AuthHandler{Auth: authSvc, Store: st}
 	clientH := &handler.ClientHandler{Store: st}
 	uploadH := &handler.UploadHandler{Store: st, UploadDir: cfg.UploadDir}
-	adminH := &handler.AdminHandler{Store: st, Cfg: cfg}
+	adminH := &handler.AdminHandler{Store: st, Cfg: cfg, Mail: mailSvc}
 
 	v1 := r.Group("/api/v1")
 	{
@@ -36,7 +37,11 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 			a.POST("/login", authH.Login)
 			a.POST("/refresh", authH.Refresh)
 			a.POST("/logout", authH.Logout)
+			a.POST("/send-verify-code", authH.SendVerifyCode)
+			a.POST("/forgot-password", authH.ForgotPassword)
+			a.POST("/reset-password", authH.ResetPassword)
 		}
+		v1.GET("/settings/public", authH.PublicSettings)
 
 		authed := v1.Group("")
 		authed.Use(middleware.JWTAuth(authSvc, st))
@@ -67,6 +72,9 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 				admin.PATCH("/suppliers/:id", adminH.UpdateSupplier)
 				admin.GET("/routes", adminH.ListRoutes)
 				admin.PATCH("/routes/:id", adminH.UpdateRoute)
+				admin.GET("/settings", adminH.GetSettings)
+				admin.PUT("/settings", adminH.UpdateSettings)
+				admin.POST("/settings/test-smtp", adminH.TestSMTP)
 			}
 		}
 	}

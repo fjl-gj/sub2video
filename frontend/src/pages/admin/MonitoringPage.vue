@@ -59,6 +59,7 @@ const trends = [
             </div>
             <S2VBadge :tone="provider.status === '健康' ? 'success' : 'warning'">{{ provider.status }}</S2VBadge>
           </div>
+          <p v-if="!app.providers.length" class="py-4 text-xs text-s2v-muted">暂无供应商健康数据。</p>
         </div>
       </S2VCard>
 

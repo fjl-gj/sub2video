@@ -12,6 +12,8 @@ import (
 	"github.com/sbu2video/backend/internal/auth"
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/db"
+	"github.com/sbu2video/backend/internal/mail"
+	"github.com/sbu2video/backend/internal/redisx"
 	"github.com/sbu2video/backend/internal/server"
 	"github.com/sbu2video/backend/internal/store"
 	"github.com/sbu2video/backend/internal/worker"
@@ -35,6 +37,12 @@ func main() {
 		log.Fatalf("upload dir: %v", err)
 	}
 
+	rdb, err := redisx.Connect(ctx, cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("redis: %v", err)
+	}
+	defer rdb.Close()
+
 	st := store.New(pool)
 	if err := st.SeedBasics(ctx); err != nil {
 		log.Fatalf("seed: %v", err)
@@ -51,12 +59,15 @@ func main() {
 		}
 	}
 
+	mailSvc := &mail.Service{Store: st, Redis: rdb}
 	authSvc := auth.NewService(st, cfg)
+	authSvc.Mail = mailSvc
+
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	worker.Start(workerCtx, st, cfg, 4*time.Second)
 
-	r := server.NewRouter(cfg, st, authSvc)
+	r := server.NewRouter(cfg, st, authSvc, mailSvc)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
@@ -97,7 +108,7 @@ func ensureDemoUser(ctx context.Context, st *store.Store, cfg config.Config) err
 		return nil
 	}
 	authSvc := auth.NewService(st, cfg)
-	_, user, err := authSvc.Register(ctx, cfg.SeedEmail, cfg.SeedPassword, "林默")
+	_, user, err := authSvc.Register(ctx, cfg.SeedEmail, cfg.SeedPassword, "林默", "")
 	if err != nil {
 		return err
 	}

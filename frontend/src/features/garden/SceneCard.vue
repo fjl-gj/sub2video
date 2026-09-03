@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowRight, Play } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
-import type { SceneTemplate } from '@/data/mock'
+import type { SceneTemplate } from '@/entities/types'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 

@@ -59,6 +59,9 @@ function save() {
               <td><S2VBadge :tone="rule.status === '生效中' ? 'success' : 'warning'">{{ rule.status }}</S2VBadge></td>
               <td class="font-mono">{{ rule.version }}</td>
             </tr>
+            <tr v-if="!app.pricingRules.length">
+              <td colspan="6" class="text-center text-s2v-muted">暂无定价规则，等待后端数据接入。</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -72,6 +75,7 @@ function save() {
             <S2VInput v-model="rule.price" class="max-w-28" size="sm" @update:model-value="changed = true" />
           </template>
         </MobileRecordCard>
+        <p v-if="!app.pricingRules.length" class="text-xs text-s2v-muted">暂无定价规则。</p>
       </div>
       <div v-if="changed" class="flex items-center justify-between border-t border-s2v-line bg-s2v-warning/10 px-4 py-3 text-xs text-s2v-warning">
         <span>有未保存的价格调整</span>

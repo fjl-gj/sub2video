@@ -75,6 +75,7 @@ function submit() {
           <S2VBadge :tone="item.status === '已解决' ? 'success' : item.status === '待处理' ? 'warning' : 'primary'">{{ item.status }}</S2VBadge>
           <ChevronRight class="h-4 w-4 text-s2v-muted" />
         </button>
+        <p v-if="!app.tickets.length" class="py-4 text-xs text-s2v-muted">暂无工单记录。</p>
       </div>
       <div v-if="app.tickets.length" class="border-t border-s2v-line px-4 py-3">
         <S2VPagination v-model="page" :total="app.tickets.length" :page-size="PAGE_SIZE" />

@@ -162,36 +162,7 @@ export function findFileInProject(project: WorkProject, id: string): { folder: F
 }
 
 function seedDefaultProject(): WorkProject {
-  const project = createWorkProject(DEFAULT_PROJECT_ID, 'default作品', '系统默认工程，含标准模板与示例结果', '2026-08-28')
-  const assets = project.folders['资产']
-  const video = project.folders['视频']
-  if (assets?.folders['人物']) {
-    assets.folders['人物'].items = [
-      { id: 'ast-1', name: '人物侧脸素材.png', type: 'image', size: '3.1 MB', time: '昨天 19:22' },
-    ]
-  }
-  if (assets?.folders['场景']) {
-    assets.folders['场景'].items = [
-      { id: 'ast-2', name: '雨夜街景参考.png', type: 'image', size: '2.4 MB', time: '今天 14:18' },
-    ]
-  }
-  if (assets?.folders['道具']) {
-    assets.folders['道具'].items = [
-      { id: 'ast-3', name: '产品主视觉.png', type: 'image', size: '1.8 MB', time: '今天 13:36' },
-    ]
-  }
-  if (assets?.folders['素材']) {
-    assets.folders['素材'].items = [
-      { id: 'ast-4', name: '品牌 Logo.png', type: 'image', size: '84 KB', time: '8 月 28 日' },
-      { id: 'ast-5', name: '咖啡店环境音.mp3', type: 'audio', size: '4.2 MB', time: '8 月 27 日' },
-    ]
-  }
-  if (video?.folders[DEFAULT_VIDEO_ALBUM]) {
-    video.folders[DEFAULT_VIDEO_ALBUM].items = [
-      { id: 'ast-6', name: '#V001_默认成片.mp4', type: 'video', size: '18.6 MB', time: '昨天 17:04', meta: '768P · 15s', sourceTask: 'tsk_88812' },
-    ]
-  }
-  return project
+  return createWorkProject(DEFAULT_PROJECT_ID, 'default作品', '系统默认工程', new Date().toISOString().slice(0, 10))
 }
 
 export const initialProjects: WorkProject[] = [seedDefaultProject()]

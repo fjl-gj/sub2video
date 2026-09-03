@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Task } from '@/data/mock'
+import type { Task } from '@/entities/types'
 
 defineProps<{
   tasks: Task[]

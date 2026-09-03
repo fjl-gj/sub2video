@@ -24,8 +24,8 @@ import {
 } from '@/shared/lib/create-draft'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
-import { createTask, quoteTask, uploadImage } from '@/api/client'
-import type { Task } from '@/data/mock'
+import { createTask, listTasks, quoteTask, uploadImage } from '@/api/client'
+import type { Task } from '@/entities/types'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 
@@ -69,7 +69,7 @@ const assetDialogOpen = computed({
 const parsedDuration = computed(() => Number(durationSec.value))
 const durationValid = computed(() => [5, 10, 15].includes(parsedDuration.value))
 const cost = computed(() => estimateCreateCost(parsedDuration.value, resolution.value))
-const recentTasks = computed(() => app.tasks.slice(0, 3))
+const recentTasks = ref<Task[]>([])
 
 const canSubmit = computed(() => {
   if (!durationValid.value) return false
@@ -105,7 +105,7 @@ function setStageFromSlot(slot: FrameSlot, descriptor: SlotDescriptor) {
 }
 
 function setStageFromTask(taskId: string) {
-  const task = app.tasks.find((item) => item.id === taskId)
+  const task = recentTasks.value.find((item) => item.id === taskId)
   if (!task) return
   activeTaskId.value = taskId
   activeSlotKey.value = null
@@ -189,11 +189,6 @@ function workflowId() {
   return mode.value === 'text' ? 'wf-h3-text' : 'wf-h3-image'
 }
 
-function workflowLabel() {
-  if (mode.value === 'text') return 'H3 文生视频'
-  return imageVariant.value === 'keyframes' ? 'H3 首尾帧图生视频' : 'H3 多图参考图生视频'
-}
-
 function taskStamp() {
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -201,7 +196,7 @@ function taskStamp() {
 }
 
 function buildTaskTitle() {
-  const seq = app.tasks.length + 1
+  const seq = recentTasks.value.length + 1
   if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
   const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
   return `图生·${variant} ${taskStamp()} #${seq}`
@@ -271,19 +266,6 @@ async function submit() {
       },
     })
     syncBalance(result.wallet.balance)
-    const localTask: Task = {
-      id: result.task.id,
-      title: result.task.title,
-      workflow: result.task.workflow || workflowLabel(),
-      status: (result.task.status as Task['status']) || '排队中',
-      progress: 0,
-      duration: `${parsedDuration.value} 秒`,
-      resolution: resolution.value,
-      cost: result.task.cost,
-      time: '刚刚',
-      thumb: stagePreviewUrl.value || 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=480&q=80',
-    }
-    app.tasks.unshift(localTask)
     app.notify(`任务已提交，预扣 ¥${result.task.cost.toFixed(2)}`)
     app.draftPrompt = ''
     prompt.value = ''
@@ -349,10 +331,24 @@ function scheduleDraftSave() {
   }, 320)
 }
 
+async function loadRecentTasks() {
+  try {
+    const result = await listTasks({ page: 1, pageSize: 3 })
+    recentTasks.value = result.items.map((task) => ({
+      ...task,
+      status: task.status as Task['status'],
+      thumb: task.thumbUrl,
+    }))
+  } catch {
+    recentTasks.value = []
+  }
+}
+
 onMounted(() => {
   applyDraftFromStorage()
   if (mode.value === 'text') syncTextStage()
   draftReady.value = true
+  void loadRecentTasks()
 })
 
 onBeforeUnmount(() => {

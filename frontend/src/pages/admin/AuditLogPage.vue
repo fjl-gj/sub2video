@@ -45,6 +45,9 @@ const app = useAppStore()
               <td class="font-mono">{{ item.target }}</td>
               <td><S2VBadge tone="success">{{ item.result }}</S2VBadge></td>
             </tr>
+            <tr v-if="!app.auditLogs.length">
+              <td colspan="5" class="text-center text-s2v-muted">暂无操作日志，等待后端数据接入。</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -53,6 +56,7 @@ const app = useAppStore()
           <template #badge><S2VBadge tone="success">{{ item.result }}</S2VBadge></template>
           <template #body>{{ item.operator }} · {{ item.target }}</template>
         </MobileRecordCard>
+        <p v-if="!app.auditLogs.length" class="text-xs text-s2v-muted">暂无操作日志。</p>
       </div>
     </S2VCard>
   </section>

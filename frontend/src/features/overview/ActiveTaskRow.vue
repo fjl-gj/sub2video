@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Task } from '@/data/mock'
+import type { Task } from '@/entities/types'
 import { Clock3 } from 'lucide-vue-next'
 import S2VProgress from '@/shared/ui/S2VProgress.vue'
 

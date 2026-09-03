@@ -51,6 +51,9 @@ const list = computed(() => app.transactions.filter((row) => !search.value || `$
             <td>{{ item.time }}</td>
             <td><button class="flex items-center gap-1 text-xs text-s2v-primary" type="button" @click="app.notify(`${item.id} 凭证：${item.type}`)"><FileText class="h-3.5 w-3.5" />查看</button></td>
           </tr>
+          <tr v-if="!list.length">
+            <td colspan="7" class="text-center text-s2v-muted">暂无订单数据，等待后端数据接入。</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -63,6 +66,7 @@ const list = computed(() => app.transactions.filter((row) => !search.value || `$
           <button class="flex items-center gap-1 text-xs text-s2v-primary" type="button" @click="app.notify(`${item.id} 凭证：${item.type}`)"><FileText class="h-3.5 w-3.5" />查看</button>
         </template>
       </MobileRecordCard>
+      <p v-if="!list.length" class="text-xs text-s2v-muted">暂无订单数据。</p>
     </div>
   </section>
 </template>

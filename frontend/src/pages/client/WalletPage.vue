@@ -3,7 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, Check, Coins, CreditCard, Gift, History } 
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchWallet, fetchWalletTransactions, redeemCode } from '@/api/client'
-import type { LedgerEntry } from '@/data/mock'
+import type { LedgerEntry } from '@/entities/types'
 import { PAGE_SIZE } from '@/shared/lib/paginate'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'

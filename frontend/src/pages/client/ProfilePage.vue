@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Bell, KeyRound, LogOut, Mail, MonitorSmartphone, ShieldCheck, UserRound } from 'lucide-vue-next'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +14,8 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 const router = useRouter()
 const app = useAppStore()
 const auth = useAuthStore()
+const profileName = computed(() => auth.user?.displayName || auth.user?.workspaceName || app.profile.name)
+const profileEmail = computed(() => auth.user?.email || app.profile.email)
 
 async function logout() {
   await auth.logout()
@@ -32,10 +35,10 @@ async function logout() {
     <div class="grid gap-5 lg:grid-cols-2">
       <S2VCard variant="padded">
         <div class="flex items-center gap-3">
-          <span class="s2v-avatar s2v-avatar-lg">{{ app.profile.name.slice(0, 1) }}</span>
+          <span class="s2v-avatar s2v-avatar-lg">{{ profileName.slice(0, 1) || '—' }}</span>
           <div>
-            <h2 class="text-base font-bold">{{ app.profile.name }}</h2>
-            <p class="mt-1 text-xs text-s2v-muted">{{ app.profile.email }}</p>
+            <h2 class="text-base font-bold">{{ profileName || '未设置昵称' }}</h2>
+            <p class="mt-1 text-xs text-s2v-muted">{{ profileEmail || '未设置邮箱' }}</p>
             <S2VBadge class="mt-2" tone="success">专业创作者</S2VBadge>
           </div>
         </div>

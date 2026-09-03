@@ -1,11 +1,23 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { loginApi, logoutApi, meApi, registerApi, type AuthUser } from '@/api/auth'
+import {
+  fetchPublicSettings as fetchPublicSettingsApi,
+  forgotPassword as forgotPasswordApi,
+  loginApi,
+  logoutApi,
+  meApi,
+  registerApi,
+  resetPassword as resetPasswordApi,
+  sendVerifyCode as sendVerifyCodeApi,
+  type AuthUser,
+  type PublicSettings,
+} from '@/api/auth'
 import { clearTokens, getAccessToken } from '@/api/http'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
   const bootstrapped = ref(false)
+  const publicSettings = ref<PublicSettings | null>(null)
 
   const isAuthenticated = computed(() => Boolean(user.value && getAccessToken()))
   const displayName = computed(() => user.value?.workspaceName || user.value?.displayName || '')
@@ -33,10 +45,27 @@ export const useAuthStore = defineStore('auth', () => {
     return data.user
   }
 
-  async function register(email: string, password: string, displayName: string) {
-    const data = await registerApi(email, password, displayName)
+  async function fetchPublicSettings() {
+    publicSettings.value = await fetchPublicSettingsApi()
+    return publicSettings.value
+  }
+
+  async function sendVerifyCode(email: string) {
+    return sendVerifyCodeApi(email)
+  }
+
+  async function register(email: string, password: string, displayName: string, verifyCode = '') {
+    const data = await registerApi(email, password, displayName, verifyCode)
     user.value = data.user
     return data.user
+  }
+
+  async function forgotPassword(email: string) {
+    return forgotPasswordApi(email)
+  }
+
+  async function resetPassword(email: string, token: string, newPassword: string) {
+    return resetPasswordApi(email, token, newPassword)
   }
 
   async function logout() {
@@ -51,12 +80,17 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     bootstrapped,
+    publicSettings,
     isAuthenticated,
     displayName,
     balance,
     bootstrap,
     login,
+    fetchPublicSettings,
+    sendVerifyCode,
     register,
+    forgotPassword,
+    resetPassword,
     logout,
     setBalance,
   }

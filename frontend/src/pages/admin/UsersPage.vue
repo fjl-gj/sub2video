@@ -74,6 +74,9 @@ function confirmToggle() {
               <S2VIconButton :label="user.status === '已冻结' ? '解冻账号' : '冻结账号'" @click="askToggle(user)"><ShieldBan class="h-4 w-4" /></S2VIconButton>
             </td>
           </tr>
+          <tr v-if="!list.length">
+            <td colspan="7" class="text-center text-s2v-muted">暂无用户数据，等待后端数据接入。</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -88,6 +91,7 @@ function confirmToggle() {
           <S2VIconButton :label="user.status === '已冻结' ? '解冻账号' : '冻结账号'" @click="askToggle(user)"><ShieldBan class="h-4 w-4" /></S2VIconButton>
         </template>
       </MobileRecordCard>
+      <p v-if="!list.length" class="text-xs text-s2v-muted">暂无用户数据。</p>
     </div>
 
     <S2VDialog

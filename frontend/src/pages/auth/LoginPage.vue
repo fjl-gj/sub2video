@@ -12,8 +12,8 @@ import AuthBrand from '@/widgets/AuthBrand.vue'
 const router = useRouter()
 const auth = useAuthStore()
 const app = useAppStore()
-const email = ref('demo@sub2video.local')
-const password = ref('Demo1234!')
+const email = ref('')
+const password = ref('')
 const loading = ref(false)
 const error = ref('')
 
@@ -58,7 +58,7 @@ async function login() {
       <div class="my-4 flex items-center gap-3 text-[11px] text-s2v-muted"><span class="h-px flex-1 bg-s2v-line" />或<span class="h-px flex-1 bg-s2v-line" /></div>
       <S2VButton :block="true" @click="router.push('/auth/register')">创建新账号</S2VButton>
     </S2VCard>
-    <div class="flex items-center justify-center gap-1.5 text-[11px] text-s2v-muted"><ShieldCheck class="h-3.5 w-3.5" />UAT 演示账号已预填</div>
+    <div class="flex items-center justify-center gap-1.5 text-[11px] text-s2v-muted"><ShieldCheck class="h-3.5 w-3.5" />账号信息仅用于安全登录</div>
     <p class="text-center text-[11px] text-s2v-muted">登录即表示同意 <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/terms')">服务条款</button> 和 <button class="font-semibold text-s2v-primary" type="button" @click="router.push('/auth/privacy')">隐私政策</button></p>
   </div>
 </template>
