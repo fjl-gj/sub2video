@@ -46,6 +46,33 @@ func (h *AdminHandler) ListSuppliers(c *gin.Context) {
 	response.OK(c, gin.H{"items": out})
 }
 
+func (h *AdminHandler) CreateSupplier(c *gin.Context) {
+	var req struct {
+		Code    string `json:"code" binding:"required"`
+		Name    string `json:"name" binding:"required"`
+		BaseURL string `json:"baseUrl"`
+		Token   string `json:"token"`
+		Enabled *bool  `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	sp, err := h.Store.CreateSupplier(c.Request.Context(), req.Code, req.Name, req.BaseURL, req.Token, h.Cfg.SecretKey, enabled)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.Created(c, gin.H{
+		"id": sp.ID, "code": sp.Code, "name": sp.Name, "baseUrl": sp.BaseURL,
+		"enabled": sp.Enabled, "hasToken": sp.TokenConfigured,
+	})
+}
+
 func (h *AdminHandler) UpdateSupplier(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
@@ -90,6 +117,64 @@ func (h *AdminHandler) ListRoutes(c *gin.Context) {
 		})
 	}
 	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) CreateRoute(c *gin.Context) {
+	var req struct {
+		SupplierID        string                 `json:"supplierId" binding:"required"`
+		ModelID           string                 `json:"modelId" binding:"required"`
+		WorkflowID        string                 `json:"workflowId" binding:"required"`
+		Name              string                 `json:"name"`
+		Enabled           *bool                  `json:"enabled"`
+		CostPerSecPeak    float64                `json:"costPerSecPeak"`
+		CostPerSecOffpeak float64                `json:"costPerSecOffpeak"`
+		Conditions        *store.RouteConditions `json:"conditions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	cond := store.RouteConditions{}
+	if req.Conditions != nil {
+		cond = *req.Conditions
+	}
+	r, err := h.Store.CreateRoute(c.Request.Context(), req.SupplierID, req.ModelID, req.WorkflowID, req.Name,
+		req.CostPerSecPeak, req.CostPerSecOffpeak, enabled, cond)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.Created(c, gin.H{
+		"id": r.ID, "workflowId": r.WorkflowID, "name": r.Name, "enabled": r.Enabled,
+		"costPerSecPeak": r.CostPerSecPeak, "costPerSecOffpeak": r.CostPerSecOffpeak,
+	})
+}
+
+func (h *AdminHandler) CreateModel(c *gin.Context) {
+	var req struct {
+		CarrierID        string `json:"carrierId" binding:"required"`
+		Code             string `json:"code" binding:"required"`
+		Name             string `json:"name" binding:"required"`
+		Description      string `json:"description"`
+		ClientWorkflowID string `json:"clientWorkflowId"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	m, err := h.Store.CreateModel(c.Request.Context(), req.CarrierID, req.Code, req.Name, req.Description, req.ClientWorkflowID)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.Created(c, gin.H{
+		"id": m.ID, "code": m.Code, "name": m.Name, "carrierCode": m.CarrierCode,
+		"clientWorkflowId": m.ClientWorkflowID, "enabled": m.Enabled,
+	})
 }
 
 func (h *AdminHandler) UpdateRoute(c *gin.Context) {
@@ -275,40 +360,78 @@ func (h *AdminHandler) ListWorkflows(c *gin.Context) {
 		out = append(out, gin.H{
 			"id": w.ID, "code": w.Code, "name": w.Name, "description": w.Description,
 			"status": statusCN, "statusRaw": w.Status, "badge": w.Badge,
-			"modelCode": w.ModelCode, "carrier": carrier, "price": priceLabel,
+			"modelId": w.ModelID, "modelCode": w.ModelCode, "carrier": carrier, "price": priceLabel,
 			"updatedAt": w.UpdatedAt,
 		})
 	}
 	response.OK(c, gin.H{"items": out})
 }
 
-func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
-	id := c.Param("id")
+func (h *AdminHandler) CreateWorkflow(c *gin.Context) {
 	var req struct {
-		Status string `json:"status"`
+		Code        string `json:"code" binding:"required"`
+		Name        string `json:"name" binding:"required"`
+		Description string `json:"description"`
+		ModelID     string `json:"modelId" binding:"required"`
+		Status      string `json:"status"`
+		Badge       string `json:"badge"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	status := req.Status
-	switch status {
-	case "已上架", "published":
-		status = "published"
-	case "草稿", "draft":
-		status = "draft"
-	case "未开放", "disabled":
-		status = "disabled"
-	default:
-		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "invalid status")
-		return
-	}
-	w, err := h.Store.UpdatePlatformWorkflowStatus(c.Request.Context(), id, status)
+	w, err := h.Store.CreatePlatformWorkflow(c.Request.Context(), req.Code, req.Name, req.Description, req.ModelID, req.Status, req.Badge)
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	response.OK(c, gin.H{"id": w.ID, "code": w.Code, "status": w.Status})
+	response.Created(c, gin.H{"id": w.ID, "code": w.Code, "name": w.Name, "status": w.Status, "modelCode": w.ModelCode})
+}
+
+func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Status      *string `json:"status"`
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		ModelID     *string `json:"modelId"`
+		Badge       *string `json:"badge"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	// backward-compatible: status-only toggle
+	if req.Name == nil && req.Description == nil && req.ModelID == nil && req.Badge == nil && req.Status != nil {
+		status := *req.Status
+		switch status {
+		case "已上架", "published":
+			status = "published"
+		case "草稿", "draft":
+			status = "draft"
+		case "未开放", "disabled":
+			status = "disabled"
+		default:
+			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "invalid status")
+			return
+		}
+		w, err := h.Store.UpdatePlatformWorkflowStatus(c.Request.Context(), id, status)
+		if err != nil {
+			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
+		response.OK(c, gin.H{"id": w.ID, "code": w.Code, "status": w.Status})
+		return
+	}
+	w, err := h.Store.UpdatePlatformWorkflow(c.Request.Context(), id, req.Name, req.Description, req.ModelID, req.Status, req.Badge)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{
+		"id": w.ID, "code": w.Code, "name": w.Name, "description": w.Description,
+		"status": w.Status, "modelCode": w.ModelCode, "badge": w.Badge,
+	})
 }
 
 func (h *AdminHandler) ListPricing(c *gin.Context) {

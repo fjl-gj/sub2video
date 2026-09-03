@@ -12,8 +12,10 @@ export type AdminSupplier = {
 
 export type AdminRoute = {
   id: string
+  supplierId?: string
   supplierCode: string
   supplierName: string
+  modelId?: string
   modelCode: string
   clientWorkflowId: string
   workflowId: string
@@ -57,6 +59,17 @@ export async function fetchAdminSuppliers() {
   return data as { items: AdminSupplier[] }
 }
 
+export async function createAdminSupplier(payload: {
+  code: string
+  name: string
+  baseUrl?: string
+  token?: string
+  enabled?: boolean
+}) {
+  const { data } = await http.post('/admin/suppliers', payload)
+  return data as AdminSupplier
+}
+
 export async function updateAdminSupplier(id: string, payload: {
   name?: string
   baseUrl?: string
@@ -72,6 +85,19 @@ export async function fetchAdminRoutes() {
   return data as { items: AdminRoute[] }
 }
 
+export async function createAdminRoute(payload: {
+  supplierId: string
+  modelId: string
+  workflowId: string
+  name?: string
+  enabled?: boolean
+  costPerSecPeak?: number
+  costPerSecOffpeak?: number
+}) {
+  const { data } = await http.post('/admin/routes', payload)
+  return data as AdminRoute
+}
+
 export async function updateAdminRoute(id: string, payload: {
   enabled?: boolean
   costPerSecPeak?: number
@@ -83,14 +109,41 @@ export async function updateAdminRoute(id: string, payload: {
   return data as AdminRoute
 }
 
+export type AdminModel = {
+  id: string
+  code: string
+  name: string
+  clientWorkflowId: string
+  enabled: boolean
+  carrierCode?: string
+}
+
+export type AdminCarrier = {
+  id: string
+  code: string
+  name: string
+  enabled: boolean
+}
+
 export async function fetchAdminCarriers() {
   const { data } = await http.get('/admin/carriers')
   return data as {
-    carriers: Array<{ id: string; code: string; name: string; enabled: boolean }>
-    models: Array<{ id: string; code: string; name: string; clientWorkflowId: string; enabled: boolean }>
+    carriers: AdminCarrier[]
+    models: AdminModel[]
     cosConfigured: boolean
     autodlEnvToken: boolean
   }
+}
+
+export async function createAdminModel(payload: {
+  carrierId: string
+  code: string
+  name: string
+  description?: string
+  clientWorkflowId?: string
+}) {
+  const { data } = await http.post('/admin/models', payload)
+  return data as AdminModel
 }
 
 export async function fetchAdminSettings() {
@@ -118,6 +171,7 @@ export type AdminWorkflow = {
   status: string
   statusRaw: string
   badge?: string
+  modelId?: string
   modelCode: string
   carrier: string
   price: string
@@ -160,9 +214,27 @@ export async function fetchAdminWorkflows() {
   return data as { items: AdminWorkflow[] }
 }
 
-export async function updateAdminWorkflow(id: string, payload: { status: string }) {
+export async function createAdminWorkflow(payload: {
+  code: string
+  name: string
+  description?: string
+  modelId: string
+  status?: string
+  badge?: string
+}) {
+  const { data } = await http.post('/admin/workflows', payload)
+  return data as { id: string; code: string; name: string; status: string; modelCode: string }
+}
+
+export async function updateAdminWorkflow(id: string, payload: {
+  status?: string
+  name?: string
+  description?: string
+  modelId?: string
+  badge?: string
+}) {
   const { data } = await http.patch(`/admin/workflows/${id}`, payload)
-  return data as { id: string; code: string; status: string }
+  return data as { id: string; code: string; status: string; name?: string; description?: string; modelCode?: string }
 }
 
 export async function fetchAdminPricing() {

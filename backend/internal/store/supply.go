@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -339,4 +340,104 @@ FROM models m JOIN carriers c ON c.id = m.carrier_id ORDER BY c.sort_order, m.so
 func (s *Store) PromoteUserRole(ctx context.Context, email, role string) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE users SET role=$1, updated_at=NOW() WHERE email=$2 AND deleted_at IS NULL`, role, email)
 	return err
+}
+
+func (s *Store) CreateSupplier(ctx context.Context, code, name, baseURL, tokenPlain, secretKey string, enabled bool) (*Supplier, error) {
+	code = strings.TrimSpace(code)
+	name = strings.TrimSpace(name)
+	if code == "" || name == "" {
+		return nil, errors.New("code and name required")
+	}
+	if baseURL == "" {
+		baseURL = "https://autodl.art"
+	}
+	enc := ""
+	if tokenPlain != "" {
+		var err error
+		enc, err = crypto.EncryptAESGCM(secretKey, tokenPlain)
+		if err != nil {
+			return nil, err
+		}
+	}
+	id := "sup_" + shortID()
+	_, err := s.Pool.Exec(ctx, `
+INSERT INTO suppliers (public_id, code, name, base_url, auth_header, token_encrypted, enabled, status)
+VALUES ($1,$2,$3,$4,'Authorization',$5,$6,'unknown')`, id, code, name, baseURL, enc, enabled)
+	if err != nil {
+		return nil, err
+	}
+	return s.getSupplierByPublicID(ctx, id)
+}
+
+func (s *Store) CreateModel(ctx context.Context, carrierPublicID, code, name, description, clientWorkflowID string) (*Model, error) {
+	code = strings.TrimSpace(code)
+	name = strings.TrimSpace(name)
+	if carrierPublicID == "" || code == "" || name == "" {
+		return nil, errors.New("carrier, code and name required")
+	}
+	id := "mdl_" + shortID()
+	tag, err := s.Pool.Exec(ctx, `
+INSERT INTO models (public_id, carrier_id, code, name, description, client_workflow_id, enabled, sort_order)
+SELECT $1, c.id, $2, $3, $4, $5, TRUE, COALESCE((SELECT MAX(sort_order)+1 FROM models WHERE carrier_id=c.id), 1)
+FROM carriers c WHERE c.public_id=$6 OR c.code=$6`,
+		id, code, name, description, clientWorkflowID, carrierPublicID)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errors.New("carrier not found")
+	}
+	_, models, err := s.ListCarriersWithModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range models {
+		if models[i].ID == id {
+			return &models[i], nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *Store) CreateRoute(ctx context.Context, supplierPublicID, modelPublicID, workflowID, name string, peak, off float64, enabled bool, cond RouteConditions) (*SupplierRoute, error) {
+	workflowID = strings.TrimSpace(workflowID)
+	if supplierPublicID == "" || modelPublicID == "" || workflowID == "" {
+		return nil, errors.New("supplier, model and upstream workflowId required")
+	}
+	if name == "" {
+		name = workflowID
+	}
+	if peak <= 0 {
+		peak = 0.03
+	}
+	if off <= 0 {
+		off = 0.02
+	}
+	condRaw, _ := json.Marshal(cond)
+	id := "rte_" + shortID()
+	tag, err := s.Pool.Exec(ctx, `
+INSERT INTO supplier_routes (
+  public_id, supplier_id, model_id, workflow_id, name, enabled,
+  cost_per_sec_peak, cost_per_sec_offpeak, conditions, priority
+) SELECT $1, s.id, m.id, $2, $3, $4, $5, $6, $7::jsonb,
+  COALESCE((SELECT MAX(priority)+1 FROM supplier_routes), 100)
+FROM suppliers s, models m
+WHERE (s.public_id=$8 OR s.code=$8) AND (m.public_id=$9 OR m.code=$9)`,
+		id, workflowID, name, enabled, peak, off, string(condRaw), supplierPublicID, modelPublicID)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errors.New("supplier or model not found")
+	}
+	routes, err := s.ListRoutes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range routes {
+		if routes[i].ID == id {
+			return &routes[i], nil
+		}
+	}
+	return nil, ErrNotFound
 }

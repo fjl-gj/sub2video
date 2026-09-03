@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -174,6 +175,81 @@ WHERE w.code = $1 OR w.public_id = $1`, code).Scan(
 
 func (s *Store) UpdatePlatformWorkflowStatus(ctx context.Context, publicID, status string) (*PlatformWorkflow, error) {
 	_, err := s.Pool.Exec(ctx, `UPDATE platform_workflows SET status=$1, updated_at=NOW() WHERE public_id=$2 OR code=$2`, status, publicID)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetPlatformWorkflow(ctx, publicID)
+}
+
+func (s *Store) CreatePlatformWorkflow(ctx context.Context, code, name, description, modelRef, status, badge string) (*PlatformWorkflow, error) {
+	code = strings.TrimSpace(code)
+	name = strings.TrimSpace(name)
+	if code == "" || name == "" || modelRef == "" {
+		return nil, errors.New("code, name and model required")
+	}
+	switch status {
+	case "published", "draft", "disabled":
+	default:
+		status = "draft"
+	}
+	params, _ := json.Marshal(WorkflowParams{
+		AspectRatios: []string{"16:9", "9:16", "1:1"},
+		Durations:    []int{5, 10, 15}, DefaultDuration: 15,
+		Resolutions: []string{"768P", "1080P"}, DefaultResolution: "768P",
+	})
+	tag, err := s.Pool.Exec(ctx, `
+INSERT INTO platform_workflows (public_id, code, name, description, model_id, status, badge, sort_order, params)
+SELECT $1, $2, $3, $4, m.id, $5, $6,
+  COALESCE((SELECT MAX(sort_order)+1 FROM platform_workflows), 1), $7::jsonb
+FROM models m WHERE m.public_id=$8 OR m.code=$8`,
+		code, code, name, description, status, badge, string(params), modelRef)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errors.New("model not found")
+	}
+	return s.GetPlatformWorkflow(ctx, code)
+}
+
+func (s *Store) UpdatePlatformWorkflow(ctx context.Context, publicID string, name, description, modelRef, status, badge *string) (*PlatformWorkflow, error) {
+	w, err := s.GetPlatformWorkflow(ctx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	if name != nil {
+		w.Name = strings.TrimSpace(*name)
+	}
+	if description != nil {
+		w.Description = *description
+	}
+	if badge != nil {
+		w.Badge = *badge
+	}
+	if status != nil {
+		st := *status
+		switch st {
+		case "已上架", "published":
+			st = "published"
+		case "草稿", "draft":
+			st = "draft"
+		case "未开放", "disabled":
+			st = "disabled"
+		default:
+			return nil, errors.New("invalid status")
+		}
+		w.Status = st
+	}
+	modelSel := w.ModelID
+	if modelRef != nil && strings.TrimSpace(*modelRef) != "" {
+		modelSel = strings.TrimSpace(*modelRef)
+	}
+	_, err = s.Pool.Exec(ctx, `
+UPDATE platform_workflows w SET
+  name=$1, description=$2, badge=$3, status=$4, updated_at=NOW(),
+  model_id = (SELECT id FROM models WHERE public_id=$5 OR code=$5 LIMIT 1)
+WHERE w.public_id=$6 OR w.code=$6`,
+		w.Name, w.Description, w.Badge, w.Status, modelSel, publicID)
 	if err != nil {
 		return nil, err
 	}
