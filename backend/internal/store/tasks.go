@@ -2,13 +2,13 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/sbu2video/backend/internal/pricing"
 )
 
 type Task struct {
@@ -88,23 +88,37 @@ func statusDB(cn string) string {
 }
 
 func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput) (*Task, string, float64, error) {
-	if !workflowEnabled(in.WorkflowID) {
+	wf, err := s.GetPlatformWorkflow(ctx, in.WorkflowID)
+	if err != nil {
+		return nil, "", 0, errors.New("工作流不存在")
+	}
+	if wf.Status != "published" {
 		return nil, "", 0, errors.New("工作流未开放")
 	}
 	if in.Resolution == "" {
 		in.Resolution = "768P"
+		if wf.Params.DefaultResolution != "" {
+			in.Resolution = wf.Params.DefaultResolution
+		}
 	}
 	if in.DurationSeconds == 0 {
 		in.DurationSeconds = 15
+		if wf.Params.DefaultDuration > 0 {
+			in.DurationSeconds = wf.Params.DefaultDuration
+		}
 	}
 	if in.AspectRatio == "" {
 		in.AspectRatio = "16:9"
 	}
-	cost, pps, ok := pricing.Quote(in.Resolution, in.DurationSeconds)
-	if !ok {
-		return nil, "", 0, errors.New("参数非法")
+
+	rule, err := s.FindActivePrice(ctx, wf.Code, in.Resolution)
+	if err != nil {
+		return nil, "", 0, errors.New("暂无该分辨率定价")
 	}
-	if in.RuleID != "" && (in.RuleID != pricing.RuleID || in.Version != pricing.Version) {
+	cost := rule.PricePerSec * float64(in.DurationSeconds)
+	pps := rule.PricePerSec
+
+	if in.RuleID != "" && (in.RuleID != rule.ID || in.Version != rule.Version) {
 		return nil, "", 0, errors.New("价格快照过期")
 	}
 	if in.EstimatedCost > 0 && abs(in.EstimatedCost-cost) > 0.01 {
@@ -116,7 +130,7 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 
 	sourceType := in.SourceType
 	sourceRef := strings.TrimSpace(in.SourceRef)
-	switch in.WorkflowID {
+	switch wf.Code {
 	case "wf-h3-text":
 		if strings.TrimSpace(in.Prompt) == "" {
 			return nil, "", 0, errors.New("请先填写画面描述")
@@ -166,17 +180,24 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 		title = "未命名创作"
 	}
 
-	publicID := fmt.Sprintf("tsk_%s", shortID())
+	publicID := NewTaskID()
 	thumb := "https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=480&q=80"
+	priceSnap, _ := json.Marshal(map[string]any{
+		"ruleId": rule.ID, "version": rule.Version, "pricePerSecond": pps,
+		"estimatedCost": cost, "resolution": in.Resolution, "durationSeconds": in.DurationSeconds,
+		"workflowId": wf.Code,
+	})
 	var id int64
 	err = tx.QueryRow(ctx, `
 INSERT INTO generation_tasks (
   public_id, user_id, title, workflow, status, progress, duration_sec, resolution, cost, thumb_url,
-  source_type, source_ref, prompt, aspect_ratio
-) VALUES ($1, $2, $3, $4, 'queued', 0, $5, $6, $7, $8, $9, $10, $11, $12)
+  source_type, source_ref, prompt, aspect_ratio,
+  workflow_public_id, price_rule_id, price_version, price_per_sec, price_snapshot, model_code, carrier_code
+) VALUES ($1, $2, $3, $4, 'queued', 0, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19)
 RETURNING id`,
-		publicID, userID, title, workflowLabel(in.WorkflowID), in.DurationSeconds, in.Resolution, cost, thumb,
+		publicID, userID, title, wf.Name, in.DurationSeconds, in.Resolution, cost, thumb,
 		sourceType, sourceRef, in.Prompt, in.AspectRatio,
+		wf.Code, rule.ID, rule.Version, pps, string(priceSnap), wf.ModelCode, wf.CarrierCode,
 	).Scan(&id)
 	if err != nil {
 		return nil, "", 0, err
@@ -188,11 +209,14 @@ RETURNING id`,
 	if err = tx.QueryRow(ctx, `SELECT balance::float8 FROM wallets WHERE user_id = $1`, userID).Scan(&balance); err != nil {
 		return nil, "", 0, err
 	}
-	ledgerID := "TX_" + shortID()
+	ledgerID := NewLedgerID()
 	if _, err = tx.Exec(ctx, `
 INSERT INTO wallet_ledger (public_id, user_id, type, amount, balance_after, ref_type, ref_id, description)
 VALUES ($1, $2, 'task_charge', $3, $4, 'task', $5, $6)`,
 		ledgerID, userID, -cost, balance, publicID, fmt.Sprintf("%s %s", publicID, title)); err != nil {
+		return nil, "", 0, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE generation_tasks SET ledger_public_id=$1 WHERE id=$2`, ledgerID, id); err != nil {
 		return nil, "", 0, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -200,7 +224,7 @@ VALUES ($1, $2, 'task_charge', $3, $4, 'task', $5, $6)`,
 	}
 
 	return &Task{
-		ID: publicID, Title: title, Workflow: workflowLabel(in.WorkflowID),
+		ID: publicID, Title: title, Workflow: wf.Name,
 		Status: "排队中", Progress: 0, DurationSec: in.DurationSeconds,
 		Resolution: in.Resolution, Cost: cost, ThumbURL: thumb,
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -317,7 +341,7 @@ SELECT id, status, cost::float8, title FROM generation_tasks WHERE public_id = $
 	if err = tx.QueryRow(ctx, `SELECT balance::float8 FROM wallets WHERE user_id = $1`, userID).Scan(&balance); err != nil {
 		return nil, 0, 0, err
 	}
-	ledgerID := "TX_" + shortID()
+	ledgerID := NewLedgerID()
 	if _, err = tx.Exec(ctx, `
 INSERT INTO wallet_ledger (public_id, user_id, type, amount, balance_after, ref_type, ref_id, description)
 VALUES ($1, $2, 'task_refund', $3, $4, 'task', $5, $6)`,

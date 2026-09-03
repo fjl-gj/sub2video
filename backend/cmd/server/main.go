@@ -50,6 +50,9 @@ func main() {
 	if err := st.SeedSupplyChain(ctx, cfg.SecretKey); err != nil {
 		log.Fatalf("seed supply: %v", err)
 	}
+	if err := st.SeedPlatformCommerce(ctx); err != nil {
+		log.Fatalf("seed commerce: %v", err)
+	}
 	if err := ensureDemoUser(ctx, st, cfg); err != nil {
 		log.Fatalf("seed user: %v", err)
 	}

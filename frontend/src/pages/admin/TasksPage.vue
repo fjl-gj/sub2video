@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Ban, Download, RefreshCw, Search } from 'lucide-vue-next'
-import { computed, ref } from 'vue'
+import { Download, RefreshCw, Search } from 'lucide-vue-next'
+import { computed, onMounted, ref, watch } from 'vue'
+import { fetchAdminTasks, type AdminTaskItem } from '@/api/admin'
 import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
-import S2VDialog from '@/shared/ui/S2VDialog.vue'
+import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VIconButton from '@/shared/ui/S2VIconButton.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
@@ -14,32 +15,55 @@ const app = useAppStore()
 const filter = ref('全部')
 const search = ref('')
 const tabs = ['全部', '排队中', '生成中', '已完成', '失败']
-const confirmOpen = ref(false)
-const pending = ref<(typeof app.adminTasks)[number] | null>(null)
-const list = computed(() => app.adminTasks.filter((task) => (filter.value === '全部' || task.status === filter.value) && (!search.value || `${task.id}${task.title}${task.user}`.includes(search.value))))
+const items = ref<AdminTaskItem[]>([])
+const total = ref(0)
+const loading = ref(false)
 
-function askStop(task: (typeof app.adminTasks)[number]) {
-  pending.value = task
-  confirmOpen.value = true
+const list = computed(() => items.value.filter((task) => !search.value || `${task.id}${task.title}${task.user}`.includes(search.value)))
+
+async function load() {
+  loading.value = true
+  try {
+    const data = await fetchAdminTasks({
+      status: filter.value === '全部' ? undefined : filter.value,
+      page: 1,
+      pageSize: 50,
+    })
+    items.value = data.items
+    total.value = data.total
+  } catch (e: unknown) {
+    app.notify(e instanceof Error ? e.message : '加载任务失败')
+  } finally {
+    loading.value = false
+  }
 }
 
-function confirmStop() {
-  if (pending.value) app.cancelTask(pending.value.id)
+async function copyId(id: string) {
+  try {
+    await navigator.clipboard.writeText(id)
+    app.notify('已复制任务号')
+  } catch {
+    app.notify(id)
+  }
 }
+
+watch(filter, () => { void load() })
+onMounted(load)
 </script>
 
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="任务中心">
-      <template #description>查看全站生成任务，处理卡住、失败和退款任务。</template>
+      <template #description>平台任务号为主；上游任务号仅作排障参考。</template>
       <template #actions>
-        <S2VBadge tone="primary">{{ app.adminTasks.length }} 条任务</S2VBadge>
+        <S2VBadge tone="primary">{{ total }} 条任务</S2VBadge>
+        <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
       </template>
     </S2VPageHeader>
 
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <S2VSegmented v-model="filter" :options="tabs" />
-      <S2VInput v-model="search" class="ml-auto max-w-xs flex-1" size="sm" placeholder="任务 ID / 用户">
+      <S2VInput v-model="search" class="ml-auto max-w-xs flex-1" size="sm" placeholder="任务编号 / 用户">
         <template #prefix><Search class="h-3.5 w-3.5 text-s2v-muted" /></template>
       </S2VInput>
     </div>
@@ -48,9 +72,10 @@ function confirmStop() {
       <table class="s2v-table">
         <thead>
           <tr>
-            <th>任务</th>
+            <th>任务编号</th>
             <th>用户</th>
             <th>供应商</th>
+            <th>上游</th>
             <th>状态</th>
             <th>费用</th>
             <th>提交时间</th>
@@ -62,22 +87,23 @@ function confirmStop() {
             <td>
               <strong class="block text-xs text-s2v-ink">{{ task.title }}</strong>
               <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ task.id }}</span>
+              <span class="mt-0.5 block text-[10px] text-s2v-muted">{{ task.workflow }}</span>
             </td>
-            <td>{{ task.user }}</td>
-            <td>{{ task.provider }}</td>
+            <td>
+              <span class="block text-xs">{{ task.user }}</span>
+              <span class="mt-0.5 block text-[10px] text-s2v-muted">{{ task.userEmail }}</span>
+            </td>
+            <td class="font-mono text-[11px]">{{ task.provider }}</td>
+            <td class="font-mono text-[10px] text-s2v-muted">{{ task.upstreamTaskId || '-' }}</td>
             <td><S2VBadge :tone="task.status === '失败' ? 'danger' : task.status === '已完成' ? 'success' : 'primary'">{{ task.status }}</S2VBadge></td>
             <td class="font-mono">¥{{ task.cost.toFixed(2) }}</td>
             <td>{{ task.time }}</td>
             <td>
-              <div class="flex items-center gap-1">
-                <S2VIconButton label="重新调度" @click="task.status === '失败' ? app.retryTask(task.id) : app.notify(`已重新调度 ${task.id}`)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton v-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askStop(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton label="导出任务记录" @click="app.notify('已生成任务记录（原型）')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
-              </div>
+              <S2VIconButton label="复制任务号" @click="copyId(task.id)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
             </td>
           </tr>
           <tr v-if="!list.length">
-            <td colspan="7" class="text-center text-s2v-muted">暂无任务数据，等待后端数据接入。</td>
+            <td colspan="8" class="text-center text-s2v-muted">暂无任务。</td>
           </tr>
         </tbody>
       </table>
@@ -90,21 +116,10 @@ function confirmStop() {
         </template>
         <template #body>{{ task.user }} · {{ task.provider }} · ¥{{ task.cost.toFixed(2) }} · {{ task.time }}</template>
         <template #actions>
-          <S2VIconButton label="重新调度" @click="task.status === '失败' ? app.retryTask(task.id) : app.notify(`已重新调度 ${task.id}`)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
-          <S2VIconButton v-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askStop(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
-          <S2VIconButton label="导出任务记录" @click="app.notify('已生成任务记录（原型）')"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton label="复制任务号" @click="copyId(task.id)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
         </template>
       </MobileRecordCard>
-      <p v-if="!list.length" class="text-xs text-s2v-muted">暂无任务数据。</p>
+      <p v-if="!list.length" class="text-xs text-s2v-muted">暂无任务。</p>
     </div>
-
-    <S2VDialog
-      v-model:open="confirmOpen"
-      tone="danger"
-      title="终止任务并退款"
-      :description="pending ? `确定终止 ${pending.id} 吗？预扣费用将原路退回用户钱包。` : ''"
-      confirm-label="终止并退款"
-      @confirm="confirmStop"
-    />
   </section>
 </template>

@@ -125,6 +125,7 @@ func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []s
 			"name": selected.Name, "resolution": body["resolution"],
 		},
 	})
+	_, _ = r.Store.Pool.Exec(ctx, `UPDATE generation_tasks SET cost_per_sec=$1 WHERE id=$2`, cost, t.ID)
 
 	res, err := client.Submit(ctx, selected.WorkflowID, body)
 	if err != nil {

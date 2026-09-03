@@ -23,7 +23,7 @@ type Upload struct {
 
 func (s *Store) CreateUpload(ctx context.Context, userID int64, publicID, fileName, mimeType, storagePath string, sizeBytes int64) (*Upload, error) {
 	if publicID == "" {
-		publicID = "upl_" + shortID()
+		publicID = NewUploadID()
 	}
 	_, err := s.Pool.Exec(ctx, `
 INSERT INTO uploads (public_id, user_id, file_name, mime_type, size_bytes, storage_path)

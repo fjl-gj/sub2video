@@ -102,3 +102,73 @@ export async function testAdminSMTP() {
   const { data } = await http.post<{ status: string }>('/admin/settings/test-smtp')
   return data
 }
+
+export type AdminWorkflow = {
+  id: string
+  code: string
+  name: string
+  description: string
+  status: string
+  statusRaw: string
+  badge?: string
+  modelCode: string
+  carrier: string
+  price: string
+}
+
+export type AdminPricingRule = {
+  id: string
+  name: string
+  workflowCode: string
+  resolution: string
+  cost: string
+  price: string
+  pricePerSec: number
+  duration: string
+  status: string
+  version: string
+}
+
+export type AdminTaskItem = {
+  id: string
+  title: string
+  workflow: string
+  workflowId: string
+  status: string
+  progress: number
+  resolution: string
+  durationSec: number
+  cost: number
+  user: string
+  userEmail: string
+  provider: string
+  upstreamTaskId: string
+  upstreamStatus: string
+  failReason: string
+  time: string
+}
+
+export async function fetchAdminWorkflows() {
+  const { data } = await http.get('/admin/workflows')
+  return data as { items: AdminWorkflow[] }
+}
+
+export async function updateAdminWorkflow(id: string, payload: { status: string }) {
+  const { data } = await http.patch(`/admin/workflows/${id}`, payload)
+  return data as { id: string; code: string; status: string }
+}
+
+export async function fetchAdminPricing() {
+  const { data } = await http.get('/admin/pricing')
+  return data as { items: AdminPricingRule[] }
+}
+
+export async function updateAdminPricing(id: string, payload: { pricePerSec: number }) {
+  const { data } = await http.patch(`/admin/pricing/${id}`, payload)
+  return data as { id: string; pricePerSec: number; version: string }
+}
+
+export async function fetchAdminTasks(params?: { status?: string; page?: number; pageSize?: number }) {
+  const { data } = await http.get('/admin/tasks', { params })
+  return data as { items: AdminTaskItem[]; total: number; page: number; pageSize: number }
+}

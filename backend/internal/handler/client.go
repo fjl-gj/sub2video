@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sbu2video/backend/internal/middleware"
-	"github.com/sbu2video/backend/internal/pricing"
 	"github.com/sbu2video/backend/internal/response"
 	"github.com/sbu2video/backend/internal/store"
 )
@@ -61,21 +60,42 @@ func (h *ClientHandler) Overview(c *gin.Context) {
 func (h *ClientHandler) CreateForm(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	bal, _ := h.Store.GetBalance(c.Request.Context(), user.ID)
+	wfs, err := h.Store.ListPlatformWorkflows(c.Request.Context(), false)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	list := make([]gin.H, 0, len(wfs))
+	params := gin.H{
+		"aspectRatios": []string{"16:9", "9:16", "1:1"},
+		"durations": []int{5, 10, 15},
+		"defaultDuration": 15,
+		"resolution": "768P",
+	}
+	for _, w := range wfs {
+		item := gin.H{
+			"id": w.Code, "name": w.Name, "description": w.Description,
+			"enabled": w.Status == "published",
+		}
+		if w.Badge != "" {
+			item["badge"] = w.Badge
+		}
+		list = append(list, item)
+		if w.Status == "published" && w.Params.DefaultDuration > 0 {
+			params["aspectRatios"] = w.Params.AspectRatios
+			params["durations"] = w.Params.Durations
+			params["defaultDuration"] = w.Params.DefaultDuration
+			if w.Params.DefaultResolution != "" {
+				params["resolution"] = w.Params.DefaultResolution
+			}
+		}
+	}
 	response.OK(c, gin.H{
 		"wallet": gin.H{"balance": bal},
 		"draftPrompt": "",
 		"currentProjectId": "prj_default",
-		"workflows": []gin.H{
-			{"id": "wf-h3-image", "name": "图生视频", "description": "一张图片 + 文字描述", "enabled": true},
-			{"id": "wf-h3-text", "name": "文生视频", "description": "纯文字描述生成视频", "enabled": true},
-			{"id": "wf-h3-multi", "name": "多图生视频", "description": "多张参考图", "enabled": false, "badge": "即将开放"},
-		},
-		"parameters": gin.H{
-			"aspectRatios": []string{"16:9", "9:16", "1:1"},
-			"durations": []int{5, 10, 15},
-			"defaultDuration": 15,
-			"resolution": "768P",
-		},
+		"workflows": list,
+		"parameters": params,
 		"suggestedTags": []string{"电影感", "缓慢推进", "自然光", "细节丰富"},
 	})
 }
@@ -93,20 +113,25 @@ func (h *ClientHandler) QuoteTask(c *gin.Context) {
 	if req.Resolution == "" {
 		req.Resolution = "768P"
 	}
-	cost, pps, ok := pricing.Quote(req.Resolution, req.DurationSeconds)
-	if !ok {
-		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "unsupported quote params")
+	if req.DurationSeconds <= 0 {
+		req.DurationSeconds = 15
+	}
+	rule, err := h.Store.FindActivePrice(c.Request.Context(), req.WorkflowID, req.Resolution)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "暂无该工作流/分辨率定价")
 		return
 	}
+	cost := rule.PricePerSec * float64(req.DurationSeconds)
 	user := middleware.CurrentUser(c)
 	bal, _ := h.Store.GetBalance(c.Request.Context(), user.ID)
 	response.OK(c, gin.H{
 		"estimatedCost": cost,
 		"billingNote":   "按输出秒数计费",
-		"pricePerSecond": pps,
+		"pricePerSecond": rule.PricePerSec,
 		"walletBalance": bal,
 		"priceSnapshot": gin.H{
-			"ruleId": pricing.RuleID, "version": pricing.Version, "pricePerSecond": pps,
+			"ruleId": rule.ID, "version": rule.Version, "pricePerSecond": rule.PricePerSec,
+			"estimatedCost": cost,
 		},
 	})
 }

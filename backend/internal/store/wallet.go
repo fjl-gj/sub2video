@@ -146,7 +146,7 @@ WHERE code = $1 AND (expires_at IS NULL OR expires_at > NOW())`, normalized).Sca
 	if err = tx.QueryRow(ctx, `SELECT balance::float8 FROM wallets WHERE user_id = $1`, userID).Scan(&balance); err != nil {
 		return 0, 0, err
 	}
-	ledgerID := "TX_" + shortID()
+	ledgerID := NewLedgerID()
 	if _, err = tx.Exec(ctx, `
 INSERT INTO wallet_ledger (public_id, user_id, type, amount, balance_after, ref_type, ref_id, description)
 VALUES ($1, $2, 'redeem', $3, $4, 'redeem_code', $5, $6)`,

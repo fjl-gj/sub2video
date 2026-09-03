@@ -62,7 +62,7 @@ func (h *UploadHandler) Create(c *gin.Context) {
 		return
 	}
 
-	publicID := "upl_" + store.NewPublicID()
+	publicID := store.NewUploadID()
 	dest := store.UploadPath(h.UploadDir, publicID, fileHeader.Filename)
 	if err := store.EnsureUploadDir(filepath.Dir(dest)); err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", "无法创建上传目录")

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -230,4 +231,154 @@ func (h *AdminHandler) TestSMTP(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{"status": "ok"})
+}
+
+func (h *AdminHandler) ListWorkflows(c *gin.Context) {
+	items, err := h.Store.ListPlatformWorkflows(c.Request.Context(), false)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, w := range items {
+		statusCN := "草稿"
+		switch w.Status {
+		case "published":
+			statusCN = "已上架"
+		case "disabled":
+			statusCN = "未开放"
+		}
+		priceLabel := "待定"
+		if rule, err := h.Store.FindActivePrice(c.Request.Context(), w.Code, "768P"); err == nil {
+			priceLabel = fmt.Sprintf("%.2f 元/秒", rule.PricePerSec)
+		}
+		carrier := w.CarrierName
+		if carrier == "" {
+			carrier = w.ModelCode
+		}
+		out = append(out, gin.H{
+			"id": w.ID, "code": w.Code, "name": w.Name, "description": w.Description,
+			"status": statusCN, "statusRaw": w.Status, "badge": w.Badge,
+			"modelCode": w.ModelCode, "carrier": carrier, "price": priceLabel,
+			"updatedAt": w.UpdatedAt,
+		})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	status := req.Status
+	switch status {
+	case "已上架", "published":
+		status = "published"
+	case "草稿", "draft":
+		status = "draft"
+	case "未开放", "disabled":
+		status = "disabled"
+	default:
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "invalid status")
+		return
+	}
+	w, err := h.Store.UpdatePlatformWorkflowStatus(c.Request.Context(), id, status)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": w.ID, "code": w.Code, "status": w.Status})
+}
+
+func (h *AdminHandler) ListPricing(c *gin.Context) {
+	items, err := h.Store.ListPricingRules(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, r := range items {
+		statusCN := "草稿"
+		if r.Status == "active" {
+			statusCN = "生效中"
+		}
+		out = append(out, gin.H{
+			"id": r.ID, "name": r.Name, "workflowId": r.WorkflowID, "workflowCode": r.WorkflowCode,
+			"resolution": r.Resolution, "cost": fmt.Sprintf("%.2f", r.CostHintPerSec),
+			"price": fmt.Sprintf("%.2f", r.PricePerSec), "pricePerSec": r.PricePerSec,
+			"duration": "按秒", "status": statusCN, "version": r.Version,
+		})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) UpdatePricing(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		PricePerSec *float64 `json:"pricePerSec"`
+		Price       *string  `json:"price"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	var price float64
+	if req.PricePerSec != nil {
+		price = *req.PricePerSec
+	} else if req.Price != nil {
+		p, err := strconv.ParseFloat(*req.Price, 64)
+		if err != nil {
+			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "invalid price")
+			return
+		}
+		price = p
+	} else {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "price required")
+		return
+	}
+	r, err := h.Store.UpdatePricingRulePrice(c.Request.Context(), id, price)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": r.ID, "pricePerSec": r.PricePerSec, "version": r.Version})
+}
+
+func (h *AdminHandler) ListTasks(c *gin.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+	items, total, err := h.Store.ListAdminTasks(c.Request.Context(), c.Query("status"), page, pageSize)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, t := range items {
+		provider := t.SupplierCode
+		if provider == "" {
+			provider = "-"
+		}
+		out = append(out, gin.H{
+			"id": t.ID, "title": t.Title, "workflow": t.Workflow, "workflowId": t.WorkflowPublicID,
+			"status": t.Status, "progress": t.Progress, "resolution": t.Resolution,
+			"durationSec": t.DurationSec, "cost": t.Cost,
+			"user": t.UserName, "userEmail": t.UserEmail,
+			"provider": provider, "upstreamTaskId": t.UpstreamTaskID, "upstreamStatus": t.UpstreamStatus,
+			"failReason": t.FailReason,
+			"time": t.CreatedAt.Local().Format("01-02 15:04"),
+			"updatedAt": t.UpdatedAt,
+		})
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	response.OK(c, gin.H{"items": out, "total": total, "page": page, "pageSize": pageSize})
 }
