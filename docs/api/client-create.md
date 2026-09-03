@@ -185,12 +185,13 @@ Content-Type: application/json
 3. 从资产选图仅限**当前作品**（`currentProjectId`）下的图片。
 4. 任务默认关联当前作品；保存成片时使用同一 `projectId`。
 
-## 与当前 mock 对应
+## 与当前实现对应
 
-| 行为 | store 方法 |
+| 行为 | 实现 |
 | --- | --- |
-| 提交任务 | `createTask(title, cost)` |
-| 余额展示 | `balance` |
+| 提交任务 | `POST /client/tasks` + CreatePage `createTask` |
+| 本地上传 | `POST /client/uploads`，提交时带 `source.uploadId` |
+| 余额展示 | auth/me + CreatePage 同步 `app.balance` / `auth.setBalance` |
 | 广场预填 | `draftPrompt` |
 | 资产列表 | `assets`（当前作品扁平化） |
 | 工作流列表 | 页面内硬编码 `workflows` 数组 |

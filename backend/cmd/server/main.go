@@ -31,6 +31,10 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
+	if err := store.EnsureUploadDir(cfg.UploadDir); err != nil {
+		log.Fatalf("upload dir: %v", err)
+	}
+
 	st := store.New(pool)
 	if err := st.SeedBasics(ctx); err != nil {
 		log.Fatalf("seed: %v", err)

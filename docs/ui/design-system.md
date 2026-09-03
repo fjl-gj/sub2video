@@ -51,18 +51,20 @@ metrics belong on admin monitoring pages, not the global header.
 
 ### Typography
 
-UI reading type is system-native so Chinese is not painted with Inter. Inter is
-only for Latin brand marks (`.s2v-latin`). Money, IDs, duration, resolution,
-GPU counts, and nav trailing tags use self-hosted JetBrains Mono (`.s2v-mono`).
+UI reading type is self-hosted **Source Han Sans SC** (思源黑体简体), subset to
+product/UI glyphs as Regular (400) and Medium (500/600). Inter remains Latin-only
+for brand marks (`.s2v-latin`). Money, IDs, duration, resolution, GPU counts, and
+nav trailing tags use self-hosted JetBrains Mono (`.s2v-mono`).
 
 ```css
-/* Client: CJK-first, warmer workspace. */
-font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
-  "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif;
+/* Client / body: Source Han first, system CJK fallbacks. */
+font-family: "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB",
+  "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable Text",
+  "Segoe UI", sans-serif;
 
-/* Admin: Windows UI-first, closer to ops consoles. */
-font-family: "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
-  "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+/* Admin: same Source Han stack, Segoe kept as Latin-friendly fallback. */
+font-family: "Source Han Sans SC", "Segoe UI Variable Text", "Segoe UI",
+  "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 
 /* Brand Latin only. */
 font-family: Inter, "Segoe UI Variable Text", "Segoe UI", sans-serif;
@@ -70,9 +72,11 @@ font-family: Inter, "Segoe UI Variable Text", "Segoe UI", sans-serif;
 font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 ```
 
-Self-host Inter and JetBrains Mono under `frontend/public/fonts` with
-`font-display: swap` and Latin `unicode-range`. Do not paint the whole UI with
-Inter. Body line-height is **1.6**; page titles use weight **600**, not 700.
+Self-host Source Han Sans SC, Inter, and JetBrains Mono under
+`frontend/public/fonts` with `font-display: swap`. Rebuild Source Han subsets
+with `frontend/scripts/subset_source_han.py` when UI copy gains new CJK glyphs.
+Do not paint the whole UI with Inter. Body line-height is **1.6**; page titles
+use weight **600**, not 700.
 
 ### Token values (from the HTML, measured)
 

@@ -32,6 +32,22 @@ export async function createTask(payload: Record<string, unknown>) {
   }
 }
 
+export async function uploadImage(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await http.post('/client/uploads', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
+  return data as {
+    id: string
+    fileName: string
+    mimeType: string
+    sizeBytes: number
+    url: string
+  }
+}
+
 export async function listTasks(params?: { status?: string; page?: number; pageSize?: number }) {
   const { data } = await http.get('/client/tasks', { params })
   return data

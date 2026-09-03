@@ -12,6 +12,9 @@ export interface CreateFrameSlot {
   picking: boolean
   previewUrl?: string
   fileName?: string
+  /** Local file retained until uploaded; never persisted to draft storage. */
+  file?: File
+  uploadId?: string
 }
 
 export interface CreateDraft {
@@ -51,12 +54,16 @@ export function emptyCreateDraft(): CreateDraft {
 }
 
 function sanitizeSlot(slot: CreateFrameSlot): CreateFrameSlot {
+  const previewUrl = typeof slot.previewUrl === 'string' && !slot.previewUrl.startsWith('blob:')
+    ? slot.previewUrl
+    : undefined
   return {
     uploaded: slot.uploaded,
     assetId: slot.assetId,
     picking: false,
-    previewUrl: typeof slot.previewUrl === 'string' ? slot.previewUrl : undefined,
+    previewUrl,
     fileName: typeof slot.fileName === 'string' ? slot.fileName : undefined,
+    uploadId: typeof slot.uploadId === 'string' ? slot.uploadId : undefined,
   }
 }
 
@@ -80,8 +87,11 @@ function parseSlot(value: unknown): CreateFrameSlot {
     uploaded: Boolean(slot.uploaded),
     assetId: typeof slot.assetId === 'string' ? slot.assetId : '',
     picking: false,
-    previewUrl: typeof slot.previewUrl === 'string' ? slot.previewUrl : undefined,
+    previewUrl: typeof slot.previewUrl === 'string' && !slot.previewUrl.startsWith('blob:')
+      ? slot.previewUrl
+      : undefined,
     fileName: typeof slot.fileName === 'string' ? slot.fileName : undefined,
+    uploadId: typeof slot.uploadId === 'string' ? slot.uploadId : undefined,
   }
 }
 

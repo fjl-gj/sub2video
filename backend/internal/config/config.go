@@ -16,6 +16,7 @@ type Config struct {
 	CORSOrigin      string
 	SeedEmail       string
 	SeedPassword    string
+	UploadDir       string
 }
 
 func Load() Config {
@@ -29,6 +30,7 @@ func Load() Config {
 		CORSOrigin:      env("SUB2VIDEO_CORS_ORIGIN", "*"),
 		SeedEmail:       env("SUB2VIDEO_SEED_EMAIL", "demo@sub2video.local"),
 		SeedPassword:    env("SUB2VIDEO_SEED_PASSWORD", "Demo1234!"),
+		UploadDir:       env("SUB2VIDEO_UPLOAD_DIR", "./data/uploads"),
 	}
 }
 

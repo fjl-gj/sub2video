@@ -17,6 +17,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 	r.Use(cors(cfg.CORSOrigin))
+	r.MaxMultipartMemory = 16 << 20
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().UTC()})
@@ -24,6 +25,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 
 	authH := &handler.AuthHandler{Auth: authSvc, Store: st}
 	clientH := &handler.ClientHandler{Store: st}
+	uploadH := &handler.UploadHandler{Store: st, UploadDir: cfg.UploadDir}
 
 	v1 := r.Group("/api/v1")
 	{
@@ -44,6 +46,8 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service) *gin.E
 			{
 				client.GET("/overview", clientH.Overview)
 				client.GET("/create/form", clientH.CreateForm)
+				client.POST("/uploads", uploadH.Create)
+				client.GET("/uploads/:id", uploadH.Get)
 				client.POST("/tasks/quote", clientH.QuoteTask)
 				client.POST("/tasks", clientH.CreateTask)
 				client.GET("/tasks", clientH.ListTasks)

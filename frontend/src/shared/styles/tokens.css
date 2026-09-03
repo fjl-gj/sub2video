@@ -15,6 +15,27 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
+  font-family: 'Source Han Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/source-han-sans-sc-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Source Han Sans SC';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/source-han-sans-sc-medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Source Han Sans SC';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/source-han-sans-sc-medium.woff2') format('woff2');
+}
+@font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
   font-weight: 400 600;
@@ -75,7 +96,7 @@
     height: 100%;
     color: rgb(var(--s2v-body));
     background: rgb(var(--s2v-canvas) / 0.7);
-    font-family: 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+    font-family: 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
     font-size: 16px;
     line-height: 1.6;
     font-optical-sizing: auto;
@@ -85,10 +106,10 @@
   #app:has(.s2v-shell),
   #app:has(.s2v-shell) > [data-surface] { height: 100%; min-height: 0; }
   [data-surface='client'] {
-    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-family: 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
   }
   [data-surface='admin'] {
-    font-family: 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+    font-family: 'Source Han Sans SC', 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   }
   button, input, textarea, select { font: inherit; }
   button { min-width: 0; cursor: pointer; }

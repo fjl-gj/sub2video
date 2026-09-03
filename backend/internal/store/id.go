@@ -10,3 +10,8 @@ func shortID() string {
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// NewPublicID exposes shortID for handlers that need the id before insert.
+func NewPublicID() string {
+	return shortID()
+}

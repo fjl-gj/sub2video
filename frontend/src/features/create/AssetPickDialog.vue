@@ -9,7 +9,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 const emit = defineEmits<{
   pick: [assetId: string]
-  upload: [payload: { fileName: string; previewUrl: string }]
+  upload: [payload: { file: File; fileName: string; previewUrl: string }]
 }>()
 
 const app = useAppStore()
@@ -29,7 +29,7 @@ function onFileChange(event: Event) {
   const file = input.files?.[0]
   if (!file || !file.type.startsWith('image/')) return
   const previewUrl = URL.createObjectURL(file)
-  emit('upload', { fileName: file.name, previewUrl })
+  emit('upload', { file, fileName: file.name, previewUrl })
   input.value = ''
 }
 </script>

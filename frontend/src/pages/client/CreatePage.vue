@@ -24,12 +24,16 @@ import {
 } from '@/shared/lib/create-draft'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import { createTask, quoteTask, uploadImage } from '@/api/client'
+import type { Task } from '@/data/mock'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 
 interface FrameSlot extends CreateFrameSlot {}
 
 const router = useRouter()
 const app = useAppStore()
+const auth = useAuthStore()
 
 const mode = ref<CreateMode>('image')
 const imageVariant = ref<ImageVariant>('keyframes')
@@ -118,11 +122,19 @@ function resetStageIdle() {
   stageSubtitle.value = `${resolution.value} · 24fps`
 }
 
-function fillSlot(slot: FrameSlot, payload: { assetId?: string; fileName?: string; previewUrl?: string }) {
+function fillSlot(slot: FrameSlot, payload: {
+  assetId?: string
+  fileName?: string
+  previewUrl?: string
+  file?: File
+  uploadId?: string
+}) {
   slot.uploaded = true
   slot.assetId = payload.assetId ?? ''
   slot.fileName = payload.fileName
   slot.previewUrl = payload.previewUrl
+  slot.file = payload.file
+  slot.uploadId = payload.uploadId
 }
 
 function handleSlotClick(descriptor: SlotDescriptor) {
@@ -148,9 +160,13 @@ function confirmAssetPick(assetId: string) {
   app.notify(`已装入素材: ${asset?.name ?? '图片'}`)
 }
 
-function confirmLocalUpload(payload: { fileName: string; previewUrl: string }) {
+function confirmLocalUpload(payload: { file: File; fileName: string; previewUrl: string }) {
   if (!pickingSlotRef.value) return
-  fillSlot(pickingSlotRef.value, payload)
+  fillSlot(pickingSlotRef.value, {
+    file: payload.file,
+    fileName: payload.fileName,
+    previewUrl: payload.previewUrl,
+  })
   stageTitle.value = payload.fileName
   stageSubtitle.value = '素材预览就绪'
   stagePreviewUrl.value = payload.previewUrl
@@ -169,6 +185,10 @@ function addMulti() {
   multiFrames.value.push(emptySlot())
 }
 
+function workflowId() {
+  return mode.value === 'text' ? 'wf-h3-text' : 'wf-h3-image'
+}
+
 function workflowLabel() {
   if (mode.value === 'text') return 'H3 文生视频'
   return imageVariant.value === 'keyframes' ? 'H3 首尾帧图生视频' : 'H3 多图参考图生视频'
@@ -185,6 +205,97 @@ function buildTaskTitle() {
   if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
   const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
   return `图生·${variant} ${taskStamp()} #${seq}`
+}
+
+function primaryImageSlot(): FrameSlot | null {
+  if (mode.value !== 'image') return null
+  if (imageVariant.value === 'keyframes') {
+    return frameReady(firstFrame.value) ? firstFrame.value : null
+  }
+  return multiFrames.value.find((slot) => frameReady(slot)) ?? null
+}
+
+async function resolveSource(): Promise<Record<string, string> | undefined> {
+  if (mode.value === 'text') return { type: 'text' }
+  const slot = primaryImageSlot()
+  if (!slot) throw new Error('请先上传或选择图片')
+  if (slot.uploadId) return { type: 'upload', uploadId: slot.uploadId }
+  if (slot.file) {
+    const uploaded = await uploadImage(slot.file)
+    slot.uploadId = uploaded.id
+    slot.file = undefined
+    return { type: 'upload', uploadId: uploaded.id }
+  }
+  if (slot.assetId) return { type: 'asset', assetId: slot.assetId }
+  throw new Error('请先上传或选择图片')
+}
+
+function syncBalance(balance: number) {
+  app.balance = balance
+  auth.setBalance(balance)
+}
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
+  return err.response?.data?.message || err.response?.data?.error || err.message || fallback
+}
+
+async function submit() {
+  if (!canSubmit.value) {
+    if (mode.value === 'text') app.notify('请先填写画面描述')
+    else app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧图片' : '请至少选择一张参考图')
+    return
+  }
+  if (loading.value) return
+  loading.value = true
+  try {
+    const source = await resolveSource()
+    const quote = await quoteTask({
+      workflowId: workflowId(),
+      durationSeconds: parsedDuration.value,
+      resolution: resolution.value,
+    })
+    const result = await createTask({
+      workflowId: workflowId(),
+      title: buildTaskTitle(),
+      prompt: prompt.value.trim(),
+      aspectRatio: ratio.value,
+      durationSeconds: parsedDuration.value,
+      resolution: resolution.value,
+      source,
+      priceSnapshot: {
+        ruleId: quote.priceSnapshot.ruleId,
+        version: quote.priceSnapshot.version,
+        pricePerSecond: quote.pricePerSecond,
+        estimatedCost: quote.estimatedCost,
+      },
+    })
+    syncBalance(result.wallet.balance)
+    const localTask: Task = {
+      id: result.task.id,
+      title: result.task.title,
+      workflow: result.task.workflow || workflowLabel(),
+      status: (result.task.status as Task['status']) || '排队中',
+      progress: 0,
+      duration: `${parsedDuration.value} 秒`,
+      resolution: resolution.value,
+      cost: result.task.cost,
+      time: '刚刚',
+      thumb: stagePreviewUrl.value || 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=480&q=80',
+    }
+    app.tasks.unshift(localTask)
+    app.notify(`任务已提交，预扣 ¥${result.task.cost.toFixed(2)}`)
+    app.draftPrompt = ''
+    prompt.value = ''
+    clearCreateDraft()
+    router.push('/app/works')
+  }
+  catch (error) {
+    app.notify(apiErrorMessage(error, '提交失败，请稍后重试'))
+  }
+  finally {
+    loading.value = false
+  }
 }
 
 function syncTextStage() {
@@ -267,29 +378,6 @@ watch(prompt, () => {
   if (mode.value !== 'text') return
   stageTitle.value = prompt.value.trim() ? '文生描述已就绪' : '等待输入描述'
 })
-
-function submit() {
-  if (!canSubmit.value) {
-    if (mode.value === 'text') app.notify('请先填写画面描述')
-    else app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧图片' : '请至少选择一张参考图')
-    return
-  }
-  loading.value = true
-  window.setTimeout(() => {
-    loading.value = false
-    if (app.createTask(cost.value, {
-      title: buildTaskTitle(),
-      workflow: workflowLabel(),
-      durationSec: parsedDuration.value,
-      aspectRatio: ratio.value,
-    })) {
-      app.draftPrompt = ''
-      prompt.value = ''
-      clearCreateDraft()
-      router.push('/app/works')
-    }
-  }, 420)
-}
 </script>
 
 <template>

@@ -13,6 +13,7 @@ Environment=SUB2VIDEO_DATABASE_URL=postgres://sub2video:sub2video@127.0.0.1:1543
 Environment=SUB2VIDEO_REDIS_URL=redis://127.0.0.1:16379/0
 Environment=SUB2VIDEO_JWT_SECRET=change-me-in-production
 Environment=SUB2VIDEO_CORS_ORIGIN=*
+Environment=SUB2VIDEO_UPLOAD_DIR=/opt/sub2video/backend/data/uploads
 ExecStartPre=/bin/bash -c 'until docker exec sub2video-postgres pg_isready -U sub2video >/dev/null 2>&1; do sleep 1; done'
 ExecStart=/opt/sub2video/backend/sub2video-server
 Restart=on-failure

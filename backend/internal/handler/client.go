@@ -112,7 +112,13 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 		AspectRatio     string `json:"aspectRatio"`
 		DurationSeconds int    `json:"durationSeconds"`
 		Resolution      string `json:"resolution"`
-		PriceSnapshot   struct {
+		Source          *struct {
+			Type     string `json:"type"`
+			Ref      string `json:"ref"`
+			UploadID string `json:"uploadId"`
+			AssetID  string `json:"assetId"`
+		} `json:"source"`
+		PriceSnapshot struct {
 			RuleID         string  `json:"ruleId"`
 			Version        string  `json:"version"`
 			PricePerSecond float64 `json:"pricePerSecond"`
@@ -123,13 +129,26 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	user := middleware.CurrentUser(c)
-	task, ledgerID, balance, err := h.Store.CreateTask(c.Request.Context(), user.ID, store.CreateTaskInput{
+	in := store.CreateTaskInput{
 		WorkflowID: req.WorkflowID, Title: req.Title, Prompt: req.Prompt,
 		AspectRatio: req.AspectRatio, DurationSeconds: req.DurationSeconds, Resolution: req.Resolution,
 		EstimatedCost: req.PriceSnapshot.EstimatedCost, PricePerSecond: req.PriceSnapshot.PricePerSecond,
 		RuleID: req.PriceSnapshot.RuleID, Version: req.PriceSnapshot.Version,
-	})
+	}
+	if req.Source != nil {
+		in.SourceType = req.Source.Type
+		in.SourceRef = req.Source.Ref
+		if in.SourceRef == "" && req.Source.UploadID != "" {
+			in.SourceType = "upload"
+			in.SourceRef = req.Source.UploadID
+		}
+		if in.SourceRef == "" && req.Source.AssetID != "" {
+			in.SourceType = "asset"
+			in.SourceRef = req.Source.AssetID
+		}
+	}
+	user := middleware.CurrentUser(c)
+	task, ledgerID, balance, err := h.Store.CreateTask(c.Request.Context(), user.ID, in)
 	if err != nil {
 		switch err.Error() {
 		case "insufficient balance":

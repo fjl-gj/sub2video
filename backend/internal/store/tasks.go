@@ -38,6 +38,8 @@ type CreateTaskInput struct {
 	PricePerSecond  float64
 	RuleID          string
 	Version         string
+	SourceType      string // text | upload | asset
+	SourceRef       string
 }
 
 func workflowLabel(id string) string {
@@ -95,6 +97,9 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 	if in.DurationSeconds == 0 {
 		in.DurationSeconds = 15
 	}
+	if in.AspectRatio == "" {
+		in.AspectRatio = "16:9"
+	}
 	cost, pps, ok := pricing.Quote(in.Resolution, in.DurationSeconds)
 	if !ok {
 		return nil, "", 0, errors.New("参数非法")
@@ -107,6 +112,32 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 	}
 	if in.PricePerSecond > 0 && abs(in.PricePerSecond-pps) > 0.001 {
 		return nil, "", 0, errors.New("价格快照过期")
+	}
+
+	sourceType := in.SourceType
+	sourceRef := strings.TrimSpace(in.SourceRef)
+	switch in.WorkflowID {
+	case "wf-h3-text":
+		if strings.TrimSpace(in.Prompt) == "" {
+			return nil, "", 0, errors.New("请先填写画面描述")
+		}
+		if sourceType == "" {
+			sourceType = "text"
+		}
+	case "wf-h3-image":
+		if sourceType == "" || sourceRef == "" {
+			return nil, "", 0, errors.New("图生视频需要素材")
+		}
+		if sourceType != "upload" && sourceType != "asset" {
+			return nil, "", 0, errors.New("不支持的素材来源")
+		}
+		if sourceType == "upload" {
+			if _, err := s.GetUpload(ctx, userID, sourceRef); err != nil {
+				return nil, "", 0, errors.New("上传素材不存在")
+			}
+		}
+	default:
+		return nil, "", 0, errors.New("工作流未开放")
 	}
 
 	tx, err := s.Pool.Begin(ctx)
@@ -139,9 +170,14 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 	thumb := "https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=480&q=80"
 	var id int64
 	err = tx.QueryRow(ctx, `
-INSERT INTO generation_tasks (public_id, user_id, title, workflow, status, progress, duration_sec, resolution, cost, thumb_url)
-VALUES ($1, $2, $3, $4, 'queued', 0, $5, $6, $7, $8)
-RETURNING id`, publicID, userID, title, workflowLabel(in.WorkflowID), in.DurationSeconds, in.Resolution, cost, thumb).Scan(&id)
+INSERT INTO generation_tasks (
+  public_id, user_id, title, workflow, status, progress, duration_sec, resolution, cost, thumb_url,
+  source_type, source_ref, prompt, aspect_ratio
+) VALUES ($1, $2, $3, $4, 'queued', 0, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id`,
+		publicID, userID, title, workflowLabel(in.WorkflowID), in.DurationSeconds, in.Resolution, cost, thumb,
+		sourceType, sourceRef, in.Prompt, in.AspectRatio,
+	).Scan(&id)
 	if err != nil {
 		return nil, "", 0, err
 	}
