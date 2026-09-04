@@ -24,23 +24,56 @@ export async function redeemCode(code: string) {
   return data as { credited: number; wallet: { balance: number } }
 }
 
+export type CreationCatalog = {
+  modes: Array<{ id: string; code: string; name: string; description: string; enabled: boolean }>
+  carriers: Array<{ id: string; name: string }>
+  models: Array<{ id: string; carrierId: string; name: string; description: string; modes: string[] }>
+}
+
+export type CreationOptions = {
+  durations: number[]
+  resolutions: string[]
+  aspectRatios: string[]
+  supportsGeneratedAudio: boolean
+  minImages: number
+  maxImages: number
+  defaultDuration: number
+  defaultResolution: string
+}
+
+export async function fetchCreationCatalog() {
+  const { data } = await http.get('/client/create/catalog')
+  return data as CreationCatalog
+}
+
+export async function fetchCreationOptions(modeId: string, modelId?: string) {
+  const { data } = await http.get('/client/create/options', { params: { modeId, modelId } })
+  return data as CreationOptions
+}
+
 export async function quoteTask(payload: {
-  workflowId: string
+  modeId: string
+  modelId?: string
   durationSeconds: number
-  resolution?: string
-  aspectRatio?: string
-  sourceType?: string
+  resolution: string
+  aspectRatio: string
+  generateAudio: boolean
 }) {
   const { data } = await http.post('/client/tasks/quote', payload)
   return data as {
-    estimatedCost: number
-    pricePerSecond: number
-    priceSnapshot: { ruleId: string; version: string; pricePerSecond: number }
-    route?: { id: string; name: string; workflowId: string; costPerSec: number; supplierCode: string }
+    quoteId: string
+    expiresAt: string
+    selection: { carrier: { id: string; name: string }; model: { id: string; name: string } }
+    price: { currency: string; pricePerSecond: number; durationSeconds: number; total: number }
   }
 }
 
-export async function createTask(payload: Record<string, unknown>) {
+export async function createTask(payload: {
+  quoteId: string
+  title: string
+  prompt: string
+  sourceMeta?: Record<string, unknown>
+}) {
   const { data } = await http.post('/client/tasks', payload)
   return data as {
     task: { id: string; title: string; status: string; cost: number; workflow: string }
@@ -94,11 +127,6 @@ export async function cancelTask(id: string) {
     refundAmount: number
     wallet: { balance: number }
   }
-}
-
-export async function retryTask(id: string) {
-  const { data } = await http.post(`/client/tasks/${id}/retry`)
-  return data as { task: { id: string; status: string } }
 }
 
 export type ClientTicketItem = {

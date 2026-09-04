@@ -151,7 +151,7 @@ func (h *AdminHandler) CreateRoute(c *gin.Context) {
 	response.Created(c, gin.H{
 		"id": r.ID, "workflowId": r.WorkflowID, "name": r.Name, "enabled": r.Enabled,
 		"clientWorkflowId": r.ClientWorkflowID,
-		"costPerSecPeak": r.CostPerSecPeak, "costPerSecOffpeak": r.CostPerSecOffpeak,
+		"costPerSecPeak":   r.CostPerSecPeak, "costPerSecOffpeak": r.CostPerSecOffpeak,
 	})
 }
 
@@ -181,12 +181,12 @@ func (h *AdminHandler) CreateModel(c *gin.Context) {
 func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		Enabled            *bool                   `json:"enabled"`
-		CostPerSecPeak     *float64                `json:"costPerSecPeak"`
-		CostPerSecOffpeak  *float64                `json:"costPerSecOffpeak"`
-		WorkflowID         *string                 `json:"workflowId"`
-		Name               *string                 `json:"name"`
-		Conditions         *store.RouteConditions  `json:"conditions"`
+		Enabled           *bool                  `json:"enabled"`
+		CostPerSecPeak    *float64               `json:"costPerSecPeak"`
+		CostPerSecOffpeak *float64               `json:"costPerSecOffpeak"`
+		WorkflowID        *string                `json:"workflowId"`
+		Name              *string                `json:"name"`
+		Conditions        *store.RouteConditions `json:"conditions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
@@ -228,9 +228,9 @@ func (h *AdminHandler) ListCarriers(c *gin.Context) {
 	}
 	response.OK(c, gin.H{
 		"carriers": cOut, "models": mOut,
-		"cosConfigured": h.Store.LoadObjectStore(c.Request.Context(), h.Cfg).Configured(),
+		"cosConfigured":   h.Store.LoadObjectStore(c.Request.Context(), h.Cfg).Configured(),
 		"storageProvider": h.Store.StorageProvider(c.Request.Context()),
-		"autodlEnvToken": h.Cfg.AutoDLToken != "",
+		"autodlEnvToken":  h.Cfg.AutoDLToken != "",
 	})
 }
 
@@ -258,28 +258,28 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 	response.OK(c, gin.H{
 		"smtpHost": m["smtp_host"], "smtpPort": m["smtp_port"], "smtpUsername": m["smtp_username"],
 		"smtpFrom": m["smtp_from"], "smtpFromName": m["smtp_from_name"],
-		"smtpUseTls": m["smtp_use_tls"] != "false",
+		"smtpUseTls":             m["smtp_use_tls"] != "false",
 		"smtpPasswordConfigured": pwd != "",
-		"emailVerifyEnabled": m["email_verify_enabled"] == "true",
-		"passwordResetEnabled": m["password_reset_enabled"] == "true",
-		"registrationEnabled": m["registration_enabled"] != "false",
-		"frontendUrl": m["frontend_url"],
-		"inputRetentionDays": m["input_retention_days"],
-		"resultRetentionDays": m["result_retention_days"],
-		"notifyTask": m["notify_task"] != "false",
-		"auditEnabled": m["audit_enabled"] != "false",
-		"storageProvider": provider,
-		"cosSecretId": m["cos_secret_id"], "cosBucket": m["cos_bucket"], "cosRegion": m["cos_region"],
-		"cosUseIntranet": m["cos_use_intranet"] == "true",
-		"cosSecretKeyConfigured": cosKey != "",
-		"minioEndpoint": m["minio_endpoint"],
-		"minioAccessKey": m["minio_access_key"],
-		"minioBucket": m["minio_bucket"],
-		"minioUseSsl": m["minio_use_ssl"] == "true",
-		"minioPublicBase": m["minio_public_base"],
+		"emailVerifyEnabled":     m["email_verify_enabled"] == "true",
+		"passwordResetEnabled":   m["password_reset_enabled"] == "true",
+		"registrationEnabled":    m["registration_enabled"] != "false",
+		"frontendUrl":            m["frontend_url"],
+		"inputRetentionDays":     m["input_retention_days"],
+		"resultRetentionDays":    m["result_retention_days"],
+		"notifyTask":             m["notify_task"] != "false",
+		"auditEnabled":           m["audit_enabled"] != "false",
+		"storageProvider":        provider,
+		"cosSecretId":            m["cos_secret_id"], "cosBucket": m["cos_bucket"], "cosRegion": m["cos_region"],
+		"cosUseIntranet":           m["cos_use_intranet"] == "true",
+		"cosSecretKeyConfigured":   cosKey != "",
+		"minioEndpoint":            m["minio_endpoint"],
+		"minioAccessKey":           m["minio_access_key"],
+		"minioBucket":              m["minio_bucket"],
+		"minioUseSsl":              m["minio_use_ssl"] == "true",
+		"minioPublicBase":          m["minio_public_base"],
 		"minioSecretKeyConfigured": minioKey != "",
-		"initialBalance": m["initial_balance"],
-		"storageQuotaGb": m["storage_quota_gb"],
+		"initialBalance":           m["initial_balance"],
+		"storageQuotaGb":           m["storage_quota_gb"],
 	})
 }
 
@@ -546,6 +546,228 @@ func (h *AdminHandler) UpdatePricing(c *gin.Context) {
 	response.OK(c, gin.H{"id": r.ID, "pricePerSec": r.PricePerSec, "version": r.Version})
 }
 
+func (h *AdminHandler) ListCreationModes(c *gin.Context) {
+	items, err := h.Store.ListAdminCreationModes(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		policies := make([]gin.H, 0, len(item.Policies))
+		for _, policy := range item.Policies {
+			policies = append(policies, gin.H{"modelId": policy.ModelID, "modelName": policy.ModelName, "carrierName": policy.CarrierName,
+				"enabled": policy.Enabled, "recommendationRank": policy.RecommendationRank, "displayBadge": policy.DisplayBadge,
+				"defaultDuration": policy.DefaultDuration, "defaultResolution": policy.DefaultResolution})
+		}
+		out = append(out, gin.H{"id": item.ID, "code": item.Code, "name": item.Name, "description": item.Description,
+			"status": item.Status, "sortOrder": item.SortOrder, "policies": policies})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) UpdateCreationMode(c *gin.Context) {
+	var req struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		Status      *string `json:"status"`
+		SortOrder   *int    `json:"sortOrder"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.UpdateCreationMode(c.Request.Context(), c.Param("id"), req.Name, req.Description, req.Status, req.SortOrder)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": item.ID, "name": item.Name, "description": item.Description, "status": item.Status, "sortOrder": item.SortOrder})
+}
+
+func (h *AdminHandler) UpsertModePolicy(c *gin.Context) {
+	var req struct {
+		ModelID            string `json:"modelId" binding:"required"`
+		Enabled            bool   `json:"enabled"`
+		RecommendationRank int    `json:"recommendationRank"`
+		DisplayBadge       string `json:"displayBadge"`
+		DefaultDuration    int    `json:"defaultDuration"`
+		DefaultResolution  string `json:"defaultResolution"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	if err := h.Store.UpsertModeModelPolicy(c.Request.Context(), c.Param("id"), req.ModelID, req.Enabled, req.RecommendationRank, req.DisplayBadge, req.DefaultDuration, req.DefaultResolution); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"ok": true})
+}
+
+func offeringDTO(item store.SupplierOffering) gin.H {
+	return gin.H{"id": item.ID, "supplierId": item.SupplierID, "supplierName": item.SupplierName, "modelId": item.ModelID,
+		"modelName": item.ModelName, "carrierName": item.CarrierName, "modeId": item.ModeID, "modeName": item.ModeName,
+		"name": item.Name, "upstreamWorkflowId": item.UpstreamWorkflowID, "adapterCode": item.AdapterCode, "enabled": item.Enabled,
+		"healthStatus": item.HealthStatus, "priority": item.Priority, "minDurationSec": item.MinDurationSec, "maxDurationSec": item.MaxDurationSec,
+		"resolutions": item.Resolutions, "aspectRatios": item.AspectRatios, "minImages": item.MinImages, "maxImages": item.MaxImages,
+		"supportsGeneratedAudio": item.SupportsGeneratedAudio}
+}
+
+func (h *AdminHandler) ListOfferings(c *gin.Context) {
+	items, err := h.Store.ListSupplierOfferings(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		out = append(out, offeringDTO(item))
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) CreateOffering(c *gin.Context) {
+	var req store.SupplierOffering
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.CreateSupplierOffering(c.Request.Context(), req)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.Created(c, offeringDTO(*item))
+}
+
+func (h *AdminHandler) UpdateOffering(c *gin.Context) {
+	var req store.SupplierOffering
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.UpdateSupplierOffering(c.Request.Context(), c.Param("id"), req)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, offeringDTO(*item))
+}
+
+func (h *AdminHandler) ListSupplierCosts(c *gin.Context) {
+	items, err := h.Store.ListSupplierCostRules(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		out = append(out, gin.H{"id": item.ID, "offeringId": item.OfferingID, "resolution": item.Resolution,
+			"generateAudio": item.GenerateAudio, "peakPerSecond": item.PeakPerSecond, "offpeakPerSecond": item.OffpeakPerSecond,
+			"currency": item.Currency, "version": item.Version, "status": item.Status})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) UpsertSupplierCost(c *gin.Context) {
+	var req store.SupplierCostRule
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.UpsertSupplierCostRule(c.Request.Context(), req)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": item.ID, "offeringId": item.OfferingID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio,
+		"peakPerSecond": item.PeakPerSecond, "offpeakPerSecond": item.OffpeakPerSecond, "version": item.Version, "status": item.Status})
+}
+
+func (h *AdminHandler) ListRetailPricing(c *gin.Context) {
+	items, err := h.Store.ListRetailPriceRules(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		out = append(out, gin.H{"id": item.ID, "modeId": item.ModeID, "modeName": item.ModeName,
+			"modelId": item.ModelID, "modelName": item.ModelName, "carrierName": item.CarrierName, "resolution": item.Resolution,
+			"generateAudio": item.GenerateAudio, "name": item.Name, "pricePerSecond": item.PricePerSecond, "version": item.Version, "status": item.Status})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) UpsertRetailPricing(c *gin.Context) {
+	var req store.RetailPriceRule
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.UpsertRetailPriceRule(c.Request.Context(), req)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": item.ID, "modeId": item.ModeID, "modelId": item.ModelID, "pricePerSecond": item.PricePerSecond, "version": item.Version, "status": item.Status})
+}
+
+func (h *AdminHandler) CreateCarrier(c *gin.Context) {
+	var req struct {
+		Code        string `json:"code" binding:"required"`
+		Name        string `json:"name" binding:"required"`
+		Description string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.CreateCarrier(c.Request.Context(), req.Code, req.Name, req.Description)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.Created(c, gin.H{"id": item.ID, "code": item.Code, "name": item.Name, "description": item.Description, "enabled": item.Enabled})
+}
+
+func (h *AdminHandler) UpdateCarrier(c *gin.Context) {
+	var req struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		Enabled     *bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.UpdateCarrier(c.Request.Context(), c.Param("id"), req.Name, req.Description, req.Enabled)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": item.ID, "name": item.Name, "description": item.Description, "enabled": item.Enabled})
+}
+
+func (h *AdminHandler) UpdateModel(c *gin.Context) {
+	var req struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		Enabled     *bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	item, err := h.Store.UpdateModel(c.Request.Context(), c.Param("id"), req.Name, req.Description, req.Enabled)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"id": item.ID, "name": item.Name, "description": item.Description, "enabled": item.Enabled})
+}
+
 func (h *AdminHandler) ListTasks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
@@ -567,8 +789,8 @@ func (h *AdminHandler) ListTasks(c *gin.Context) {
 			"user": t.UserName, "userEmail": t.UserEmail,
 			"provider": provider, "upstreamTaskId": t.UpstreamTaskID, "upstreamStatus": t.UpstreamStatus,
 			"failReason": t.FailReason,
-			"time": t.CreatedAt.Local().Format("01-02 15:04"),
-			"updatedAt": t.UpdatedAt,
+			"time":       t.CreatedAt.Local().Format("01-02 15:04"),
+			"updatedAt":  t.UpdatedAt,
 		})
 	}
 	if page < 1 {

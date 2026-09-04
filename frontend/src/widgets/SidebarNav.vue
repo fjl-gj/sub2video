@@ -32,7 +32,7 @@ const clientGroups = computed<NavGroup[]>(() => [
 const adminGroups = computed<NavGroup[]>(() => [
   { label: '', items: [{ label: '首页概览', to: '/admin/overview', icon: 'LayoutDashboard' }] },
   { label: '创作管理', items: [
-    { label: '工作流', to: '/admin/workflows', icon: 'Workflow' },
+    { label: '创作模式', to: '/admin/workflows', icon: 'Workflow' },
     { label: '模型与供应商', to: '/admin/providers', icon: 'Bot' },
   ] },
   { label: '计费管理', items: [

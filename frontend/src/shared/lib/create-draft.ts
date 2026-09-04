@@ -3,7 +3,7 @@ import type { CreateResolution } from '@/shared/lib/create-cost'
 export type CreateMode = 'image' | 'text'
 export type ImageVariant = 'keyframes' | 'multi'
 
-export const MAX_REF_IMAGES = 8
+export const MAX_REF_IMAGES = 9
 export const MAX_KEYFRAME_EXTRAS = 6
 
 export interface CreateFrameSlot {

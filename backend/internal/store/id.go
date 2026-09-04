@@ -24,7 +24,12 @@ func NewPublicID() string {
 }
 
 // NewTaskID / NewLedgerID — platform-facing formal numbers.
-func NewTaskID() string   { return DatedPublicID("tsk") }
-func NewLedgerID() string { return DatedPublicID("TX") }
-func NewUploadID() string { return DatedPublicID("upl") }
-func NewRouteID() string  { return "rte_" + shortID() }
+func NewTaskID() string     { return DatedPublicID("tsk") }
+func NewLedgerID() string   { return DatedPublicID("TX") }
+func NewUploadID() string   { return DatedPublicID("upl") }
+func NewRouteID() string    { return "rte_" + shortID() }
+func NewQuoteID() string    { return "qt_" + shortID() }
+func NewOfferingID() string { return "off_" + shortID() }
+func NewPriceID() string    { return "pr_" + shortID() }
+func NewCarrierID() string  { return "car_" + shortID() }
+func NewModelID() string    { return "mdl_" + shortID() }

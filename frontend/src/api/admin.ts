@@ -127,8 +127,10 @@ export async function updateAdminRoute(id: string, payload: {
 
 export type AdminModel = {
   id: string
+  carrierId: string
   code: string
   name: string
+  description?: string
   clientWorkflowId: string
   enabled: boolean
   carrierCode?: string
@@ -138,6 +140,7 @@ export type AdminCarrier = {
   id: string
   code: string
   name: string
+  description?: string
   enabled: boolean
 }
 
@@ -151,6 +154,24 @@ export async function fetchAdminCarriers() {
   }
 }
 
+export async function createAdminCarrier(payload: {
+  code: string
+  name: string
+  description?: string
+}) {
+  const { data } = await http.post('/admin/carriers', payload)
+  return data as AdminCarrier
+}
+
+export async function updateAdminCarrier(id: string, payload: {
+  name?: string
+  description?: string
+  enabled?: boolean
+}) {
+  const { data } = await http.patch(`/admin/carriers/${id}`, payload)
+  return data as AdminCarrier
+}
+
 export async function createAdminModel(payload: {
   carrierId: string
   code: string
@@ -159,6 +180,15 @@ export async function createAdminModel(payload: {
   clientWorkflowId?: string
 }) {
   const { data } = await http.post('/admin/models', payload)
+  return data as AdminModel
+}
+
+export async function updateAdminModel(id: string, payload: {
+  name?: string
+  description?: string
+  enabled?: boolean
+}) {
+  const { data } = await http.patch(`/admin/models/${id}`, payload)
   return data as AdminModel
 }
 
@@ -265,6 +295,126 @@ export async function fetchAdminPricing() {
 export async function updateAdminPricing(id: string, payload: { pricePerSec: number }) {
   const { data } = await http.patch(`/admin/pricing/${id}`, payload)
   return data as { id: string; pricePerSec: number; version: string }
+}
+
+export type AdminCreationMode = {
+  id: string
+  code: string
+  name: string
+  description: string
+  status: 'published' | 'disabled'
+  sortOrder: number
+  policies: Array<{
+    modelId: string
+    modelName: string
+    carrierName: string
+    enabled: boolean
+    recommendationRank: number
+    displayBadge: string
+    defaultDuration: number
+    defaultResolution: string
+  }>
+}
+
+export type AdminOffering = {
+  id: string
+  supplierId: string
+  supplierName: string
+  modelId: string
+  modelName: string
+  carrierName: string
+  modeId: string
+  modeName: string
+  name: string
+  upstreamWorkflowId: string
+  adapterCode: string
+  enabled: boolean
+  healthStatus: string
+  priority: number
+  minDurationSec: number
+  maxDurationSec: number
+  resolutions: string[]
+  aspectRatios: string[]
+  minImages: number
+  maxImages: number
+  supportsGeneratedAudio: boolean
+}
+
+export type AdminSupplierCost = {
+  id: string
+  offeringId: string
+  resolution: string
+  generateAudio: boolean
+  peakPerSecond: number
+  offpeakPerSecond: number
+  currency: string
+  version: string
+  status: string
+}
+
+export type AdminRetailPricing = {
+  id: string
+  modeId: string
+  modeName: string
+  modelId: string
+  modelName: string
+  carrierName: string
+  resolution: string
+  generateAudio: boolean
+  name: string
+  pricePerSecond: number
+  version: string
+  status: string
+}
+
+export async function fetchAdminCreationModes() {
+  const { data } = await http.get('/admin/creation-modes')
+  return data as { items: AdminCreationMode[] }
+}
+
+export async function updateAdminCreationMode(id: string, payload: Partial<Pick<AdminCreationMode, 'name' | 'description' | 'status' | 'sortOrder'>>) {
+  const { data } = await http.patch(`/admin/creation-modes/${id}`, payload)
+  return data as AdminCreationMode
+}
+
+export async function upsertAdminModePolicy(modeId: string, payload: AdminCreationMode['policies'][number]) {
+  const { data } = await http.put(`/admin/creation-modes/${modeId}/policies`, payload)
+  return data as { ok: boolean }
+}
+
+export async function fetchAdminOfferings() {
+  const { data } = await http.get('/admin/offerings')
+  return data as { items: AdminOffering[] }
+}
+
+export async function createAdminOffering(payload: Omit<AdminOffering, 'id' | 'supplierName' | 'modelName' | 'carrierName' | 'modeName'>) {
+  const { data } = await http.post('/admin/offerings', payload)
+  return data as AdminOffering
+}
+
+export async function updateAdminOffering(id: string, payload: Omit<AdminOffering, 'id' | 'supplierName' | 'modelName' | 'carrierName' | 'modeName'>) {
+  const { data } = await http.patch(`/admin/offerings/${id}`, payload)
+  return data as AdminOffering
+}
+
+export async function fetchAdminSupplierCosts() {
+  const { data } = await http.get('/admin/supplier-costs')
+  return data as { items: AdminSupplierCost[] }
+}
+
+export async function upsertAdminSupplierCost(payload: Omit<AdminSupplierCost, 'id' | 'version'>) {
+  const { data } = await http.put('/admin/supplier-costs', payload)
+  return data as AdminSupplierCost
+}
+
+export async function fetchAdminRetailPricing() {
+  const { data } = await http.get('/admin/retail-pricing')
+  return data as { items: AdminRetailPricing[] }
+}
+
+export async function upsertAdminRetailPricing(payload: Pick<AdminRetailPricing, 'modeId' | 'modelId' | 'resolution' | 'generateAudio' | 'name' | 'pricePerSecond' | 'status'>) {
+  const { data } = await http.put('/admin/retail-pricing', payload)
+  return data as Pick<AdminRetailPricing, 'id' | 'modeId' | 'modelId' | 'pricePerSecond' | 'version' | 'status'>
 }
 
 export async function fetchAdminTasks(params?: { status?: string; page?: number; pageSize?: number }) {

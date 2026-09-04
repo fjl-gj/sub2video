@@ -21,36 +21,36 @@ type Carrier struct {
 }
 
 type Model struct {
-	ID                string
-	CarrierID         string
-	CarrierCode       string
-	Code              string
-	Name              string
-	Description       string
-	ClientWorkflowID  string
-	Enabled           bool
-	SortOrder         int
+	ID               string
+	CarrierID        string
+	CarrierCode      string
+	Code             string
+	Name             string
+	Description      string
+	ClientWorkflowID string
+	Enabled          bool
+	SortOrder        int
 }
 
 type Supplier struct {
-	ID             string
-	Code           string
-	Name           string
-	BaseURL        string
-	AuthHeader     string
-	TokenEncrypted string
+	ID              string
+	Code            string
+	Name            string
+	BaseURL         string
+	AuthHeader      string
+	TokenEncrypted  string
 	TokenConfigured bool
-	Enabled        bool
-	Status         string
-	UpdatedAt      time.Time
+	Enabled         bool
+	Status          string
+	UpdatedAt       time.Time
 }
 
 type RouteConditions struct {
-	MaxDuration    int      `json:"max_duration,omitempty"`
-	MinDuration    int      `json:"min_duration,omitempty"`
-	Resolutions    []string `json:"resolutions,omitempty"`
-	RequireSource  []string `json:"require_source,omitempty"` // text | upload | asset
-	AspectRatios   []string `json:"aspect_ratios,omitempty"`
+	MaxDuration   int      `json:"max_duration,omitempty"`
+	MinDuration   int      `json:"min_duration,omitempty"`
+	Resolutions   []string `json:"resolutions,omitempty"`
+	RequireSource []string `json:"require_source,omitempty"` // text | upload | asset
+	AspectRatios  []string `json:"aspect_ratios,omitempty"`
 }
 
 type SupplierRoute struct {
@@ -275,6 +275,81 @@ FROM models m JOIN carriers c ON c.id = m.carrier_id ORDER BY c.sort_order, m.so
 		models = append(models, m)
 	}
 	return carriers, models, nil
+}
+
+func (s *Store) CreateCarrier(ctx context.Context, code, name, description string) (*Carrier, error) {
+	code, name = strings.TrimSpace(code), strings.TrimSpace(name)
+	if code == "" || name == "" {
+		return nil, errors.New("承运商编码和名称不能为空")
+	}
+	item := &Carrier{ID: NewCarrierID(), Code: code, Name: name, Description: strings.TrimSpace(description), Enabled: true}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO carriers (public_id, code, name, description, enabled, sort_order) VALUES ($1,$2,$3,$4,TRUE,COALESCE((SELECT MAX(sort_order)+1 FROM carriers),1))`, item.ID, item.Code, item.Name, item.Description)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+func (s *Store) UpdateCarrier(ctx context.Context, carrierID string, name, description *string, enabled *bool) (*Carrier, error) {
+	carriers, _, err := s.ListCarriersWithModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var item *Carrier
+	for i := range carriers {
+		if carriers[i].ID == carrierID {
+			item = &carriers[i]
+			break
+		}
+	}
+	if item == nil {
+		return nil, ErrNotFound
+	}
+	if name != nil && strings.TrimSpace(*name) != "" {
+		item.Name = strings.TrimSpace(*name)
+	}
+	if description != nil {
+		item.Description = strings.TrimSpace(*description)
+	}
+	if enabled != nil {
+		item.Enabled = *enabled
+	}
+	_, err = s.Pool.Exec(ctx, `UPDATE carriers SET name=$1, description=$2, enabled=$3, updated_at=NOW() WHERE public_id=$4`, item.Name, item.Description, item.Enabled, item.ID)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+func (s *Store) UpdateModel(ctx context.Context, modelID string, name, description *string, enabled *bool) (*Model, error) {
+	_, models, err := s.ListCarriersWithModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var item *Model
+	for i := range models {
+		if models[i].ID == modelID {
+			item = &models[i]
+			break
+		}
+	}
+	if item == nil {
+		return nil, ErrNotFound
+	}
+	if name != nil && strings.TrimSpace(*name) != "" {
+		item.Name = strings.TrimSpace(*name)
+	}
+	if description != nil {
+		item.Description = strings.TrimSpace(*description)
+	}
+	if enabled != nil {
+		item.Enabled = *enabled
+	}
+	_, err = s.Pool.Exec(ctx, `UPDATE models SET name=$1, description=$2, enabled=$3, updated_at=NOW() WHERE public_id=$4`, item.Name, item.Description, item.Enabled, item.ID)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (s *Store) PromoteUserRole(ctx context.Context, email, role string) error {

@@ -366,8 +366,8 @@ VALUES ($1, $2, 'task_refund', $3, $4, 'task', $5, $6)`,
 }
 
 func (s *Store) RetryTask(ctx context.Context, userID int64, taskPublicID string) (*Task, error) {
-	var status string
-	err := s.Pool.QueryRow(ctx, `SELECT status FROM generation_tasks WHERE public_id = $1 AND user_id = $2`, taskPublicID, userID).Scan(&status)
+	var status, quoteID string
+	err := s.Pool.QueryRow(ctx, `SELECT status, quote_public_id FROM generation_tasks WHERE public_id = $1 AND user_id = $2`, taskPublicID, userID).Scan(&status, &quoteID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errors.New("任务不存在")
 	}
@@ -376,6 +376,9 @@ func (s *Store) RetryTask(ctx context.Context, userID int64, taskPublicID string
 	}
 	if status != "failed" {
 		return nil, errors.New("仅失败任务可重试")
+	}
+	if quoteID != "" {
+		return nil, errors.New("请重新配置并获取新报价后再提交")
 	}
 	_, err = s.Pool.Exec(ctx, `
 UPDATE generation_tasks SET

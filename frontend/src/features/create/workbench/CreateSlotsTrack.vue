@@ -2,7 +2,7 @@
 import { ImagePlus, Plus, X } from 'lucide-vue-next'
 import { computed } from 'vue'
 import type { CreateFrameSlot, ImageVariant } from '@/shared/lib/create-draft'
-import { MAX_KEYFRAME_EXTRAS, MAX_REF_IMAGES } from '@/shared/lib/create-draft'
+import { MAX_REF_IMAGES } from '@/shared/lib/create-draft'
 import { assetPreviewUrl } from '@/shared/lib/asset-preview'
 import { useAppStore } from '@/stores/app'
 import { cn } from '@/shared/lib/cn'
@@ -12,7 +12,7 @@ export interface SlotDescriptor {
   label: string
   required?: boolean
   slot?: CreateFrameSlot
-  add?: 'extra' | 'multi'
+  add?: 'multi'
 }
 
 const props = defineProps<{
@@ -21,13 +21,13 @@ const props = defineProps<{
   lastFrame: CreateFrameSlot
   extraFrames: CreateFrameSlot[]
   multiFrames: CreateFrameSlot[]
+  maxImages?: number
   activeSlotKey: string | null
 }>()
 
 const emit = defineEmits<{
   slotClick: [descriptor: SlotDescriptor]
   clearSlot: [descriptor: SlotDescriptor]
-  addExtra: []
   addMulti: []
 }>()
 
@@ -37,30 +37,26 @@ const slotDescriptors = computed<SlotDescriptor[]>(() => {
   const items: SlotDescriptor[] = []
   if (props.variant === 'keyframes') {
     items.push({ key: 'first', label: '首帧', required: true, slot: props.firstFrame })
-    items.push({ key: 'last', label: '尾帧', slot: props.lastFrame })
-    props.extraFrames.forEach((slot, index) => {
-      items.push({ key: `ex-${index}`, label: `参${index + 1}`, slot })
-    })
-    if (props.extraFrames.length < MAX_KEYFRAME_EXTRAS) items.push({ key: 'add-ex', label: '', add: 'extra' })
+    items.push({ key: 'last', label: '尾帧', required: true, slot: props.lastFrame })
   }
   else {
     props.multiFrames.forEach((slot, index) => {
       items.push({ key: `mu-${index}`, label: `参${index + 1}`, required: index === 0, slot })
     })
-    if (props.multiFrames.length < MAX_REF_IMAGES) items.push({ key: 'add-mu', label: '', add: 'multi' })
+    if (props.multiFrames.length < (props.maxImages || MAX_REF_IMAGES)) items.push({ key: 'add-mu', label: '', add: 'multi' })
   }
   return items
 })
 
 const filledCount = computed(() => {
   if (props.variant === 'keyframes') {
-    return [props.firstFrame, props.lastFrame, ...props.extraFrames].filter((slot) => slot.uploaded || slot.assetId).length
+    return [props.firstFrame, props.lastFrame].filter((slot) => slot.uploaded || slot.assetId).length
   }
   return props.multiFrames.filter((slot) => slot.uploaded || slot.assetId).length
 })
 
 const sectionTitle = computed(() => (
-  props.variant === 'keyframes' ? '首帧 + 尾帧 + 多图' : '多图参考矩阵'
+  props.variant === 'keyframes' ? '首帧与尾帧' : '多图参考矩阵'
 ))
 
 function slotReady(slot?: CreateFrameSlot) {
@@ -81,10 +77,6 @@ function slotImage(slot?: CreateFrameSlot) {
 }
 
 function onClick(descriptor: SlotDescriptor) {
-  if (descriptor.add === 'extra') {
-    emit('addExtra')
-    return
-  }
   if (descriptor.add === 'multi') {
     emit('addMulti')
     return

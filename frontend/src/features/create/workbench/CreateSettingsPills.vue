@@ -1,22 +1,38 @@
 <script setup lang="ts">
-import { Clock, Layers, Ratio } from 'lucide-vue-next'
-import type { CreateResolution } from '@/shared/lib/create-cost'
+import { Clock, Layers, Ratio, Volume2 } from 'lucide-vue-next'
 
 withDefaults(defineProps<{
   ratio: string
   durationSec: string
-  resolution: CreateResolution
+  resolution: string
   durationOptions?: string[]
-  resolutionOptions?: CreateResolution[]
+  resolutionOptions?: string[]
+  aspectRatioOptions?: string[]
+  carriers?: Array<{ id: string; name: string }>
+  models?: Array<{ id: string; carrierId: string; name: string }>
+  carrierId?: string
+  modelId?: string
+  supportsGeneratedAudio?: boolean
+  generateAudio?: boolean
 }>(), {
   durationOptions: () => ['5', '10', '15'],
   resolutionOptions: () => ['768P'],
+  aspectRatioOptions: () => ['16:9', '9:16', '1:1'],
+  carriers: () => [],
+  models: () => [],
+  carrierId: '',
+  modelId: '',
+  supportsGeneratedAudio: false,
+  generateAudio: false,
 })
 
 const emit = defineEmits<{
   'update:ratio': [value: string]
   'update:durationSec': [value: string]
-  'update:resolution': [value: CreateResolution]
+  'update:resolution': [value: string]
+  'update:carrierId': [value: string]
+  'update:modelId': [value: string]
+  'update:generateAudio': [value: boolean]
 }>()
 </script>
 
@@ -27,11 +43,25 @@ const emit = defineEmits<{
     </div>
     <div class="s2v-wb-settings-row">
       <label class="s2v-wb-setting-pill">
+        <Layers class="h-3.5 w-3.5 text-s2v-muted" />
+        <select :value="carrierId" @change="emit('update:carrierId', ($event.target as HTMLSelectElement).value)">
+          <option value="">智能推荐</option>
+          <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">{{ carrier.name }}</option>
+        </select>
+      </label>
+
+      <label class="s2v-wb-setting-pill">
+        <Layers class="h-3.5 w-3.5 text-s2v-muted" />
+        <select :value="modelId" @change="emit('update:modelId', ($event.target as HTMLSelectElement).value)">
+          <option value="">智能推荐</option>
+          <option v-for="model in models" :key="model.id" :value="model.id">{{ model.name }}</option>
+        </select>
+      </label>
+
+      <label class="s2v-wb-setting-pill">
         <Ratio class="h-3.5 w-3.5 text-s2v-muted" />
         <select :value="ratio" @change="emit('update:ratio', ($event.target as HTMLSelectElement).value)">
-          <option value="9:16">9:16 (竖屏)</option>
-          <option value="16:9">16:9 (横屏)</option>
-          <option value="1:1">1:1 (方形)</option>
+          <option v-for="item in aspectRatioOptions" :key="item" :value="item">{{ item }}</option>
         </select>
       </label>
 
@@ -44,9 +74,15 @@ const emit = defineEmits<{
 
       <label class="s2v-wb-setting-pill">
         <Layers class="h-3.5 w-3.5 text-s2v-muted" />
-        <select :value="resolution" @change="emit('update:resolution', ($event.target as HTMLSelectElement).value as CreateResolution)">
+        <select :value="resolution" @change="emit('update:resolution', ($event.target as HTMLSelectElement).value)">
           <option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</option>
         </select>
+      </label>
+
+      <label v-if="supportsGeneratedAudio" class="s2v-wb-setting-pill">
+        <Volume2 class="h-3.5 w-3.5 text-s2v-muted" />
+        <input :checked="generateAudio" type="checkbox" @change="emit('update:generateAudio', ($event.target as HTMLInputElement).checked)">
+        <span>自动音频</span>
       </label>
     </div>
   </div>

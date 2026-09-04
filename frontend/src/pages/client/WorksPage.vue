@@ -2,7 +2,7 @@
 import { Ban, BookmarkPlus, Download, ExternalLink, MoreHorizontal, Plus, RefreshCw } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { cancelTask as cancelTaskApi, listTasks, retryTask as retryTaskApi } from '@/api/client'
+import { cancelTask as cancelTaskApi, listTasks } from '@/api/client'
 import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import type { Task, TaskStatus } from '@/entities/types'
 import { PAGE_SIZE } from '@/shared/lib/paginate'
@@ -103,15 +103,9 @@ async function loadTasks() {
   }
 }
 
-async function retry(id: string) {
-  try {
-    await retryTaskApi(id)
-    app.notify('任务已重新排队，费用不会重复扣除')
-    await loadTasks()
-  }
-  catch (error) {
-    app.notify(apiErrorMessage(error, '重试失败'))
-  }
+function reconfigureCreation() {
+  app.notify('请重新配置并获取新报价后再提交')
+  router.push('/app/create')
 }
 
 async function saveToProject(task: WorksTask) {
@@ -227,7 +221,7 @@ onBeforeUnmount(() => {
             <td>{{ task.time }}</td>
             <td>
               <div class="flex items-center gap-1">
-                <S2VIconButton v-if="task.status === '失败'" label="重新生成" @click="retry(task.id)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton v-if="task.status === '失败'" label="重新配置创作" @click="reconfigureCreation"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
                 <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
                 <template v-else>
                   <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
@@ -250,7 +244,7 @@ onBeforeUnmount(() => {
         </template>
         <template #body>{{ task.workflow }} · {{ task.resolution }} · {{ task.duration }} · ¥ {{ task.cost.toFixed(2) }}</template>
         <template #actions>
-          <S2VIconButton v-if="task.status === '失败'" label="重新生成" @click="retry(task.id)"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton v-if="task.status === '失败'" label="重新配置创作" @click="reconfigureCreation"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
           <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
           <template v-else>
             <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>

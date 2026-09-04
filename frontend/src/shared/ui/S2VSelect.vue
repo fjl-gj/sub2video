@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ modelValue?: string; options: Array<{ label: string; value: string }>; label?: string }>()
+defineProps<{ modelValue?: string; options: Array<{ label: string; value: string }>; label?: string; disabled?: boolean }>()
 defineEmits<{ 'update:modelValue': [value: string] }>()
 </script>
 
@@ -8,6 +8,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
     <span v-if="label">{{ label }}</span>
     <select
       :value="modelValue"
+      :disabled="disabled"
       class="h-10 w-full rounded-control border border-s2v-line bg-s2v-canvas px-3 text-sm font-normal text-s2v-ink"
       @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
     >

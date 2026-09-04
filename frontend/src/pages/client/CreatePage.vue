@@ -9,14 +9,11 @@ import CreateSlotsTrack, { type SlotDescriptor } from '@/features/create/workben
 import CreateStagePlayer from '@/features/create/workbench/CreateStagePlayer.vue'
 import CreateWorkbenchToolbar from '@/features/create/workbench/CreateWorkbenchToolbar.vue'
 import { assetPreviewUrl } from '@/shared/lib/asset-preview'
-import { estimateCreateCost } from '@/shared/lib/create-cost'
-import type { CreateResolution } from '@/shared/lib/create-cost'
 import {
-  clearCreateDraft,
-  emptySlot,
-  loadCreateDraft,
-  MAX_KEYFRAME_EXTRAS,
-  MAX_REF_IMAGES,
+	clearCreateDraft,
+	emptySlot,
+	loadCreateDraft,
+	MAX_REF_IMAGES,
   saveCreateDraft,
   type CreateFrameSlot,
   type CreateMode,
@@ -24,7 +21,16 @@ import {
 } from '@/shared/lib/create-draft'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
-import { createTask, listTasks, quoteTask, uploadImage } from '@/api/client'
+import {
+  createTask,
+  fetchCreationCatalog,
+  fetchCreationOptions,
+  listTasks,
+  quoteTask,
+  uploadImage,
+  type CreationCatalog,
+  type CreationOptions,
+} from '@/api/client'
 import type { Task } from '@/entities/types'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -40,7 +46,15 @@ const imageVariant = ref<ImageVariant>('keyframes')
 const prompt = ref('')
 const ratio = ref('9:16')
 const durationSec = ref('15')
-const resolution = ref<CreateResolution>('768P')
+const resolution = ref('768P')
+const selectedCarrierId = ref('')
+const selectedModelId = ref('')
+const generateAudio = ref(false)
+const catalog = ref<CreationCatalog>({ modes: [], carriers: [], models: [] })
+const creationOptions = ref<CreationOptions>({
+  durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false,
+  minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P',
+})
 const loading = ref(false)
 const draftReady = ref(false)
 
@@ -66,23 +80,30 @@ const assetDialogOpen = computed({
   },
 })
 
-const durationOptions = computed(() => (mode.value === 'image' && imageVariant.value === 'multi' ? ['5', '10', '12'] : ['5', '10', '15']))
+const activeModeCode = computed(() => {
+  if (mode.value === 'text') return 'text_to_video'
+  return imageVariant.value === 'multi' ? 'multi_image_to_video' : 'first_last_frame_to_video'
+})
+const activeModeId = computed(() => catalog.value.modes.find((item) => item.code === activeModeCode.value)?.id || '')
+const modeModels = computed(() => catalog.value.models.filter((item) => item.modes.includes(activeModeCode.value)))
+const visibleModels = computed(() => modeModels.value.filter((item) => !selectedCarrierId.value || item.carrierId === selectedCarrierId.value))
+const visibleCarriers = computed(() => catalog.value.carriers.filter((carrier) => modeModels.value.some((model) => model.carrierId === carrier.id)))
+const durationOptions = computed(() => creationOptions.value.durations.map(String))
+const maxReferenceImages = computed(() => creationOptions.value.maxImages || MAX_REF_IMAGES)
 const parsedDuration = computed(() => Number(durationSec.value))
 const durationValid = computed(() => durationOptions.value.includes(durationSec.value))
 const quotedCost = ref<number | null>(null)
-const cost = computed(() => quotedCost.value ?? estimateCreateCost(parsedDuration.value, resolution.value))
+const cost = computed(() => quotedCost.value ?? 0)
 const recentTasks = ref<Task[]>([])
 
 const canSubmit = computed(() => {
-  if (!durationValid.value) return false
-  if (mode.value === 'text') return prompt.value.trim().length > 0
-  return mode.value === 'image' && hasRequiredImageInput.value
+  return durationValid.value && prompt.value.trim().length > 0 && (mode.value === 'text' || hasRequiredImageInput.value)
 })
 
 const hasRequiredImageInput = computed(() => {
   if (mode.value !== 'image') return false
-  if (imageVariant.value === 'keyframes') return frameReady(firstFrame.value)
-  return multiFrames.value.some((slot) => frameReady(slot))
+  if (imageVariant.value === 'keyframes') return frameReady(firstFrame.value) && frameReady(lastFrame.value)
+  return multiFrames.value.filter((slot) => frameReady(slot)).length >= Math.max(creationOptions.value.minImages, 1)
 })
 
 function frameReady(slot: FrameSlot) {
@@ -194,19 +215,9 @@ function confirmLocalUpload(payload: { file: File; fileName: string; previewUrl:
   app.notify(`已装入素材: ${payload.fileName}`)
 }
 
-function addExtra() {
-  if (extraFrames.value.length >= MAX_KEYFRAME_EXTRAS) return
-  extraFrames.value.push(emptySlot())
-}
-
 function addMulti() {
-  if (multiFrames.value.length >= MAX_REF_IMAGES) return
+  if (multiFrames.value.length >= maxReferenceImages.value) return
   multiFrames.value.push(emptySlot())
-}
-
-function workflowId() {
-  if (mode.value === 'text') return 'wf-h3-text'
-  return imageVariant.value === 'multi' ? 'wf-h3-multi' : 'wf-h3-image'
 }
 
 function taskStamp() {
@@ -219,15 +230,7 @@ function buildTaskTitle() {
   const seq = recentTasks.value.length + 1
   if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
   const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
-  return `图生·${variant} ${taskStamp()} #${seq}`
-}
-
-function primaryImageSlot(): FrameSlot | null {
-  if (mode.value !== 'image') return null
-  if (imageVariant.value === 'keyframes') {
-    return frameReady(firstFrame.value) ? firstFrame.value : null
-  }
-  return multiFrames.value.find((slot) => frameReady(slot)) ?? null
+  return `${variant} ${taskStamp()} #${seq}`
 }
 
 async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: string }> {
@@ -242,40 +245,22 @@ async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: st
   throw new Error('请先上传或选择图片')
 }
 
-async function resolveSourcePayload(): Promise<{
-  source?: Record<string, string>
-  sourceMeta?: Record<string, unknown>
-}> {
-  if (mode.value === 'text') return { source: { type: 'text' } }
+async function resolveSourcePayload(): Promise<Record<string, unknown> | undefined> {
+  if (mode.value === 'text') return undefined
 
   if (imageVariant.value === 'keyframes') {
-    if (!frameReady(firstFrame.value)) throw new Error('请先上传或选择首帧图片')
+    if (!frameReady(firstFrame.value) || !frameReady(lastFrame.value)) throw new Error('请先上传或选择首帧和尾帧图片')
     const first = await ensureSlotUpload(firstFrame.value)
-    const meta: Record<string, unknown> = { first }
-    if (frameReady(lastFrame.value)) {
-      meta.last = await ensureSlotUpload(lastFrame.value)
-    }
-    const extras = []
-    for (const slot of extraFrames.value) {
-      if (frameReady(slot)) extras.push(await ensureSlotUpload(slot))
-    }
-    if (extras.length) meta.extras = extras
-    return {
-      source: first.type === 'upload' ? { type: 'upload', uploadId: first.id } : { type: 'asset', assetId: first.id },
-      sourceMeta: meta,
-    }
+    const last = await ensureSlotUpload(lastFrame.value)
+    return { first, last }
   }
 
   const refs = []
   for (const slot of multiFrames.value) {
     if (frameReady(slot)) refs.push(await ensureSlotUpload(slot))
   }
-  if (!refs.length) throw new Error('请至少选择一张参考图')
-  const primary = refs[0]!
-  return {
-    source: primary.type === 'upload' ? { type: 'upload', uploadId: primary.id } : { type: 'asset', assetId: primary.id },
-    sourceMeta: { refs },
-  }
+  if (refs.length < Math.max(creationOptions.value.minImages, 1)) throw new Error(`请至少选择 ${Math.max(creationOptions.value.minImages, 1)} 张参考图`)
+  return { refs }
 }
 
 function syncBalance(balance: number) {
@@ -290,37 +275,28 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 async function submit() {
   if (!canSubmit.value) {
-    if (mode.value === 'text') app.notify('请先填写画面描述')
-    else app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧图片' : '请至少选择一张参考图')
+    if (!prompt.value.trim()) app.notify('请先填写画面描述')
+    else app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧和尾帧图片' : '请至少选择一张参考图')
     return
   }
   if (loading.value) return
   loading.value = true
   try {
-    const { source, sourceMeta } = await resolveSourcePayload()
+    const sourceMeta = await resolveSourcePayload()
     const quote = await quoteTask({
-      workflowId: workflowId(),
+      modeId: activeModeId.value,
+      modelId: selectedModelId.value || undefined,
       durationSeconds: parsedDuration.value,
       resolution: resolution.value,
       aspectRatio: ratio.value,
-      sourceType: mode.value === 'text' ? 'text' : 'upload',
+      generateAudio: generateAudio.value,
     })
-    quotedCost.value = quote.estimatedCost
+    quotedCost.value = quote.price.total
     const result = await createTask({
-      workflowId: workflowId(),
+      quoteId: quote.quoteId,
       title: buildTaskTitle(),
       prompt: prompt.value.trim(),
-      aspectRatio: ratio.value,
-      durationSeconds: parsedDuration.value,
-      resolution: resolution.value,
-      source,
       sourceMeta,
-      priceSnapshot: {
-        ruleId: quote.priceSnapshot.ruleId,
-        version: quote.priceSnapshot.version,
-        pricePerSecond: quote.pricePerSecond,
-        estimatedCost: quote.estimatedCost,
-      },
     })
     syncBalance(result.wallet.balance)
     app.notify(`任务已提交，预扣 ¥${result.task.cost.toFixed(2)}`)
@@ -334,6 +310,29 @@ async function submit() {
   }
   finally {
     loading.value = false
+  }
+}
+
+async function loadCreationOptions() {
+  if (!activeModeId.value) return
+  try {
+    const next = await fetchCreationOptions(activeModeId.value, selectedModelId.value || undefined)
+    creationOptions.value = next
+    if (!next.durations.includes(parsedDuration.value)) durationSec.value = String(next.defaultDuration || next.durations[0] || 5)
+    if (!next.resolutions.includes(resolution.value)) resolution.value = next.defaultResolution || next.resolutions[0] || '768P'
+    if (!next.aspectRatios.includes(ratio.value)) ratio.value = next.aspectRatios[0] || '16:9'
+    if (!next.supportsGeneratedAudio) generateAudio.value = false
+  } catch {
+    creationOptions.value = { durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false, minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P' }
+  }
+}
+
+async function loadCreationCatalog() {
+  try {
+    catalog.value = await fetchCreationCatalog()
+    await loadCreationOptions()
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '加载创作目录失败'))
   }
 }
 
@@ -406,6 +405,7 @@ onMounted(() => {
   if (mode.value === 'text') syncTextStage()
   draftReady.value = true
   void loadRecentTasks()
+	void loadCreationCatalog()
   void (async () => {
     await app.loadProjects()
     if (app.currentProjectId) await app.loadProjectTree(app.currentProjectId)
@@ -418,15 +418,21 @@ onBeforeUnmount(() => {
 
 watch([mode, imageVariant, prompt, ratio, durationSec, resolution, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
 
+watch([activeModeId, selectedModelId], () => {
+  quotedCost.value = null
+  void loadCreationOptions()
+})
+
+watch(selectedCarrierId, () => {
+  if (selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
+})
+
 watch([resolution, durationSec], () => {
   if (stageTitle.value === '等待装填素材') stageSubtitle.value = `${resolution.value} · 24fps`
 })
 
 watch(imageVariant, () => {
   activeSlotKey.value = null
-  if (!durationOptions.value.includes(durationSec.value)) {
-    durationSec.value = durationOptions.value[0] || '5'
-  }
 })
 
 watch(mode, (next) => {
@@ -483,10 +489,10 @@ watch(prompt, () => {
             :last-frame="lastFrame"
             :extra-frames="extraFrames"
             :multi-frames="multiFrames"
+            :max-images="maxReferenceImages"
             :active-slot-key="activeSlotKey"
             @slot-click="handleSlotClick"
             @clear-slot="handleClearSlot"
-            @add-extra="addExtra"
             @add-multi="addMulti"
           />
           <CreateSettingsPills
@@ -494,10 +500,20 @@ watch(prompt, () => {
             :duration-sec="durationSec"
             :resolution="resolution"
             :duration-options="durationOptions"
-            :resolution-options="['768P']"
+            :resolution-options="creationOptions.resolutions"
+            :aspect-ratio-options="creationOptions.aspectRatios"
+            :carriers="visibleCarriers"
+            :models="visibleModels"
+            :carrier-id="selectedCarrierId"
+            :model-id="selectedModelId"
+            :supports-generated-audio="creationOptions.supportsGeneratedAudio"
+            :generate-audio="generateAudio"
             @update:ratio="ratio = $event"
             @update:duration-sec="durationSec = $event"
             @update:resolution="resolution = $event"
+            @update:carrier-id="selectedCarrierId = $event"
+            @update:model-id="selectedModelId = $event"
+            @update:generate-audio="generateAudio = $event"
           />
           <CreatePromptSubmit
             v-model:prompt="prompt"

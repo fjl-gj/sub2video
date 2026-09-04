@@ -83,6 +83,9 @@ func (r *Runner) objectStore(ctx context.Context) blob.Store {
 }
 
 func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []store.SupplierRoute) (bool, error) {
+	if t.QuotePublicID != "" {
+		return r.dispatchLockedOffering(ctx, t)
+	}
 	selected, cost := routing.SelectLowestCost(routes, routing.Request{
 		ClientWorkflowID: t.ClientWorkflow,
 		SourceType:       t.SourceType,
@@ -112,7 +115,7 @@ func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []s
 		"resolution": routing.MapResolutionToUpstream(t.Resolution, t.AspectRatio),
 	}
 
-	if t.ClientWorkflow != "wf-h3-text" {
+	if !isTextCreation(t.ClientWorkflow) {
 		storeClient := r.objectStore(ctx)
 		if !storeClient.Configured() {
 			log.Printf("skip image workflow %s: object storage not configured", t.PublicID)
@@ -148,6 +151,69 @@ func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []s
 	return true, nil
 }
 
+func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTask) (bool, error) {
+	if t.SupplierRouteID == "" || t.UpstreamWorkflowID == "" {
+		return true, fmt.Errorf("任务缺少锁定供给")
+	}
+	if t.AdapterCode != "autodl_h3_v1" {
+		return true, fmt.Errorf("不支持的锁定供给适配器: %s", t.AdapterCode)
+	}
+	token, err := r.Store.ResolveSupplierToken(ctx, r.Cfg.SecretKey, t.SupplierCode, r.Cfg.AutoDLToken)
+	if err != nil || token == "" {
+		return false, nil
+	}
+	baseURL := r.Cfg.AutoDLBaseURL
+	authHeader := "Authorization"
+	if supplier, supplierErr := r.Store.GetSupplierByCode(ctx, t.SupplierCode); supplierErr == nil {
+		if supplier.BaseURL != "" {
+			baseURL = supplier.BaseURL
+		}
+		if supplier.AuthHeader != "" {
+			authHeader = supplier.AuthHeader
+		}
+	}
+	if baseURL == "" {
+		baseURL = r.Cfg.AutoDLBaseURL
+	}
+	client := autodl.New(baseURL, token, authHeader)
+	body := map[string]any{
+		"prompt":     t.Prompt,
+		"duration":   t.DurationSec,
+		"resolution": routing.MapResolutionToUpstream(t.Resolution, t.AspectRatio),
+	}
+	if t.GenerateAudio {
+		body["generate_audio"] = true
+	}
+	if !isTextCreation(t.ClientWorkflow) {
+		storeClient := r.objectStore(ctx)
+		if !storeClient.Configured() {
+			log.Printf("skip image workflow %s: object storage not configured", t.PublicID)
+			return false, nil
+		}
+		_ = storeClient.EnsureBucket(ctx)
+		if err := r.attachImageURLs(ctx, storeClient, t, body); err != nil {
+			return true, err
+		}
+	}
+	res, err := client.Submit(ctx, t.UpstreamWorkflowID, body)
+	if err != nil {
+		return true, err
+	}
+	if err := r.Store.MarkTaskSubmitted(ctx, t.ID, res.TaskID, res.Status); err != nil {
+		return true, err
+	}
+	log.Printf("submitted %s via locked offering %s", t.PublicID, t.SupplierRouteID)
+	return true, nil
+}
+
+func isTextCreation(code string) bool {
+	return code == "text_to_video" || code == "wf-h3-text"
+}
+
+func isMultiImageCreation(code string) bool {
+	return code == "multi_image_to_video" || code == "wf-h3-multi"
+}
+
 func (r *Runner) attachImageURLs(ctx context.Context, storeClient blob.Store, t *store.ProviderTask, body map[string]any) error {
 	meta := t.SourceMeta
 	if meta.Empty() && t.SourceRef != "" {
@@ -155,7 +221,7 @@ func (r *Runner) attachImageURLs(ctx context.Context, storeClient blob.Store, t 
 		if item.Type == "" {
 			item.Type = "upload"
 		}
-		if t.ClientWorkflow == "wf-h3-multi" {
+		if isMultiImageCreation(t.ClientWorkflow) {
 			meta.Refs = []store.SourceRefItem{item}
 		} else {
 			meta.First = &item
@@ -185,8 +251,8 @@ func (r *Runner) attachImageURLs(ctx context.Context, storeClient blob.Store, t 
 		return storeClient.PutFile(ctx, key, path, mime)
 	}
 
-	switch t.ClientWorkflow {
-	case "wf-h3-multi":
+	switch {
+	case isMultiImageCreation(t.ClientWorkflow):
 		refs := meta.Refs
 		if len(refs) == 0 && meta.First != nil {
 			refs = []store.SourceRefItem{*meta.First}
@@ -251,7 +317,16 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 		return nil
 	}
 	baseURL := r.Cfg.AutoDLBaseURL
-	client := autodl.New(baseURL, token, "Authorization")
+	authHeader := "Authorization"
+	if supplier, err := r.Store.GetSupplierByCode(ctx, t.SupplierCode); err == nil {
+		if supplier.BaseURL != "" {
+			baseURL = supplier.BaseURL
+		}
+		if supplier.AuthHeader != "" {
+			authHeader = supplier.AuthHeader
+		}
+	}
+	client := autodl.New(baseURL, token, authHeader)
 	res, err := client.Query(ctx, t.UpstreamTaskID)
 	if err != nil {
 		return err

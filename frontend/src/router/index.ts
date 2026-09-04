@@ -34,7 +34,7 @@ const router = createRouter({
     ] },
     { path: '/admin', component: () => import('@/layouts/AdminLayout.vue'), redirect: '/admin/overview', children: [
       { path: 'overview', component: () => import('@/pages/admin/OverviewPage.vue'), meta: { surface: 'admin', title: '首页概览' } },
-      { path: 'workflows', component: () => import('@/pages/admin/WorkflowsPage.vue'), meta: { surface: 'admin', title: '工作流' } },
+      { path: 'workflows', component: () => import('@/pages/admin/WorkflowsPage.vue'), meta: { surface: 'admin', title: '创作模式' } },
       { path: 'providers', component: () => import('@/pages/admin/ProvidersPage.vue'), meta: { surface: 'admin', title: '模型与供应商' } },
       { path: 'tasks', component: () => import('@/pages/admin/TasksPage.vue'), meta: { surface: 'admin', title: '任务中心' } },
       { path: 'monitoring', component: () => import('@/pages/admin/MonitoringPage.vue'), meta: { surface: 'admin', title: '运维监控' } },

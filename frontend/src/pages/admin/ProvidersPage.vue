@@ -1,19 +1,27 @@
 <script setup lang="ts">
+import { Bot, Pencil, Plus, Power, RefreshCw, X } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
-import { Bot, KeyRound, Pencil, Plus, RefreshCw, Server, X } from 'lucide-vue-next'
 import {
+  createAdminCarrier,
   createAdminModel,
-  createAdminRoute,
+  createAdminOffering,
   createAdminSupplier,
   fetchAdminCarriers,
-  fetchAdminRoutes,
+  fetchAdminCreationModes,
+  fetchAdminOfferings,
+  fetchAdminSupplierCosts,
   fetchAdminSuppliers,
-  updateAdminRoute,
+  updateAdminCarrier,
+  updateAdminModel,
+  updateAdminOffering,
   updateAdminSupplier,
+  upsertAdminSupplierCost,
   type AdminCarrier,
+  type AdminCreationMode,
   type AdminModel,
-  type AdminRoute,
+  type AdminOffering,
   type AdminSupplier,
+  type AdminSupplierCost,
 } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
@@ -21,233 +29,245 @@ import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VSelect from '@/shared/ui/S2VSelect.vue'
 
 const app = useAppStore()
 const loading = ref(false)
 const saving = ref(false)
+const catalogEditor = ref<'carrier' | 'model' | 'supplier' | null>(null)
+const catalogEditingID = ref('')
+const showOfferingForm = ref(false)
+const offeringEditingID = ref('')
 const suppliers = ref<AdminSupplier[]>([])
-const routes = ref<AdminRoute[]>([])
 const carriers = ref<AdminCarrier[]>([])
 const models = ref<AdminModel[]>([])
-const cosConfigured = ref(false)
-const autodlEnvToken = ref(false)
+const modes = ref<AdminCreationMode[]>([])
+const offerings = ref<AdminOffering[]>([])
+const costs = ref<AdminSupplierCost[]>([])
 
-const showSupplierForm = ref(false)
-const editingSupplierId = ref<string | null>(null)
-const supplierForm = ref({ code: '', name: '', baseUrl: 'https://autodl.art', token: '', enabled: true })
-
-const showRouteForm = ref(false)
-const editingRouteId = ref<string | null>(null)
-const routeForm = ref({
-  supplierId: '',
-  modelId: '',
-  workflowId: '',
-  name: '',
-  costPerSecPeak: '0.03',
-  costPerSecOffpeak: '0.02',
-  enabled: true,
+const carrierForm = ref({ code: '', name: '', description: '', enabled: true })
+const modelForm = ref({ carrierId: '', code: '', name: '', description: '', enabled: true })
+const supplierForm = ref({ code: '', name: '', baseUrl: '', token: '', enabled: true })
+const offeringForm = ref({
+  supplierId: '', modelId: '', modeId: '', name: '', upstreamWorkflowId: '', adapterCode: 'autodl_h3_v1',
+  enabled: true, healthStatus: 'healthy', priority: '10', minDurationSec: '1', maxDurationSec: '15',
+  resolutions: '768P', aspectRatios: '16:9,9:16,1:1', minImages: '0', maxImages: '0',
+  supportsGeneratedAudio: false, peakPerSecond: '0.03', offpeakPerSecond: '0.02',
 })
 
-const showModelForm = ref(false)
-const modelForm = ref({ carrierId: '', code: '', name: '', clientWorkflowId: '', description: '' })
-
-const metrics = computed(() => [
-  { label: '已接入供应商', value: String(suppliers.value.filter((item) => item.enabled).length), icon: Server },
-  { label: '启用路由', value: String(routes.value.filter((item) => item.enabled).length), icon: Bot },
-  { label: 'COS', value: cosConfigured.value ? '已配置' : '待接入', icon: KeyRound },
-])
+const enabledModels = computed(() => models.value.filter((item) => item.enabled))
+const carrierOptions = computed(() => carriers.value.filter((item) => item.enabled).map((item) => ({ label: `${item.name} (${item.code})`, value: item.id })))
+const supplierOptions = computed(() => suppliers.value.filter((item) => item.enabled).map((item) => ({ label: `${item.name} (${item.code})`, value: item.id })))
+const modelOptions = computed(() => enabledModels.value.map((item) => ({ label: `${item.carrierCode} / ${item.name}`, value: item.id })))
+const modeOptions = computed(() => modes.value.filter((item) => item.status === 'published').map((item) => ({ label: item.name, value: item.id })))
+const editingOffering = computed(() => offeringEditingID.value !== '')
 
 function apiErrorMessage(error: unknown, fallback: string) {
   const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
   return err.response?.data?.message || err.response?.data?.error || err.message || fallback
 }
 
+function splitValues(value: string) {
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+function toNumber(value: string, fallback = 0) {
+  const result = Number(value)
+  return Number.isFinite(result) ? result : fallback
+}
+
+function resetOfferingForm() {
+  offeringEditingID.value = ''
+  offeringForm.value = {
+    supplierId: supplierOptions.value[0]?.value || '', modelId: modelOptions.value[0]?.value || '', modeId: modeOptions.value[0]?.value || '',
+    name: '', upstreamWorkflowId: '', adapterCode: 'autodl_h3_v1', enabled: true, healthStatus: 'healthy', priority: '10',
+    minDurationSec: '1', maxDurationSec: '15', resolutions: '768P', aspectRatios: '16:9,9:16,1:1', minImages: '0', maxImages: '0',
+    supportsGeneratedAudio: false, peakPerSecond: '0.03', offpeakPerSecond: '0.02',
+  }
+}
+
+function openOfferingForm(item?: AdminOffering) {
+  if (!item) {
+    resetOfferingForm()
+  } else {
+    const currentCost = costs.value.find((cost) => cost.offeringId === item.id)
+    offeringEditingID.value = item.id
+    offeringForm.value = {
+      supplierId: item.supplierId, modelId: item.modelId, modeId: item.modeId, name: item.name,
+      upstreamWorkflowId: item.upstreamWorkflowId, adapterCode: item.adapterCode, enabled: item.enabled,
+      healthStatus: item.healthStatus, priority: String(item.priority), minDurationSec: String(item.minDurationSec),
+      maxDurationSec: String(item.maxDurationSec), resolutions: item.resolutions.join(','), aspectRatios: item.aspectRatios.join(','),
+      minImages: String(item.minImages), maxImages: String(item.maxImages), supportsGeneratedAudio: item.supportsGeneratedAudio,
+      peakPerSecond: String(currentCost?.peakPerSecond ?? 0), offpeakPerSecond: String(currentCost?.offpeakPerSecond ?? 0),
+    }
+  }
+  showOfferingForm.value = true
+}
+
+function openCatalogEditor(kind: 'carrier' | 'model' | 'supplier', item?: AdminCarrier | AdminModel | AdminSupplier) {
+  catalogEditor.value = kind
+  catalogEditingID.value = item?.id || ''
+  if (kind === 'carrier') {
+    const carrier = item as AdminCarrier | undefined
+    carrierForm.value = { code: carrier?.code || '', name: carrier?.name || '', description: carrier?.description || '', enabled: carrier?.enabled ?? true }
+  }
+  if (kind === 'model') {
+    const model = item as AdminModel | undefined
+    modelForm.value = { carrierId: model?.carrierId || carrierOptions.value[0]?.value || '', code: model?.code || '', name: model?.name || '', description: model?.description || '', enabled: model?.enabled ?? true }
+  }
+  if (kind === 'supplier') {
+    const supplier = item as AdminSupplier | undefined
+    supplierForm.value = { code: supplier?.code || '', name: supplier?.name || '', baseUrl: supplier?.baseUrl || '', token: '', enabled: supplier?.enabled ?? true }
+  }
+}
+
+function closeCatalogEditor() {
+  catalogEditor.value = null
+  catalogEditingID.value = ''
+}
+
 async function load() {
   loading.value = true
   try {
-    const [s, r, c] = await Promise.all([
-      fetchAdminSuppliers(),
-      fetchAdminRoutes(),
-      fetchAdminCarriers(),
+    const [supplierData, carrierData, modeData, offeringData, costData] = await Promise.all([
+      fetchAdminSuppliers(), fetchAdminCarriers(), fetchAdminCreationModes(), fetchAdminOfferings(), fetchAdminSupplierCosts(),
     ])
-    suppliers.value = s.items
-    routes.value = r.items
-    carriers.value = c.carriers
-    models.value = c.models
-    cosConfigured.value = c.cosConfigured
-    autodlEnvToken.value = c.autodlEnvToken
-    if (!routeForm.value.supplierId && s.items[0]) routeForm.value.supplierId = s.items[0].id
-    if (!routeForm.value.modelId && c.models[0]) routeForm.value.modelId = c.models[0].id
-    if (!modelForm.value.carrierId && c.carriers[0]) modelForm.value.carrierId = c.carriers[0].id
-  } catch (err) {
-    app.notify(apiErrorMessage(err, '加载供应商失败（需 admin 角色）'))
+    suppliers.value = supplierData.items
+    carriers.value = carrierData.carriers
+    models.value = carrierData.models
+    modes.value = modeData.items
+    offerings.value = offeringData.items
+    costs.value = costData.items
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '加载供应商供给失败'))
   } finally {
     loading.value = false
   }
 }
 
-function openCreateSupplier() {
-  editingSupplierId.value = null
-  supplierForm.value = { code: '', name: '', baseUrl: 'https://autodl.art', token: '', enabled: true }
-  showSupplierForm.value = true
-}
-
-function openEditSupplier(sp: AdminSupplier) {
-  editingSupplierId.value = sp.id
-  supplierForm.value = {
-    code: sp.code,
-    name: sp.name,
-    baseUrl: sp.baseUrl,
-    token: '',
-    enabled: sp.enabled,
-  }
-  showSupplierForm.value = true
-}
-
-async function saveSupplier() {
+async function saveCatalog() {
+  if (!catalogEditor.value) return
   saving.value = true
   try {
-    if (editingSupplierId.value) {
-      await updateAdminSupplier(editingSupplierId.value, {
-        name: supplierForm.value.name.trim(),
-        baseUrl: supplierForm.value.baseUrl.trim(),
-        enabled: supplierForm.value.enabled,
-        token: supplierForm.value.token.trim() || undefined,
-      })
-      app.notify('供应商已更新')
-    } else {
-      if (!supplierForm.value.code.trim() || !supplierForm.value.name.trim()) {
-        app.notify('请填写供应商编码和名称')
-        return
+    if (catalogEditor.value === 'carrier') {
+      if (catalogEditingID.value) await updateAdminCarrier(catalogEditingID.value, { name: carrierForm.value.name, description: carrierForm.value.description, enabled: carrierForm.value.enabled })
+      else await createAdminCarrier({ code: carrierForm.value.code, name: carrierForm.value.name, description: carrierForm.value.description })
+    }
+    if (catalogEditor.value === 'model') {
+      if (catalogEditingID.value) await updateAdminModel(catalogEditingID.value, { name: modelForm.value.name, description: modelForm.value.description, enabled: modelForm.value.enabled })
+      else await createAdminModel({ carrierId: modelForm.value.carrierId, code: modelForm.value.code, name: modelForm.value.name, description: modelForm.value.description })
+    }
+    if (catalogEditor.value === 'supplier') {
+      if (catalogEditingID.value) await updateAdminSupplier(catalogEditingID.value, { name: supplierForm.value.name, baseUrl: supplierForm.value.baseUrl, token: supplierForm.value.token || undefined, enabled: supplierForm.value.enabled })
+      else await createAdminSupplier({ code: supplierForm.value.code, name: supplierForm.value.name, baseUrl: supplierForm.value.baseUrl, token: supplierForm.value.token, enabled: supplierForm.value.enabled })
+    }
+    app.notify('目录配置已保存')
+    closeCatalogEditor()
+    await load()
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '保存目录配置失败'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function toggleCarrier(item: AdminCarrier) {
+  saving.value = true
+  try {
+    await updateAdminCarrier(item.id, { enabled: !item.enabled })
+    await load()
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '更新承运商失败'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function toggleModel(item: AdminModel) {
+  saving.value = true
+  try {
+    await updateAdminModel(item.id, { enabled: !item.enabled })
+    await load()
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '更新模型失败'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function toggleSupplier(item: AdminSupplier) {
+  saving.value = true
+  try {
+    await updateAdminSupplier(item.id, { enabled: !item.enabled })
+    await load()
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '更新供应商失败'))
+  } finally {
+    saving.value = false
+  }
+}
+
+function offeringPayload() {
+  return {
+    supplierId: offeringForm.value.supplierId,
+    modelId: offeringForm.value.modelId,
+    modeId: offeringForm.value.modeId,
+    name: offeringForm.value.name.trim() || '未命名供给',
+    upstreamWorkflowId: offeringForm.value.upstreamWorkflowId.trim(),
+    adapterCode: offeringForm.value.adapterCode.trim() || 'autodl_h3_v1',
+    enabled: offeringForm.value.enabled,
+    healthStatus: offeringForm.value.healthStatus || 'healthy',
+    priority: toNumber(offeringForm.value.priority, 10),
+    minDurationSec: toNumber(offeringForm.value.minDurationSec, 1),
+    maxDurationSec: toNumber(offeringForm.value.maxDurationSec, 15),
+    resolutions: splitValues(offeringForm.value.resolutions),
+    aspectRatios: splitValues(offeringForm.value.aspectRatios),
+    minImages: toNumber(offeringForm.value.minImages),
+    maxImages: toNumber(offeringForm.value.maxImages),
+    supportsGeneratedAudio: offeringForm.value.supportsGeneratedAudio,
+  }
+}
+
+async function saveOffering() {
+  if (!offeringForm.value.supplierId || !offeringForm.value.modelId || !offeringForm.value.modeId || !offeringForm.value.upstreamWorkflowId.trim()) {
+    app.notify('请选择供应商、模型和创作模式，并填写上游工作流 ID')
+    return
+  }
+  const payload = offeringPayload()
+  if (payload.maxDurationSec < payload.minDurationSec || !payload.resolutions.length || !payload.aspectRatios.length) {
+    app.notify('请填写有效的时长范围、分辨率和画幅比例')
+    return
+  }
+  saving.value = true
+  try {
+    const offering = offeringEditingID.value
+      ? await updateAdminOffering(offeringEditingID.value, payload)
+      : await createAdminOffering(payload)
+    for (const resolution of payload.resolutions) {
+      for (const generateAudio of payload.supportsGeneratedAudio ? [false, true] : [false]) {
+        await upsertAdminSupplierCost({
+          offeringId: offering.id,
+          resolution,
+          generateAudio,
+          peakPerSecond: toNumber(offeringForm.value.peakPerSecond),
+          offpeakPerSecond: toNumber(offeringForm.value.offpeakPerSecond),
+          currency: 'CNY',
+          status: 'active',
+        })
       }
-      await createAdminSupplier({
-        code: supplierForm.value.code.trim(),
-        name: supplierForm.value.name.trim(),
-        baseUrl: supplierForm.value.baseUrl.trim(),
-        token: supplierForm.value.token.trim() || undefined,
-        enabled: supplierForm.value.enabled,
-      })
-      app.notify('供应商已创建')
     }
-    showSupplierForm.value = false
+    showOfferingForm.value = false
+    app.notify('供应商供给和采购成本已保存')
     await load()
-  } catch (err) {
-    app.notify(apiErrorMessage(err, '保存供应商失败'))
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '保存供应商供给失败'))
   } finally {
     saving.value = false
   }
 }
 
-function openCreateRoute() {
-  editingRouteId.value = null
-  routeForm.value = {
-    supplierId: suppliers.value[0]?.id || '',
-    modelId: models.value[0]?.id || '',
-    workflowId: '',
-    name: '',
-    costPerSecPeak: '0.03',
-    costPerSecOffpeak: '0.02',
-    enabled: true,
-  }
-  showRouteForm.value = true
-}
-
-function openEditRoute(route: AdminRoute) {
-  editingRouteId.value = route.id
-  routeForm.value = {
-    supplierId: route.supplierId || route.supplierCode,
-    modelId: route.modelId || route.modelCode,
-    workflowId: route.workflowId,
-    name: route.name,
-    costPerSecPeak: String(route.costPerSecPeak),
-    costPerSecOffpeak: String(route.costPerSecOffpeak),
-    enabled: route.enabled,
-  }
-  showRouteForm.value = true
-}
-
-async function saveRoute() {
-  saving.value = true
-  try {
-    const peak = Number(routeForm.value.costPerSecPeak)
-    const off = Number(routeForm.value.costPerSecOffpeak)
-    if (editingRouteId.value) {
-      await updateAdminRoute(editingRouteId.value, {
-        name: routeForm.value.name.trim(),
-        workflowId: routeForm.value.workflowId.trim(),
-        costPerSecPeak: peak,
-        costPerSecOffpeak: off,
-        enabled: routeForm.value.enabled,
-      })
-      app.notify('路由已更新')
-    } else {
-      if (!routeForm.value.supplierId || !routeForm.value.modelId || !routeForm.value.workflowId.trim()) {
-        app.notify('请选择供应商、模型并填写上游 Workflow ID')
-        return
-      }
-      await createAdminRoute({
-        supplierId: routeForm.value.supplierId,
-        modelId: routeForm.value.modelId,
-        workflowId: routeForm.value.workflowId.trim(),
-        name: routeForm.value.name.trim() || undefined,
-        costPerSecPeak: peak,
-        costPerSecOffpeak: off,
-        enabled: routeForm.value.enabled,
-      })
-      app.notify('路由已创建')
-    }
-    showRouteForm.value = false
-    await load()
-  } catch (err) {
-    app.notify(apiErrorMessage(err, '保存路由失败'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveModel() {
-  saving.value = true
-  try {
-    if (!modelForm.value.carrierId || !modelForm.value.code.trim() || !modelForm.value.name.trim()) {
-      app.notify('请填写承运、模型编码和名称')
-      return
-    }
-    await createAdminModel({
-      carrierId: modelForm.value.carrierId,
-      code: modelForm.value.code.trim(),
-      name: modelForm.value.name.trim(),
-      description: modelForm.value.description.trim() || undefined,
-      clientWorkflowId: modelForm.value.clientWorkflowId.trim() || undefined,
-    })
-    app.notify('模型已创建')
-    showModelForm.value = false
-    modelForm.value = { carrierId: carriers.value[0]?.id || '', code: '', name: '', clientWorkflowId: '', description: '' }
-    await load()
-  } catch (err) {
-    app.notify(apiErrorMessage(err, '创建模型失败'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function toggleSupplier(sp: AdminSupplier) {
-  try {
-    await updateAdminSupplier(sp.id, { enabled: !sp.enabled })
-    app.notify(`${sp.name} 已${!sp.enabled ? '启用' : '停用'}`)
-    await load()
-  } catch (err) {
-    app.notify(apiErrorMessage(err, '更新失败'))
-  }
-}
-
-async function toggleRoute(route: AdminRoute) {
-  try {
-    await updateAdminRoute(route.id, { enabled: !route.enabled })
-    app.notify(`${route.name} 已${!route.enabled ? '启用' : '停用'}`)
-    await load()
-  } catch (err) {
-    app.notify(apiErrorMessage(err, '更新失败'))
-  }
+function costsFor(offeringId: string) {
+  return costs.value.filter((item) => item.offeringId === offeringId)
 }
 
 onMounted(load)
@@ -256,189 +276,114 @@ onMounted(load)
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="模型与供应商">
-      <template #description>
-        供应商凭据、模型与路由都在这里维护。客户端只看到上架工作流，看不到供应商。
-      </template>
+      <template #description>承运商和模型描述原厂能力；供应商供给描述实际采购渠道、上游工作流与成本。客户端永不看到此处的供应商或成本信息。</template>
       <template #actions>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
-        <S2VButton size="sm" @click="showModelForm = !showModelForm"><Plus class="h-3.5 w-3.5" />新模型</S2VButton>
-        <S2VButton size="sm" @click="openCreateRoute"><Plus class="h-3.5 w-3.5" />新路由</S2VButton>
-        <S2VButton variant="primary" size="sm" @click="openCreateSupplier"><Plus class="h-3.5 w-3.5" />新供应商</S2VButton>
+        <S2VButton variant="primary" size="sm" @click="openOfferingForm()"><Plus class="h-3.5 w-3.5" />新建供给</S2VButton>
       </template>
     </S2VPageHeader>
 
     <div class="mb-5 grid gap-3 sm:grid-cols-3">
-      <S2VCard v-for="item in metrics" :key="item.label" variant="metric">
-        <div class="flex items-center justify-between text-xs text-s2v-muted">
-          <span>{{ item.label }}</span>
-          <component :is="item.icon" class="h-4 w-4 text-s2v-primary" />
-        </div>
-        <strong class="mt-3 block font-mono text-xl font-bold">{{ item.value }}</strong>
-      </S2VCard>
+      <S2VCard variant="metric"><span class="text-xs text-s2v-muted">启用供应商</span><strong class="mt-3 block font-mono text-xl">{{ suppliers.filter((item) => item.enabled).length }}</strong></S2VCard>
+      <S2VCard variant="metric"><span class="text-xs text-s2v-muted">承运商 / 模型</span><strong class="mt-3 block font-mono text-xl">{{ carriers.length }} / {{ models.length }}</strong></S2VCard>
+      <S2VCard variant="metric"><span class="text-xs text-s2v-muted">可用供给</span><strong class="mt-3 block font-mono text-xl">{{ offerings.filter((item) => item.enabled).length }}</strong></S2VCard>
     </div>
 
-    <p v-if="autodlEnvToken" class="mb-4 text-xs text-s2v-muted">环境变量已提供 AutoDL Token 兜底；管理端保存后优先用库内加密值。</p>
-
-    <S2VCard v-if="showSupplierForm" class="mb-5">
+    <S2VCard class="mb-5" variant="padded">
       <div class="s2v-panel-header">
-        <div>
-          <h2 class="s2v-section-title">{{ editingSupplierId ? '编辑供应商' : '新增供应商' }}</h2>
-          <p class="mt-1 text-xs text-s2v-muted">Token 加密存储；编码创建后不可改。</p>
+        <div><h2 class="s2v-section-title">承运商、模型与供应商目录</h2><p class="mt-1 text-xs text-s2v-muted">新增后还需配置模式策略、供给能力、采购成本与对客售价，才会对客户端可用。</p></div>
+        <div class="flex flex-wrap gap-2">
+          <S2VButton size="sm" @click="openCatalogEditor('carrier')"><Plus class="h-3.5 w-3.5" />承运商</S2VButton>
+          <S2VButton size="sm" @click="openCatalogEditor('model')"><Plus class="h-3.5 w-3.5" />模型</S2VButton>
+          <S2VButton size="sm" @click="openCatalogEditor('supplier')"><Plus class="h-3.5 w-3.5" />供应商</S2VButton>
         </div>
-        <S2VButton size="sm" @click="showSupplierForm = false"><X class="h-3.5 w-3.5" />关闭</S2VButton>
       </div>
-      <div class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-        <S2VInput v-model="supplierForm.code" label="编码" placeholder="autodl" :disabled="!!editingSupplierId" />
-        <S2VInput v-model="supplierForm.name" label="名称" placeholder="AutoDL" />
-        <S2VInput v-model="supplierForm.baseUrl" label="Base URL" placeholder="https://autodl.art" class="sm:col-span-2" />
-        <S2VInput v-model="supplierForm.token" label="Token" type="password" :placeholder="editingSupplierId ? '留空保持原 Token' : 'ComfyUI Token'" class="sm:col-span-2" />
-        <label class="flex items-center gap-2 text-xs sm:col-span-2">
-          <input v-model="supplierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary" />
-          启用供应商
-        </label>
-        <div class="sm:col-span-2">
-          <S2VButton variant="primary" :loading="saving" @click="saveSupplier">保存供应商</S2VButton>
+
+      <div v-if="catalogEditor" class="border-t border-s2v-line pt-4">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <strong class="text-xs">{{ catalogEditingID ? '编辑' : '新建' }}{{ catalogEditor === 'carrier' ? '承运商' : catalogEditor === 'model' ? '模型' : '供应商' }}</strong>
+          <S2VButton size="sm" title="关闭编辑器" @click="closeCatalogEditor"><X class="h-3.5 w-3.5" /></S2VButton>
+        </div>
+        <div v-if="catalogEditor === 'carrier'" class="grid gap-3 sm:grid-cols-2">
+          <S2VInput v-model="carrierForm.code" label="承运商编码" placeholder="volcengine" :disabled="Boolean(catalogEditingID)" />
+          <S2VInput v-model="carrierForm.name" label="承运商名称" placeholder="火山引擎" />
+          <S2VInput v-model="carrierForm.description" label="说明" class="sm:col-span-2" />
+          <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="carrierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许新建模型与客户端展示</label>
+        </div>
+        <div v-else-if="catalogEditor === 'model'" class="grid gap-3 sm:grid-cols-2">
+          <S2VSelect v-model="modelForm.carrierId" label="承运商" :options="carrierOptions" :disabled="Boolean(catalogEditingID)" />
+          <S2VInput v-model="modelForm.code" label="模型编码" placeholder="seedance_2_5" :disabled="Boolean(catalogEditingID)" />
+          <S2VInput v-model="modelForm.name" label="模型名称" placeholder="Seedance 2.5" />
+          <S2VInput v-model="modelForm.description" label="说明" />
+          <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="modelForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许新建供给与客户端展示</label>
+        </div>
+        <div v-else class="grid gap-3 sm:grid-cols-2">
+          <S2VInput v-model="supplierForm.code" label="供应商编码" placeholder="official_minimax" :disabled="Boolean(catalogEditingID)" />
+          <S2VInput v-model="supplierForm.name" label="供应商名称" placeholder="官方 MiniMax" />
+          <S2VInput v-model="supplierForm.baseUrl" label="上游服务地址" placeholder="https://api.example.com" class="sm:col-span-2" />
+          <S2VInput v-model="supplierForm.token" type="password" :label="catalogEditingID ? '更新凭据（留空则不变）' : '凭据'" placeholder="仅写入，不会回显" class="sm:col-span-2" />
+          <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="supplierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许参与新报价</label>
+        </div>
+        <div class="mt-4"><S2VButton variant="primary" size="sm" :loading="saving" @click="saveCatalog">保存目录配置</S2VButton></div>
+      </div>
+
+      <div v-else class="mt-4 grid gap-4 lg:grid-cols-3">
+        <div>
+          <strong class="mb-2 block text-xs">承运商</strong>
+          <div class="grid gap-2"><div v-for="carrier in carriers" :key="carrier.id" class="s2v-inset"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate text-xs">{{ carrier.name }}</strong><span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ carrier.code }}</span></div><S2VBadge :tone="carrier.enabled ? 'success' : 'neutral'">{{ carrier.enabled ? '启用' : '停用' }}</S2VBadge></div><div class="mt-2 flex gap-1"><S2VButton size="sm" variant="ghost" title="编辑承运商" @click="openCatalogEditor('carrier', carrier)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="carrier.enabled ? '停用承运商' : '启用承运商'" :loading="saving" @click="toggleCarrier(carrier)"><Power class="h-3.5 w-3.5" /></S2VButton></div></div></div>
+        </div>
+        <div>
+          <strong class="mb-2 block text-xs">模型</strong>
+          <div class="grid gap-2"><div v-for="model in models" :key="model.id" class="s2v-inset"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate text-xs">{{ model.name }}</strong><span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ model.carrierCode }} · {{ model.code }}</span></div><S2VBadge :tone="model.enabled ? 'success' : 'neutral'">{{ model.enabled ? '启用' : '停用' }}</S2VBadge></div><div class="mt-2 flex gap-1"><S2VButton size="sm" variant="ghost" title="编辑模型" @click="openCatalogEditor('model', model)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="model.enabled ? '停用模型' : '启用模型'" :loading="saving" @click="toggleModel(model)"><Power class="h-3.5 w-3.5" /></S2VButton></div></div></div>
+        </div>
+        <div>
+          <strong class="mb-2 block text-xs">供应商</strong>
+          <div class="grid gap-2"><div v-for="supplier in suppliers" :key="supplier.id" class="s2v-inset"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate text-xs">{{ supplier.name }}</strong><span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ supplier.code }} · {{ supplier.hasToken ? '凭据已配置' : '未配置凭据' }}</span></div><S2VBadge :tone="supplier.enabled ? 'success' : 'neutral'">{{ supplier.enabled ? '启用' : '停用' }}</S2VBadge></div><div class="mt-2 flex gap-1"><S2VButton size="sm" variant="ghost" title="编辑供应商" @click="openCatalogEditor('supplier', supplier)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="supplier.enabled ? '停用供应商' : '启用供应商'" :loading="saving" @click="toggleSupplier(supplier)"><Power class="h-3.5 w-3.5" /></S2VButton></div></div></div>
         </div>
       </div>
     </S2VCard>
 
-    <S2VCard v-if="showModelForm" class="mb-5">
+    <S2VCard v-if="showOfferingForm" class="mb-5">
       <div class="s2v-panel-header">
-        <div>
-          <h2 class="s2v-section-title">新增模型</h2>
-          <p class="mt-1 text-xs text-s2v-muted">模型挂在承运能力下，再被路由和工作流引用。</p>
-        </div>
-        <S2VButton size="sm" @click="showModelForm = false"><X class="h-3.5 w-3.5" />关闭</S2VButton>
+        <div><h2 class="s2v-section-title">{{ editingOffering ? '编辑' : '新建' }}供应商供给</h2><p class="mt-1 text-xs text-s2v-muted">供给绑定供应商、模型和固定创作模式；成本归属供给而非模型。</p></div>
+        <S2VButton size="sm" title="关闭编辑器" @click="showOfferingForm = false"><X class="h-3.5 w-3.5" /></S2VButton>
       </div>
       <div class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-        <label class="grid gap-1.5 text-xs font-semibold text-s2v-ink/70">
-          <span>承运</span>
-          <select v-model="modelForm.carrierId" class="rounded-control border border-s2v-line bg-s2v-canvas px-3 py-2 text-sm font-normal text-s2v-ink">
-            <option v-for="c in carriers" :key="c.id" :value="c.id">{{ c.name }} ({{ c.code }})</option>
-          </select>
-        </label>
-        <S2VInput v-model="modelForm.code" label="模型编码" placeholder="text" />
-        <S2VInput v-model="modelForm.name" label="名称" placeholder="文生视频" />
-        <S2VInput v-model="modelForm.clientWorkflowId" label="关联平台工作流编码" placeholder="wf-h3-text" />
-        <S2VInput v-model="modelForm.description" label="说明" class="sm:col-span-2" />
-        <div class="sm:col-span-2">
-          <S2VButton variant="primary" :loading="saving" @click="saveModel">创建模型</S2VButton>
-        </div>
-      </div>
-    </S2VCard>
-
-    <S2VCard v-if="showRouteForm" class="mb-5">
-      <div class="s2v-panel-header">
-        <div>
-          <h2 class="s2v-section-title">{{ editingRouteId ? '编辑路由' : '新增路由' }}</h2>
-          <p class="mt-1 text-xs text-s2v-muted">模型 → 供应商上游 workflow_id；成本用于自动选路。</p>
-        </div>
-        <S2VButton size="sm" @click="showRouteForm = false"><X class="h-3.5 w-3.5" />关闭</S2VButton>
-      </div>
-      <div class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-        <label class="grid gap-1.5 text-xs font-semibold text-s2v-ink/70">
-          <span>供应商</span>
-          <select v-model="routeForm.supplierId" class="rounded-control border border-s2v-line bg-s2v-canvas px-3 py-2 text-sm font-normal text-s2v-ink" :disabled="!!editingRouteId">
-            <option v-for="sp in suppliers" :key="sp.id" :value="sp.id">{{ sp.name }} ({{ sp.code }})</option>
-          </select>
-        </label>
-        <label class="grid gap-1.5 text-xs font-semibold text-s2v-ink/70">
-          <span>模型</span>
-          <select v-model="routeForm.modelId" class="rounded-control border border-s2v-line bg-s2v-canvas px-3 py-2 text-sm font-normal text-s2v-ink" :disabled="!!editingRouteId">
-            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }} ({{ m.code }})</option>
-          </select>
-        </label>
-        <S2VInput v-model="routeForm.workflowId" label="上游 Workflow ID" placeholder="minimax_h3_lightx2v" class="sm:col-span-2" />
-        <S2VInput v-model="routeForm.name" label="显示名称" placeholder="H3文生" />
-        <div class="grid grid-cols-2 gap-3">
-          <S2VInput v-model="routeForm.costPerSecPeak" label="峰时成本/秒" type="number" />
-          <S2VInput v-model="routeForm.costPerSecOffpeak" label="谷时成本/秒" type="number" />
-        </div>
-        <label class="flex items-center gap-2 text-xs sm:col-span-2">
-          <input v-model="routeForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary" />
-          启用路由
-        </label>
-        <div class="sm:col-span-2">
-          <S2VButton variant="primary" :loading="saving" @click="saveRoute">保存路由</S2VButton>
-        </div>
+        <S2VSelect v-model="offeringForm.supplierId" label="供应商" :options="supplierOptions" :disabled="editingOffering" />
+        <S2VSelect v-model="offeringForm.modelId" label="模型" :options="modelOptions" :disabled="editingOffering" />
+        <S2VSelect v-model="offeringForm.modeId" label="创作模式" :options="modeOptions" :disabled="editingOffering" />
+        <S2VInput v-model="offeringForm.name" label="供给名称" placeholder="H3 文生视频" />
+        <S2VInput v-model="offeringForm.upstreamWorkflowId" label="上游工作流 ID" placeholder="minimax_h3_b99_001" class="sm:col-span-2" />
+        <S2VInput v-model="offeringForm.adapterCode" label="适配器" />
+        <S2VInput v-model="offeringForm.priority" label="同成本优先级" type="number" />
+        <S2VInput v-model="offeringForm.resolutions" label="标准分辨率（逗号分隔）" />
+        <S2VInput v-model="offeringForm.aspectRatios" label="画幅比例（逗号分隔）" />
+        <S2VInput v-model="offeringForm.minDurationSec" label="最小时长（秒）" type="number" />
+        <S2VInput v-model="offeringForm.maxDurationSec" label="最大时长（秒）" type="number" />
+        <S2VInput v-model="offeringForm.minImages" label="最少参考图" type="number" />
+        <S2VInput v-model="offeringForm.maxImages" label="最多参考图" type="number" />
+        <S2VInput v-model="offeringForm.peakPerSecond" label="峰时采购成本（元/秒）" type="number" />
+        <S2VInput v-model="offeringForm.offpeakPerSecond" label="谷时采购成本（元/秒）" type="number" />
+        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="offeringForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">参与新报价</label>
+        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="offeringForm.supportsGeneratedAudio" type="checkbox" class="h-4 w-4 accent-s2v-primary">支持模型自动生成音频</label>
+        <div class="sm:col-span-2"><S2VButton variant="primary" :loading="saving" @click="saveOffering">保存供给</S2VButton></div>
       </div>
     </S2VCard>
 
     <div class="grid gap-4 lg:grid-cols-2">
-      <S2VCard v-for="provider in suppliers" :key="provider.id" variant="padded">
+      <S2VCard v-for="offering in offerings" :key="offering.id" variant="padded">
         <div class="flex items-start justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <span class="s2v-icon-well"><Bot class="h-4 w-4" /></span>
-            <div>
-              <strong class="block text-xs">{{ provider.name }}</strong>
-              <span class="mt-1 block text-[11px] text-s2v-muted">{{ provider.code }} · {{ provider.baseUrl }}</span>
-            </div>
-          </div>
-          <S2VBadge :tone="provider.hasToken && provider.enabled ? 'success' : 'neutral'">{{ provider.status }}</S2VBadge>
+          <div class="flex min-w-0 items-center gap-2"><span class="s2v-icon-well"><Bot class="h-4 w-4" /></span><div class="min-w-0"><strong class="block truncate text-xs">{{ offering.name }}</strong><span class="mt-1 block truncate text-[11px] text-s2v-muted">{{ offering.supplierName }} · {{ offering.carrierName }} / {{ offering.modelName }}</span></div></div>
+          <div class="flex items-center gap-1"><S2VBadge :tone="offering.enabled ? 'success' : 'neutral'">{{ offering.enabled ? '启用' : '停用' }}</S2VBadge><S2VButton size="sm" variant="ghost" title="编辑供给" @click="openOfferingForm(offering)"><Pencil class="h-3.5 w-3.5" /></S2VButton></div>
         </div>
         <div class="mt-4 grid gap-2 border-t border-s2v-line pt-3 text-xs text-s2v-muted">
-          <div class="flex justify-between"><span>Token</span><strong class="font-mono text-s2v-ink">{{ provider.hasToken ? '已配置' : '未配置' }}</strong></div>
-        </div>
-        <div class="mt-4 flex gap-2">
-          <S2VButton size="sm" class="flex-1" @click="openEditSupplier(provider)"><Pencil class="h-3.5 w-3.5" />编辑</S2VButton>
-          <S2VButton size="sm" @click="toggleSupplier(provider)">{{ provider.enabled ? '停用' : '启用' }}</S2VButton>
+          <div class="flex justify-between gap-3"><span>创作模式</span><strong class="text-right text-s2v-ink">{{ offering.modeName }}</strong></div>
+          <div class="flex justify-between gap-3"><span>能力</span><strong class="text-right font-mono text-s2v-ink">{{ offering.minDurationSec }}-{{ offering.maxDurationSec }} 秒 · {{ offering.resolutions.join(', ') }}</strong></div>
+          <div class="flex justify-between gap-3"><span>自动音频</span><strong class="text-right text-s2v-ink">{{ offering.supportsGeneratedAudio ? '支持' : '不支持' }}</strong></div>
+          <div v-for="cost in costsFor(offering.id)" :key="cost.id" class="flex justify-between gap-3"><span>采购成本 {{ cost.resolution }}</span><strong class="text-right font-mono text-s2v-ink">{{ cost.peakPerSecond }} / {{ cost.offpeakPerSecond }} 元/秒</strong></div>
         </div>
       </S2VCard>
-      <p v-if="!suppliers.length" class="s2v-inset-dashed lg:col-span-2">暂无供应商，点击「新供应商」添加。</p>
+      <p v-if="!offerings.length" class="s2v-inset-dashed lg:col-span-2">暂无供应商供给。先配置供应商、承运商和模型，再新增供给。</p>
     </div>
-
-    <S2VCard class="mt-5" variant="padded">
-      <div class="mb-3 flex items-center justify-between gap-2">
-        <strong class="block text-xs">供应商路由（最低成本自动选路）</strong>
-        <S2VButton size="sm" @click="openCreateRoute"><Plus class="h-3.5 w-3.5" />新增</S2VButton>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[720px] text-left text-xs">
-          <thead class="text-s2v-muted">
-            <tr class="border-b border-s2v-line">
-              <th class="py-2 font-medium">名称</th>
-              <th class="py-2 font-medium">供应商</th>
-              <th class="py-2 font-medium">模型</th>
-              <th class="py-2 font-medium">上游 Workflow</th>
-              <th class="py-2 font-medium">峰/谷 元每秒</th>
-              <th class="py-2 font-medium">状态</th>
-              <th class="py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="route in routes" :key="route.id" class="border-b border-s2v-line/70">
-              <td class="py-2.5">{{ route.name }}</td>
-              <td class="py-2.5 font-mono">{{ route.supplierCode }}</td>
-              <td class="py-2.5 font-mono">{{ route.modelCode }}</td>
-              <td class="py-2.5 font-mono text-[11px]">{{ route.workflowId }}</td>
-              <td class="py-2.5 font-mono">{{ route.costPerSecPeak }} / {{ route.costPerSecOffpeak }}</td>
-              <td class="py-2.5">
-                <S2VBadge :tone="route.enabled ? 'success' : 'neutral'">{{ route.enabled ? '启用' : '停用' }}</S2VBadge>
-              </td>
-              <td class="py-2.5 text-right">
-                <div class="flex justify-end gap-1">
-                  <S2VButton size="sm" @click="openEditRoute(route)"><Pencil class="h-3.5 w-3.5" />编辑</S2VButton>
-                  <S2VButton size="sm" @click="toggleRoute(route)">{{ route.enabled ? '停用' : '启用' }}</S2VButton>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!routes.length">
-              <td colspan="7" class="py-4 text-s2v-muted">暂无路由。</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </S2VCard>
-
-    <S2VCard class="mt-5" variant="padded">
-      <strong class="mb-3 block text-xs">模型清单</strong>
-      <div class="grid gap-2 sm:grid-cols-3">
-        <div v-for="m in models" :key="m.id" class="s2v-inset">
-          <strong class="block text-xs">{{ m.name }}</strong>
-          <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ m.code }} · {{ m.clientWorkflowId || '-' }}</span>
-        </div>
-        <p v-if="!models.length" class="text-xs text-s2v-muted">暂无模型。</p>
-      </div>
-    </S2VCard>
   </section>
 </template>

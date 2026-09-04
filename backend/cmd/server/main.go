@@ -54,8 +54,8 @@ func main() {
 	if err := st.SeedPlatformCommerce(ctx); err != nil {
 		log.Fatalf("seed commerce: %v", err)
 	}
-	if err := st.AlignSupplyChainH3(ctx); err != nil {
-		log.Fatalf("align supply h3: %v", err)
+	if err := st.SeedCreationCatalog(ctx); err != nil {
+		log.Fatalf("seed creation catalog: %v", err)
 	}
 	if err := ensureDemoUser(ctx, st, cfg); err != nil {
 		log.Fatalf("seed user: %v", err)

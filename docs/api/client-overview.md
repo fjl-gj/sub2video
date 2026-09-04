@@ -65,7 +65,7 @@
 | --- | --- | --- |
 | `id` | `string` | 任务 ID，如 `tsk_88921` |
 | `title` | `string` | 作品/任务标题 |
-| `workflow` | `string` | 工作流名称，如 `H3 图生视频` |
+| `workflow` | `string` | 创作模式展示名，如 `首尾帧生成视频`；历史字段名保留以兼容任务列表 |
 | `status` | `TaskStatus` | 见枚举 |
 | `progress` | `integer` | 0–100 |
 | `duration` | `string` | 展示用时长，如 `15 秒` |
@@ -139,7 +139,7 @@ Authorization: Bearer <token>
     "activeTask": {
       "id": "tsk_88921",
       "title": "雨夜街道霓虹漫步",
-      "workflow": "H3 图生视频",
+      "workflow": "首尾帧生成视频",
       "status": "生成中",
       "progress": 68,
       "duration": "15 秒",
@@ -185,7 +185,7 @@ Authorization: Bearer <token>
 ## 业务规则
 
 1. **余额与预扣：** 进行中任务展示的 `cost` 为提交时已预扣金额；失败或终止后按钱包规则退款（见钱包域）。
-2. **参考单价：** 概览仅展示参考价；任务创建接口返回并固化 `priceSnapshot`，与概览解耦。
+2. **参考单价：** 概览仅展示参考价；实际创作必须先取得服务器 `quoteId`，任务由该一次性报价固化售价、成本和供给快照，与概览解耦。
 3. **活跃任务数：** 与侧栏「任务」角标、`tasks.activeCount` 一致，均统计 `排队中` + `生成中`。
 4. **存储统计：** `usedGb` / `fileCount` 跨所有未删除作品；删除作品进入回收站后是否计入配额由存储域定义（建议：回收站占用配额直至清空）。
 5. **刷新策略：** 进行中任务建议 WebSocket / SSE 推送 `progress`，或前端轮询（间隔 ≥ 5s）；指标卡可在进入页面时拉取一次，从任务页返回时可 `invalidate`。

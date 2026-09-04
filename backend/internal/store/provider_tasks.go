@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/sbu2video/backend/internal/crypto"
 )
 
@@ -29,6 +31,9 @@ type ProviderTask struct {
 	SupplierCode       string
 	SupplierRouteID    string
 	UpstreamWorkflowID string
+	QuotePublicID      string
+	GenerateAudio      bool
+	AdapterCode        string
 	UpstreamTaskID     string
 	UpstreamStatus     string
 	ResultURL          string
@@ -64,7 +69,8 @@ func (s *Store) ListPendingProviderTasks(ctx context.Context, limit int) ([]Prov
 	rows, err := s.Pool.Query(ctx, `
 SELECT id, public_id, user_id, status, progress, duration_sec, resolution, COALESCE(aspect_ratio,''),
        COALESCE(prompt,''), COALESCE(source_type,''), COALESCE(source_ref,''), COALESCE(source_meta,'{}'::jsonb), workflow,
-       COALESCE(NULLIF(workflow_public_id,''), ''), carrier_code, model_code, supplier_code, supplier_route_id, upstream_workflow_id,
+	       COALESCE(NULLIF(workflow_public_id,''), ''), carrier_code, model_code, supplier_code, supplier_route_id, upstream_workflow_id,
+	       quote_public_id, generate_audio, offering_snapshot,
        upstream_task_id, upstream_status, result_url, result_oss_url, fail_reason, created_at
 FROM generation_tasks
 WHERE status IN ('queued', 'running')
@@ -78,16 +84,24 @@ LIMIT $1`, limit)
 	for rows.Next() {
 		var t ProviderTask
 		var wfPublic string
-		var metaRaw []byte
+		var metaRaw, offeringRaw []byte
 		if err := rows.Scan(
 			&t.ID, &t.PublicID, &t.UserID, &t.Status, &t.Progress, &t.DurationSec, &t.Resolution, &t.AspectRatio,
 			&t.Prompt, &t.SourceType, &t.SourceRef, &metaRaw, &t.WorkflowLabel, &wfPublic,
 			&t.CarrierCode, &t.ModelCode, &t.SupplierCode, &t.SupplierRouteID, &t.UpstreamWorkflowID,
+			&t.QuotePublicID, &t.GenerateAudio, &offeringRaw,
 			&t.UpstreamTaskID, &t.UpstreamStatus, &t.ResultURL, &t.ResultOSSURL, &t.FailReason, &t.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(metaRaw, &t.SourceMeta)
+		if len(offeringRaw) > 0 {
+			var offeringSnapshot struct {
+				AdapterCode string `json:"adapterCode"`
+			}
+			_ = json.Unmarshal(offeringRaw, &offeringSnapshot)
+			t.AdapterCode = offeringSnapshot.AdapterCode
+		}
 		if wfPublic != "" {
 			t.ClientWorkflow = wfPublic
 		} else {
@@ -162,11 +176,44 @@ WHERE id=$4`, resultURL, ossURL, upstreamDuration, taskID)
 }
 
 func (s *Store) FailTaskUpstream(ctx context.Context, taskID int64, reason string) error {
-	_, err := s.Pool.Exec(ctx, `
-UPDATE generation_tasks SET
-  status='failed', progress=0, upstream_status='FAILED', fail_reason=$1, updated_at=NOW()
-WHERE id=$2`, reason, taskID)
-	return err
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var userID int64
+	var publicID, status, title string
+	var cost float64
+	err = tx.QueryRow(ctx, `SELECT user_id, public_id, status, title, cost::float8 FROM generation_tasks WHERE id=$1 FOR UPDATE`, taskID).Scan(&userID, &publicID, &status, &title, &cost)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if status != "queued" && status != "running" {
+		return tx.Commit(ctx)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE generation_tasks SET status='failed', progress=0, upstream_status='FAILED', fail_reason=$1, updated_at=NOW() WHERE id=$2`, reason, taskID); err != nil {
+		return err
+	}
+	var alreadyRefunded bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wallet_ledger WHERE ref_type='task' AND ref_id=$1 AND type='task_refund')`, publicID).Scan(&alreadyRefunded); err != nil {
+		return err
+	}
+	if !alreadyRefunded {
+		if _, err = tx.Exec(ctx, `UPDATE wallets SET balance=balance+$1, version=version+1, updated_at=NOW() WHERE user_id=$2`, cost, userID); err != nil {
+			return err
+		}
+		var balance float64
+		if err = tx.QueryRow(ctx, `SELECT balance::float8 FROM wallets WHERE user_id=$1`, userID).Scan(&balance); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO wallet_ledger (public_id, user_id, type, amount, balance_after, ref_type, ref_id, description) VALUES ($1,$2,'task_refund',$3,$4,'task',$5,$6)`, NewLedgerID(), userID, cost, balance, publicID, publicID+" 上游失败退款"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) MarkTaskSimulated(ctx context.Context, taskID int64) error {
@@ -180,6 +227,7 @@ func (s *Store) AdvanceSimulatedTasks(ctx context.Context) error {
 	rows, err := s.Pool.Query(ctx, `
 SELECT id, status, progress FROM generation_tasks
 WHERE status IN ('queued', 'running')
+  AND quote_public_id = ''
   AND (upstream_task_id = '' OR supplier_code = 'simulator' OR supplier_code = '')`)
 	if err != nil {
 		return err

@@ -2,7 +2,7 @@
 
 ## 页面职责
 
-查看全部生成任务队列：排队、生成中、已完成、失败。支持终止退款、重试、下载结果、保存到当前作品。
+查看全部生成任务队列：排队、生成中、已完成、失败。支持终止退款、重新配置创作、下载结果、保存到当前作品。
 
 | 项目 | 值 |
 | --- | --- |
@@ -18,7 +18,7 @@
   → 展示各状态数量 counts
   → 操作分支：
       排队中/生成中 → POST cancel（终止并退款）
-      失败         → POST retry（重新排队，不重复扣费）
+      失败         → 跳转创作页，取得新报价并提交新任务
       已完成       → GET download-url | POST save-to-project
 ```
 
@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | `id` | `string` | `tsk_*` |
 | `title` | `string` | 任务标题 |
-| `workflow` | `string` | 工作流名称 |
+| `workflow` | `string` | 创作模式展示名；字段名为兼容旧任务保留 |
 | `status` | `TaskStatus` | 排队中 \| 生成中 \| 已完成 \| 失败 |
 | `progress` | `integer` | 0–100；仅生成中展示 |
 | `duration` | `string` | 展示用，如 `15 秒` |
@@ -96,13 +96,11 @@ POST /api/v1/client/tasks/{id}/cancel
 
 仅 `排队中` / `生成中` 可取消；全额退回预扣。
 
-### 重试
+### 重新配置创作
 
-```
-POST /api/v1/client/tasks/{id}/retry
-```
+失败任务不能复用原任务或旧报价。客户端跳转 `/app/create`，用户重新选择参数、请求新的 `POST /api/v1/client/tasks/quote`，再通过 `POST /api/v1/client/tasks` 创建独立任务并按当时售价预扣。
 
-失败任务重新进入 `排队中`；**不重复扣费**（沿用原预扣或标记为免费重试）。
+历史兼容接口 `POST /api/v1/client/tasks/{id}/retry` 不适用于带 `quoteId` 的新任务；服务端会要求重新配置和报价。
 
 ### 下载
 
@@ -138,6 +136,7 @@ POST /api/v1/client/tasks/{id}/save-to-project
 1. 进度更新：生成中任务建议 WebSocket / SSE 推送 `progress`，或轮询 `GET /tasks/{id}`。
 2. `savedToProject`：同一 `taskId` 在同一作品内只保存一次。
 3. 详情页原型为 toast；后续可增 `GET /tasks/{id}` 详情抽屉。
+4. 新任务失败后必须使用新的 `quoteId`；调价、供给变更和余额变化都会影响重新提交的结果。
 
 ## 与当前 mock 对应
 
@@ -145,6 +144,6 @@ POST /api/v1/client/tasks/{id}/save-to-project
 | --- | --- |
 | 列表 | `tasks` |
 | 终止退款 | `cancelTask(id)` |
-| 重试 | `retryTask(id)` |
+| 失败重新配置 | 跳转 `/app/create`，由报价和创建任务接口完成 |
 | 保存作品 | `saveWorkToAsset(id)` |
 | 已保存判断 | `isWorkSaved(taskId)` |

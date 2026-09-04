@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sbu2video/backend/internal/middleware"
 	"github.com/sbu2video/backend/internal/response"
-	"github.com/sbu2video/backend/internal/routing"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -91,13 +90,13 @@ func (h *ClientHandler) CreateForm(c *gin.Context) {
 	for _, w := range wfs {
 		item := gin.H{
 			"id": w.Code, "name": w.Name, "description": w.Description,
-			"enabled": w.Status == "published",
+			"enabled":   w.Status == "published",
 			"modelCode": w.ModelCode, "carrierCode": w.CarrierCode,
 			"params": gin.H{
-				"aspectRatios": w.Params.AspectRatios,
-				"durations": w.Params.Durations,
-				"defaultDuration": w.Params.DefaultDuration,
-				"resolutions": w.Params.Resolutions,
+				"aspectRatios":      w.Params.AspectRatios,
+				"durations":         w.Params.Durations,
+				"defaultDuration":   w.Params.DefaultDuration,
+				"resolutions":       w.Params.Resolutions,
 				"defaultResolution": w.Params.DefaultResolution,
 			},
 		}
@@ -112,189 +111,77 @@ func (h *ClientHandler) CreateForm(c *gin.Context) {
 	if defaultParams == nil {
 		defaultParams = gin.H{
 			"aspectRatios": []string{"16:9", "9:16", "1:1"},
-			"durations": []int{5, 10, 15}, "defaultDuration": 5,
+			"durations":    []int{5, 10, 15}, "defaultDuration": 5,
 			"resolutions": []string{"768P"}, "defaultResolution": "768P",
 		}
 	}
 	cur, _ := h.Store.ResolveCurrentProjectID(c.Request.Context(), user.ID)
 	response.OK(c, gin.H{
-		"wallet": gin.H{"balance": bal},
-		"draftPrompt": "",
+		"wallet":           gin.H{"balance": bal},
+		"draftPrompt":      "",
 		"currentProjectId": cur,
-		"workflows": list,
-		"parameters": defaultParams,
-		"suggestedTags": []string{"电影感", "缓慢推进", "自然光", "细节丰富"},
+		"workflows":        list,
+		"parameters":       defaultParams,
+		"suggestedTags":    []string{"电影感", "缓慢推进", "自然光", "细节丰富"},
 	})
 }
 
 func (h *ClientHandler) QuoteTask(c *gin.Context) {
 	var req struct {
-		WorkflowID      string `json:"workflowId"`
+		ModeID          string `json:"modeId" binding:"required"`
+		ModelID         string `json:"modelId"`
 		DurationSeconds int    `json:"durationSeconds"`
 		Resolution      string `json:"resolution"`
 		AspectRatio     string `json:"aspectRatio"`
-		SourceType      string `json:"sourceType"`
+		GenerateAudio   bool   `json:"generateAudio"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	if req.Resolution == "" {
-		req.Resolution = "768P"
-	}
-	if req.DurationSeconds <= 0 {
-		req.DurationSeconds = 15
-	}
-	if req.AspectRatio == "" {
-		req.AspectRatio = "16:9"
-	}
-	if req.SourceType == "" {
-		switch req.WorkflowID {
-		case "wf-h3-text":
-			req.SourceType = "text"
-		default:
-			req.SourceType = "upload"
-		}
-	}
-	wf, err := h.Store.GetPlatformWorkflow(c.Request.Context(), req.WorkflowID)
-	if err != nil || wf.Status != "published" {
-		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "工作流未开放")
-		return
-	}
-	rule, err := h.Store.FindActivePrice(c.Request.Context(), req.WorkflowID, req.Resolution)
-	if err != nil {
-		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "暂无该工作流/分辨率定价")
-		return
-	}
-	routes, err := h.Store.ListRoutes(c.Request.Context())
-	if err != nil {
-		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
-		return
-	}
-	selected, costPerSec := routing.SelectLowestCost(routes, routing.Request{
-		ClientWorkflowID: req.WorkflowID,
-		SourceType:       req.SourceType,
-		DurationSec:      req.DurationSeconds,
-		Resolution:       req.Resolution,
-		AspectRatio:      req.AspectRatio,
-	})
-	if selected == nil {
-		response.Fail(c, http.StatusBadRequest, "NO_ROUTE", "当前参数暂无可用供应商路由，请调整时长或分辨率")
-		return
-	}
-	cost := rule.PricePerSec * float64(req.DurationSeconds)
 	user := middleware.CurrentUser(c)
-	bal, _ := h.Store.GetBalance(c.Request.Context(), user.ID)
+	quote, err := h.Store.CreateQuote(c.Request.Context(), user.ID, store.QuoteInput{
+		ModeID: req.ModeID, ModelID: req.ModelID, DurationSeconds: req.DurationSeconds,
+		Resolution: req.Resolution, AspectRatio: req.AspectRatio, GenerateAudio: req.GenerateAudio,
+	})
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "UNAVAILABLE_COMBINATION", err.Error())
+		return
+	}
 	response.OK(c, gin.H{
-		"estimatedCost":  cost,
-		"billingNote":    "按输出秒数计费",
-		"pricePerSecond": rule.PricePerSec,
-		"walletBalance":  bal,
-		"route": gin.H{
-			"id": selected.ID, "name": selected.Name, "workflowId": selected.WorkflowID,
-			"costPerSec": costPerSec, "supplierCode": selected.SupplierCode,
+		"quoteId": quote.ID, "expiresAt": quote.ExpiresAt,
+		"selection": gin.H{
+			"carrier": gin.H{"id": quote.CarrierID, "name": quote.CarrierName},
+			"model":   gin.H{"id": quote.ModelID, "name": quote.ModelName},
 		},
-		"priceSnapshot": gin.H{
-			"ruleId": rule.ID, "version": rule.Version, "pricePerSecond": rule.PricePerSec,
-			"estimatedCost": cost,
+		"price": gin.H{
+			"currency": "CNY", "pricePerSecond": quote.PricePerSecond,
+			"durationSeconds": quote.DurationSeconds, "total": quote.Total,
 		},
 	})
 }
 
 func (h *ClientHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		WorkflowID      string `json:"workflowId" binding:"required"`
-		Title           string `json:"title"`
-		Prompt          string `json:"prompt"`
-		AspectRatio     string `json:"aspectRatio"`
-		DurationSeconds int    `json:"durationSeconds"`
-		Resolution      string `json:"resolution"`
-		Source          *struct {
-			Type     string `json:"type"`
-			Ref      string `json:"ref"`
-			UploadID string `json:"uploadId"`
-			AssetID  string `json:"assetId"`
-		} `json:"source"`
-		SourceMeta *store.SourceMeta `json:"sourceMeta"`
-		PriceSnapshot struct {
-			RuleID         string  `json:"ruleId"`
-			Version        string  `json:"version"`
-			PricePerSecond float64 `json:"pricePerSecond"`
-			EstimatedCost  float64 `json:"estimatedCost"`
-		} `json:"priceSnapshot"`
+		QuoteID    string           `json:"quoteId" binding:"required"`
+		Title      string           `json:"title"`
+		Prompt     string           `json:"prompt"`
+		SourceMeta store.SourceMeta `json:"sourceMeta"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	in := store.CreateTaskInput{
-		WorkflowID: req.WorkflowID, Title: req.Title, Prompt: req.Prompt,
-		AspectRatio: req.AspectRatio, DurationSeconds: req.DurationSeconds, Resolution: req.Resolution,
-		EstimatedCost: req.PriceSnapshot.EstimatedCost, PricePerSecond: req.PriceSnapshot.PricePerSecond,
-		RuleID: req.PriceSnapshot.RuleID, Version: req.PriceSnapshot.Version,
-	}
-	if req.SourceMeta != nil {
-		in.SourceMeta = *req.SourceMeta
-	}
-	if req.Source != nil {
-		in.SourceType = req.Source.Type
-		in.SourceRef = req.Source.Ref
-		if in.SourceRef == "" && req.Source.UploadID != "" {
-			in.SourceType = "upload"
-			in.SourceRef = req.Source.UploadID
-		}
-		if in.SourceRef == "" && req.Source.AssetID != "" {
-			in.SourceType = "asset"
-			in.SourceRef = req.Source.AssetID
-		}
-	}
-	if in.SourceType == "" && req.WorkflowID == "wf-h3-text" {
-		in.SourceType = "text"
-	}
-	if in.AspectRatio == "" {
-		in.AspectRatio = "16:9"
-	}
-	if in.Resolution == "" {
-		in.Resolution = "768P"
-	}
-	if in.DurationSeconds <= 0 {
-		in.DurationSeconds = 15
-	}
-	// Ensure SourceType is set for route matching when only sourceMeta is provided
-	if in.SourceType == "" {
-		if in.SourceMeta.First != nil {
-			in.SourceType = in.SourceMeta.First.Type
-			in.SourceRef = in.SourceMeta.First.ID
-		} else if len(in.SourceMeta.Refs) > 0 {
-			in.SourceType = in.SourceMeta.Refs[0].Type
-			in.SourceRef = in.SourceMeta.Refs[0].ID
-		}
-	}
-	routes, err := h.Store.ListRoutes(c.Request.Context())
-	if err != nil {
-		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
-		return
-	}
-	if selected, _ := routing.SelectLowestCost(routes, routing.Request{
-		ClientWorkflowID: in.WorkflowID,
-		SourceType:       in.SourceType,
-		DurationSec:      in.DurationSeconds,
-		Resolution:       in.Resolution,
-		AspectRatio:      in.AspectRatio,
-	}); selected == nil {
-		response.Fail(c, http.StatusBadRequest, "NO_ROUTE", "当前参数暂无可用供应商路由，请调整时长或分辨率")
-		return
-	}
 	user := middleware.CurrentUser(c)
-	task, ledgerID, balance, err := h.Store.CreateTask(c.Request.Context(), user.ID, in)
+	task, ledgerID, balance, err := h.Store.CreateTaskFromQuote(c.Request.Context(), user.ID, req.QuoteID, req.Title, req.Prompt, req.SourceMeta)
 	if err != nil {
 		switch err.Error() {
 		case "insufficient balance":
 			response.Fail(c, http.StatusPaymentRequired, "INSUFFICIENT_BALANCE", "余额不足")
-		case "价格快照过期":
-			response.Fail(c, http.StatusConflict, "PRICE_EXPIRED", err.Error())
+		case "报价已过期", "报价已使用", "报价已过期或不可用":
+			response.Fail(c, http.StatusConflict, "QUOTE_EXPIRED_OR_UNAVAILABLE", err.Error())
 		default:
-			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			response.Fail(c, http.StatusBadRequest, "INVALID_TASK_INPUT", err.Error())
 		}
 		return
 	}
@@ -303,8 +190,43 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 			"id": task.ID, "title": task.Title, "status": task.Status,
 			"cost": task.Cost, "workflow": task.Workflow,
 		},
-		"wallet": gin.H{"balance": balance},
+		"wallet":        gin.H{"balance": balance},
 		"ledgerEntryId": ledgerID,
+	})
+}
+
+func (h *ClientHandler) CreationCatalog(c *gin.Context) {
+	catalog, err := h.Store.ListClientCreationCatalog(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	modes := make([]gin.H, 0, len(catalog.Modes))
+	for _, mode := range catalog.Modes {
+		modes = append(modes, gin.H{"id": mode.ID, "code": mode.Code, "name": mode.Name, "description": mode.Description, "enabled": mode.Status == "published"})
+	}
+	carriers := make([]gin.H, 0, len(catalog.Carriers))
+	for _, carrier := range catalog.Carriers {
+		carriers = append(carriers, gin.H{"id": carrier.ID, "name": carrier.Name})
+	}
+	models := make([]gin.H, 0, len(catalog.Models))
+	for _, model := range catalog.Models {
+		models = append(models, gin.H{"id": model.ID, "carrierId": model.CarrierID, "name": model.Name, "description": model.Description, "modes": model.Modes})
+	}
+	response.OK(c, gin.H{"modes": modes, "carriers": carriers, "models": models})
+}
+
+func (h *ClientHandler) CreationOptions(c *gin.Context) {
+	options, err := h.Store.ResolveCreationOptions(c.Request.Context(), c.Query("modeId"), c.Query("modelId"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "UNAVAILABLE_COMBINATION", err.Error())
+		return
+	}
+	response.OK(c, gin.H{
+		"durations": options.Durations, "resolutions": options.Resolutions, "aspectRatios": options.AspectRatios,
+		"supportsGeneratedAudio": options.SupportsGeneratedAudio,
+		"minImages":              options.MinImages, "maxImages": options.MaxImages,
+		"defaultDuration": options.DefaultDuration, "defaultResolution": options.DefaultResolution,
 	})
 }
 
@@ -338,9 +260,9 @@ func (h *ClientHandler) CancelTask(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{
-		"task": gin.H{"id": task.ID, "status": task.Status},
+		"task":         gin.H{"id": task.ID, "status": task.Status},
 		"refundAmount": refund,
-		"wallet": gin.H{"balance": balance},
+		"wallet":       gin.H{"balance": balance},
 	})
 }
 
