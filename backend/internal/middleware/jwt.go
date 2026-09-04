@@ -15,17 +15,22 @@ const ContextUser = "user"
 
 func JWTAuth(authSvc *auth.Service, st *store.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		token := ""
 		header := c.GetHeader("Authorization")
-		if header == "" {
+		if header != "" {
+			parts := strings.SplitN(header, " ", 2)
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+				token = strings.TrimSpace(parts[1])
+			}
+		}
+		if token == "" {
+			token = strings.TrimSpace(c.Query("access_token"))
+		}
+		if token == "" {
 			response.Fail(c, 401, "UNAUTHORIZED", "Authorization header is required")
 			return
 		}
-		parts := strings.SplitN(header, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			response.Fail(c, 401, "INVALID_AUTH_HEADER", "Authorization header format must be Bearer {token}")
-			return
-		}
-		claims, err := authSvc.ValidateAccessToken(strings.TrimSpace(parts[1]))
+		claims, err := authSvc.ValidateAccessToken(token)
 		if err != nil {
 			if errors.Is(err, auth.ErrTokenExpired) {
 				response.Fail(c, 401, "TOKEN_EXPIRED", "Token has expired")

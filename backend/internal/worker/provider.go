@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/provider/autodl"
 	"github.com/sbu2video/backend/internal/routing"
-	"github.com/sbu2video/backend/internal/storage/cos"
+	"github.com/sbu2video/backend/internal/storage/blob"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -68,15 +69,17 @@ func (r *Runner) Tick(ctx context.Context) error {
 		}
 	}
 	if needSimulate || len(tasks) == 0 {
-		// Still run simulator for tasks without token / no route match.
 		if err := r.Store.AdvanceSimulatedTasks(ctx); err != nil {
 			return err
 		}
 	} else {
-		// Also advance any leftover simulator-only tasks.
 		_ = r.Store.AdvanceSimulatedTasks(ctx)
 	}
 	return nil
+}
+
+func (r *Runner) objectStore(ctx context.Context) blob.Store {
+	return r.Store.LoadObjectStore(ctx, r.Cfg)
 }
 
 func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []store.SupplierRoute) (bool, error) {
@@ -108,16 +111,21 @@ func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []s
 		"duration":   t.DurationSec,
 		"resolution": routing.MapResolutionToUpstream(t.Resolution, t.AspectRatio),
 	}
-	// Image workflows need public URLs; without COS we cannot submit safely yet.
-	if t.SourceType == "upload" || t.SourceType == "asset" || strings.Contains(selected.ModelCode, "image") {
-		if t.ClientWorkflow != "wf-h3-text" {
-			log.Printf("skip image workflow %s: COS/public URL not ready", t.PublicID)
+
+	if t.ClientWorkflow != "wf-h3-text" {
+		storeClient := r.objectStore(ctx)
+		if !storeClient.Configured() {
+			log.Printf("skip image workflow %s: object storage not configured", t.PublicID)
 			return false, nil
+		}
+		_ = storeClient.EnsureBucket(ctx)
+		if err := r.attachImageURLs(ctx, storeClient, t, body); err != nil {
+			return true, err
 		}
 	}
 
 	_ = r.Store.AttachTaskRoute(ctx, t.ID, store.RouteAttach{
-		CarrierCode:        "minimax-h3",
+		CarrierCode:        "minimax",
 		ModelCode:          selected.ModelCode,
 		SupplierCode:       selected.SupplierCode,
 		SupplierRouteID:    selected.ID,
@@ -138,6 +146,103 @@ func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []s
 	}
 	log.Printf("submitted %s -> autodl %s via %s", t.PublicID, res.TaskID, selected.WorkflowID)
 	return true, nil
+}
+
+func (r *Runner) attachImageURLs(ctx context.Context, storeClient blob.Store, t *store.ProviderTask, body map[string]any) error {
+	meta := t.SourceMeta
+	if meta.Empty() && t.SourceRef != "" {
+		item := store.SourceRefItem{Type: t.SourceType, ID: t.SourceRef}
+		if item.Type == "" {
+			item.Type = "upload"
+		}
+		if t.ClientWorkflow == "wf-h3-multi" {
+			meta.Refs = []store.SourceRefItem{item}
+		} else {
+			meta.First = &item
+		}
+	}
+
+	uploadSlot := func(slot string, item store.SourceRefItem) (string, error) {
+		path, mime, remote, err := r.Store.ResolveLocalImage(ctx, t.UserID, item)
+		if err != nil {
+			return "", err
+		}
+		if remote != "" && (path == "" || strings.HasPrefix(remote, "http")) {
+			// Already a remote URL — optionally mirror to COS for durability.
+			if strings.HasPrefix(remote, "http://") || strings.HasPrefix(remote, "https://") {
+				key := fmt.Sprintf("sources/%s/%s/%s%s", time.Now().UTC().Format("20060102"), t.PublicID, slot, extOf(remote, mime))
+				mirrored, err := storeClient.PullURL(ctx, remote, key, mime)
+				if err == nil && mirrored != "" {
+					return mirrored, nil
+				}
+				return remote, nil
+			}
+		}
+		if path == "" {
+			return "", fmt.Errorf("素材文件不可用: %s", slot)
+		}
+		key := fmt.Sprintf("sources/%s/%s/%s%s", time.Now().UTC().Format("20060102"), t.PublicID, slot, extOf(path, mime))
+		return storeClient.PutFile(ctx, key, path, mime)
+	}
+
+	switch t.ClientWorkflow {
+	case "wf-h3-multi":
+		refs := meta.Refs
+		if len(refs) == 0 && meta.First != nil {
+			refs = []store.SourceRefItem{*meta.First}
+		}
+		if len(refs) == 0 {
+			return fmt.Errorf("多图任务缺少参考图")
+		}
+		for i, ref := range refs {
+			if i > 8 {
+				break
+			}
+			url, err := uploadSlot(fmt.Sprintf("ref_%d", i), ref)
+			if err != nil {
+				return err
+			}
+			body[fmt.Sprintf("ref_image_%d", i)] = url
+		}
+	default: // wf-h3-image keyframes
+		if meta.First == nil {
+			return fmt.Errorf("首尾帧任务缺少首帧")
+		}
+		firstURL, err := uploadSlot("first", *meta.First)
+		if err != nil {
+			return err
+		}
+		body["first_frame"] = firstURL
+		lastItem := meta.Last
+		if lastItem == nil {
+			lastItem = meta.First
+		}
+		lastURL, err := uploadSlot("last", *lastItem)
+		if err != nil {
+			return err
+		}
+		body["last_frame"] = lastURL
+	}
+	return nil
+}
+
+func extOf(path, mime string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" || ext == ".gif" {
+		return ext
+	}
+	switch mime {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".jpg"
+	}
 }
 
 func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
@@ -162,25 +267,19 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 			}
 		}
 		ossURL := ""
-		cfg := r.Store.LoadCOSConfig(ctx, r.Cfg.SecretKey)
-		if cfg.SecretID == "" && r.Cfg.COSSecretID != "" {
-			cfg = cos.Config{
-				SecretID: r.Cfg.COSSecretID, SecretKey: r.Cfg.COSSecretKey,
-				Bucket: r.Cfg.COSBucket, Region: r.Cfg.COSRegion,
-			}
-		}
-		cosClient := cos.New(cfg)
-		if cosClient.Configured() && url != "" {
+		storeClient := r.objectStore(ctx)
+		if storeClient.Configured() && url != "" {
+			_ = storeClient.EnsureBucket(ctx)
 			key := fmt.Sprintf("results/%s/%s.mp4", time.Now().UTC().Format("20060102"), t.PublicID)
-			pulled, err := cosClient.PullURL(ctx, url, key, "video/mp4")
+			pulled, err := storeClient.PullURL(ctx, url, key, "video/mp4")
 			if err != nil {
-				log.Printf("cos pull %s: %v (keep ephemeral url)", t.PublicID, err)
+				log.Printf("object store pull %s: %v (keep ephemeral url)", t.PublicID, err)
 			} else {
 				ossURL = pulled
-				log.Printf("task %s pulled to cos %s", t.PublicID, ossURL)
+				log.Printf("task %s pulled to %s %s", t.PublicID, storeClient.Provider(), ossURL)
 			}
 		} else {
-			log.Printf("task %s success; cos not configured, keep ephemeral url", t.PublicID)
+			log.Printf("task %s success; object storage not configured, keep ephemeral url", t.PublicID)
 		}
 		return r.Store.CompleteTaskUpstream(ctx, t.ID, url, ossURL, res.Duration)
 	case "FAILED", "ERROR", "CANCELLED", "CANCELED":

@@ -790,6 +790,22 @@
     background: rgb(240 253 244);
   }
   .s2v-wb-slot-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .s2v-wb-slot-clear {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--s2v-radius-nav);
+    border: 0;
+    background: rgb(var(--s2v-surface) / 0.92);
+    color: rgb(var(--s2v-muted));
+    cursor: pointer;
+  }
+  .s2v-wb-slot-clear:hover { color: rgb(var(--s2v-ink)); background: rgb(var(--s2v-surface)); }
   .s2v-wb-slot-badge {
     position: absolute;
     left: 3px;

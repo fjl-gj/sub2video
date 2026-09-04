@@ -47,11 +47,20 @@ export type AdminSettings = {
   resultRetentionDays: string
   notifyTask: boolean
   auditEnabled: boolean
+  storageProvider: string
   cosSecretId: string
   cosBucket: string
   cosRegion: string
   cosUseIntranet: boolean
   cosSecretKeyConfigured: boolean
+  minioEndpoint: string
+  minioAccessKey: string
+  minioBucket: string
+  minioUseSsl: boolean
+  minioPublicBase: string
+  minioSecretKeyConfigured: boolean
+  initialBalance: string
+  storageQuotaGb: string
 }
 
 export async function fetchAdminSuppliers() {
@@ -89,10 +98,17 @@ export async function createAdminRoute(payload: {
   supplierId: string
   modelId: string
   workflowId: string
+  clientWorkflowId?: string
   name?: string
   enabled?: boolean
   costPerSecPeak?: number
   costPerSecOffpeak?: number
+  conditions?: {
+    max_duration?: number
+    resolutions?: string[]
+    require_source?: string[]
+    aspect_ratios?: string[]
+  }
 }) {
   const { data } = await http.post('/admin/routes', payload)
   return data as AdminRoute
@@ -152,7 +168,11 @@ export async function fetchAdminSettings() {
 }
 
 export async function updateAdminSettings(
-  payload: Partial<AdminSettings> & { smtpPassword?: string; cosSecretKey?: string },
+  payload: Partial<AdminSettings> & {
+    smtpPassword?: string
+    cosSecretKey?: string
+    minioSecretKey?: string
+  },
 ) {
   const { data } = await http.put<AdminSettings>('/admin/settings', payload)
   return data

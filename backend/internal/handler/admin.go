@@ -10,7 +10,6 @@ import (
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/mail"
 	"github.com/sbu2video/backend/internal/response"
-	"github.com/sbu2video/backend/internal/storage/cos"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -124,6 +123,7 @@ func (h *AdminHandler) CreateRoute(c *gin.Context) {
 		SupplierID        string                 `json:"supplierId" binding:"required"`
 		ModelID           string                 `json:"modelId" binding:"required"`
 		WorkflowID        string                 `json:"workflowId" binding:"required"`
+		ClientWorkflowID  string                 `json:"clientWorkflowId"`
 		Name              string                 `json:"name"`
 		Enabled           *bool                  `json:"enabled"`
 		CostPerSecPeak    float64                `json:"costPerSecPeak"`
@@ -143,13 +143,14 @@ func (h *AdminHandler) CreateRoute(c *gin.Context) {
 		cond = *req.Conditions
 	}
 	r, err := h.Store.CreateRoute(c.Request.Context(), req.SupplierID, req.ModelID, req.WorkflowID, req.Name,
-		req.CostPerSecPeak, req.CostPerSecOffpeak, enabled, cond)
+		req.CostPerSecPeak, req.CostPerSecOffpeak, enabled, cond, req.ClientWorkflowID)
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 	response.Created(c, gin.H{
 		"id": r.ID, "workflowId": r.WorkflowID, "name": r.Name, "enabled": r.Enabled,
+		"clientWorkflowId": r.ClientWorkflowID,
 		"costPerSecPeak": r.CostPerSecPeak, "costPerSecOffpeak": r.CostPerSecOffpeak,
 	})
 }
@@ -227,7 +228,8 @@ func (h *AdminHandler) ListCarriers(c *gin.Context) {
 	}
 	response.OK(c, gin.H{
 		"carriers": cOut, "models": mOut,
-		"cosConfigured": cos.New(h.Store.LoadCOSConfig(c.Request.Context(), h.Cfg.SecretKey)).Configured() || (h.Cfg.COSSecretID != "" && h.Cfg.COSBucket != ""),
+		"cosConfigured": h.Store.LoadObjectStore(c.Request.Context(), h.Cfg).Configured(),
+		"storageProvider": h.Store.StorageProvider(c.Request.Context()),
 		"autodlEnvToken": h.Cfg.AutoDLToken != "",
 	})
 }
@@ -238,6 +240,8 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		"email_verify_enabled", "password_reset_enabled", "registration_enabled", "frontend_url",
 		"input_retention_days", "result_retention_days", "notify_task", "audit_enabled",
 		"cos_secret_id", "cos_bucket", "cos_region", "cos_use_intranet",
+		"storage_provider", "minio_endpoint", "minio_access_key", "minio_bucket", "minio_use_ssl", "minio_public_base",
+		"initial_balance", "storage_quota_gb",
 	}
 	m, err := h.Store.GetSettings(c.Request.Context(), keys)
 	if err != nil {
@@ -246,6 +250,11 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 	}
 	pwd, _ := h.Store.GetSetting(c.Request.Context(), "smtp_password")
 	cosKey, _ := h.Store.GetSetting(c.Request.Context(), "cos_secret_key")
+	minioKey, _ := h.Store.GetSetting(c.Request.Context(), "minio_secret_key")
+	provider := m["storage_provider"]
+	if provider == "" {
+		provider = "minio"
+	}
 	response.OK(c, gin.H{
 		"smtpHost": m["smtp_host"], "smtpPort": m["smtp_port"], "smtpUsername": m["smtp_username"],
 		"smtpFrom": m["smtp_from"], "smtpFromName": m["smtp_from_name"],
@@ -259,9 +268,18 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		"resultRetentionDays": m["result_retention_days"],
 		"notifyTask": m["notify_task"] != "false",
 		"auditEnabled": m["audit_enabled"] != "false",
+		"storageProvider": provider,
 		"cosSecretId": m["cos_secret_id"], "cosBucket": m["cos_bucket"], "cosRegion": m["cos_region"],
 		"cosUseIntranet": m["cos_use_intranet"] == "true",
 		"cosSecretKeyConfigured": cosKey != "",
+		"minioEndpoint": m["minio_endpoint"],
+		"minioAccessKey": m["minio_access_key"],
+		"minioBucket": m["minio_bucket"],
+		"minioUseSsl": m["minio_use_ssl"] == "true",
+		"minioPublicBase": m["minio_public_base"],
+		"minioSecretKeyConfigured": minioKey != "",
+		"initialBalance": m["initial_balance"],
+		"storageQuotaGb": m["storage_quota_gb"],
 	})
 }
 
@@ -306,6 +324,14 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	mapStr("cosBucket", "cos_bucket")
 	mapStr("cosRegion", "cos_region")
 	mapStr("cosUseIntranet", "cos_use_intranet")
+	mapStr("storageProvider", "storage_provider")
+	mapStr("minioEndpoint", "minio_endpoint")
+	mapStr("minioAccessKey", "minio_access_key")
+	mapStr("minioBucket", "minio_bucket")
+	mapStr("minioUseSsl", "minio_use_ssl")
+	mapStr("minioPublicBase", "minio_public_base")
+	mapStr("initialBalance", "initial_balance")
+	mapStr("storageQuotaGb", "storage_quota_gb")
 	if v, ok := req["smtpPassword"].(string); ok && strings.TrimSpace(v) != "" {
 		kv["smtp_password"] = strings.TrimSpace(v)
 	}
@@ -318,6 +344,16 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 			return
 		}
+	}
+	if v, ok := req["minioSecretKey"].(string); ok && strings.TrimSpace(v) != "" {
+		if err := h.Store.SaveMinIOSecretKey(c.Request.Context(), h.Cfg.SecretKey, strings.TrimSpace(v)); err != nil {
+			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
+	}
+	// best-effort ensure bucket when minio is active
+	if st := h.Store.LoadObjectStore(c.Request.Context(), h.Cfg); st.Configured() {
+		_ = st.EnsureBucket(c.Request.Context())
 	}
 	h.GetSettings(c)
 }

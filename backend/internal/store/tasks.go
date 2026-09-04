@@ -26,7 +26,6 @@ type Task struct {
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
 }
-
 type CreateTaskInput struct {
 	WorkflowID      string
 	Title           string
@@ -40,6 +39,25 @@ type CreateTaskInput struct {
 	Version         string
 	SourceType      string // text | upload | asset
 	SourceRef       string
+	SourceMeta      SourceMeta
+}
+
+// SourceRefItem points at an upload or project asset.
+type SourceRefItem struct {
+	Type string `json:"type"` // upload | asset
+	ID   string `json:"id"`
+}
+
+// SourceMeta carries multi-slot image inputs for keyframes / multi-ref workflows.
+type SourceMeta struct {
+	First  *SourceRefItem  `json:"first,omitempty"`
+	Last   *SourceRefItem  `json:"last,omitempty"`
+	Extras []SourceRefItem `json:"extras,omitempty"`
+	Refs   []SourceRefItem `json:"refs,omitempty"`
+}
+
+func (m SourceMeta) Empty() bool {
+	return m.First == nil && m.Last == nil && len(m.Extras) == 0 && len(m.Refs) == 0
 }
 
 func workflowLabel(id string) string {
@@ -54,7 +72,7 @@ func workflowLabel(id string) string {
 }
 
 func workflowEnabled(id string) bool {
-	return id == "wf-h3-image" || id == "wf-h3-text"
+	return id == "wf-h3-image" || id == "wf-h3-text" || id == "wf-h3-multi"
 }
 
 func statusCN(status string) string {
@@ -138,17 +156,9 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 		if sourceType == "" {
 			sourceType = "text"
 		}
-	case "wf-h3-image":
-		if sourceType == "" || sourceRef == "" {
-			return nil, "", 0, errors.New("图生视频需要素材")
-		}
-		if sourceType != "upload" && sourceType != "asset" {
-			return nil, "", 0, errors.New("不支持的素材来源")
-		}
-		if sourceType == "upload" {
-			if _, err := s.GetUpload(ctx, userID, sourceRef); err != nil {
-				return nil, "", 0, errors.New("上传素材不存在")
-			}
+	case "wf-h3-image", "wf-h3-multi":
+		if err := s.validateImageSources(ctx, userID, wf.Code, &sourceType, &sourceRef, &in.SourceMeta); err != nil {
+			return nil, "", 0, err
 		}
 	default:
 		return nil, "", 0, errors.New("工作流未开放")
@@ -187,16 +197,17 @@ func (s *Store) CreateTask(ctx context.Context, userID int64, in CreateTaskInput
 		"estimatedCost": cost, "resolution": in.Resolution, "durationSeconds": in.DurationSeconds,
 		"workflowId": wf.Code,
 	})
+	metaRaw, _ := json.Marshal(in.SourceMeta)
 	var id int64
 	err = tx.QueryRow(ctx, `
 INSERT INTO generation_tasks (
   public_id, user_id, title, workflow, status, progress, duration_sec, resolution, cost, thumb_url,
-  source_type, source_ref, prompt, aspect_ratio,
+  source_type, source_ref, source_meta, prompt, aspect_ratio,
   workflow_public_id, price_rule_id, price_version, price_per_sec, price_snapshot, model_code, carrier_code
-) VALUES ($1, $2, $3, $4, 'queued', 0, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19)
+) VALUES ($1, $2, $3, $4, 'queued', 0, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20)
 RETURNING id`,
 		publicID, userID, title, wf.Name, in.DurationSeconds, in.Resolution, cost, thumb,
-		sourceType, sourceRef, in.Prompt, in.AspectRatio,
+		sourceType, sourceRef, string(metaRaw), in.Prompt, in.AspectRatio,
 		wf.Code, rule.ID, rule.Version, pps, string(priceSnap), wf.ModelCode, wf.CarrierCode,
 	).Scan(&id)
 	if err != nil {
@@ -424,4 +435,108 @@ func abs(v float64) float64 {
 		return -v
 	}
 	return v
+}
+
+func (s *Store) validateSourceRefItem(ctx context.Context, userID int64, item *SourceRefItem) error {
+	if item == nil || strings.TrimSpace(item.ID) == "" {
+		return errors.New("图生视频需要素材")
+	}
+	switch item.Type {
+	case "upload":
+		if _, err := s.GetUpload(ctx, userID, item.ID); err != nil {
+			return errors.New("上传素材不存在")
+		}
+	case "asset":
+		ast, _, err := s.FindUserAsset(ctx, userID, item.ID)
+		if err != nil {
+			return errors.New("资产素材不存在")
+		}
+		if ast.Type != "image" {
+			return errors.New("请选择图片资产")
+		}
+	default:
+		return errors.New("不支持的素材来源")
+	}
+	return nil
+}
+
+func (s *Store) validateImageSources(ctx context.Context, userID int64, workflowCode string, sourceType, sourceRef *string, meta *SourceMeta) error {
+	if meta == nil {
+		meta = &SourceMeta{}
+	}
+	// Back-compat: single source → first / refs[0]
+	if meta.Empty() && strings.TrimSpace(*sourceRef) != "" {
+		item := SourceRefItem{Type: *sourceType, ID: strings.TrimSpace(*sourceRef)}
+		if item.Type == "" {
+			item.Type = "upload"
+		}
+		if workflowCode == "wf-h3-multi" {
+			meta.Refs = []SourceRefItem{item}
+		} else {
+			meta.First = &item
+		}
+	}
+
+	switch workflowCode {
+	case "wf-h3-image":
+		if meta.First == nil {
+			return errors.New("图生视频需要首帧素材")
+		}
+		if err := s.validateSourceRefItem(ctx, userID, meta.First); err != nil {
+			return err
+		}
+		if meta.Last != nil {
+			if err := s.validateSourceRefItem(ctx, userID, meta.Last); err != nil {
+				return err
+			}
+		}
+		for i := range meta.Extras {
+			if err := s.validateSourceRefItem(ctx, userID, &meta.Extras[i]); err != nil {
+				return err
+			}
+		}
+		*sourceType = meta.First.Type
+		*sourceRef = meta.First.ID
+	case "wf-h3-multi":
+		if len(meta.Refs) == 0 && meta.First != nil {
+			meta.Refs = append(meta.Refs, *meta.First)
+		}
+		if len(meta.Refs) == 0 {
+			return errors.New("多图生视频至少需要一张参考图")
+		}
+		if len(meta.Refs) > 9 {
+			return errors.New("参考图最多 9 张")
+		}
+		for i := range meta.Refs {
+			if err := s.validateSourceRefItem(ctx, userID, &meta.Refs[i]); err != nil {
+				return err
+			}
+		}
+		*sourceType = meta.Refs[0].Type
+		*sourceRef = meta.Refs[0].ID
+	}
+	return nil
+}
+
+// ResolveLocalImage returns local path + mime for an upload/asset ref.
+func (s *Store) ResolveLocalImage(ctx context.Context, userID int64, item SourceRefItem) (path, mime string, remoteURL string, err error) {
+	switch item.Type {
+	case "upload":
+		up, e := s.GetUpload(ctx, userID, item.ID)
+		if e != nil {
+			return "", "", "", errors.New("上传素材不存在")
+		}
+		return up.StoragePath, up.MimeType, "", nil
+	case "asset":
+		ast, _, e := s.FindUserAsset(ctx, userID, item.ID)
+		if e != nil {
+			return "", "", "", errors.New("资产素材不存在")
+		}
+		if ast.RemoteURL != "" && ast.StoragePath == "" {
+			return "", ast.MimeType, ast.RemoteURL, nil
+		}
+		return ast.StoragePath, ast.MimeType, ast.RemoteURL, nil
+	default:
+		return "", "", "", errors.New("不支持的素材来源")
+	}
 }

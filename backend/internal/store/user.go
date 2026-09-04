@@ -71,6 +71,17 @@ RETURNING id, public_id, email, password_hash, display_name, role, status, token
 	if _, err = tx.Exec(ctx, `INSERT INTO user_drafts (user_id, draft_prompt) VALUES ($1, '')`, user.ID); err != nil {
 		return nil, err
 	}
+	// seed default project
+	foldersRaw, _ := marshalFolders(StandardFolders())
+	prjID := NewProjectID()
+	if _, err = tx.Exec(ctx, `
+INSERT INTO projects (public_id, user_id, name, description, is_default, folders_json)
+VALUES ($1,$2,'default作品','系统默认工程',TRUE,$3::jsonb)`, prjID, user.ID, string(foldersRaw)); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE user_drafts SET current_project_public_id=$1 WHERE user_id=$2`, prjID, user.ID); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -184,5 +195,13 @@ ON CONFLICT (public_id) DO NOTHING`)
 	_, err = s.Pool.Exec(ctx, `
 INSERT INTO redeem_codes (code, amount, label) VALUES ('S2V-WELCOME-20', 20, '新用户体验金')
 ON CONFLICT (code) DO NOTHING`)
+	if err != nil {
+		return err
+	}
+	_, err = s.Pool.Exec(ctx, `
+INSERT INTO settings (key, value) VALUES
+ ('initial_balance', '256'),
+ ('storage_quota_gb', '5')
+ON CONFLICT (key) DO NOTHING`)
 	return err
 }

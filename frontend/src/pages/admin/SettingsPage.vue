@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, Cloud, LockKeyhole, Mail, Save, Send, Server } from 'lucide-vue-next'
+import { Bell, Cloud, Coins, HardDrive, LockKeyhole, Mail, Save, Send, Server } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
 import {
   fetchAdminSettings,
@@ -12,6 +12,7 @@ import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
+import S2VSelect from '@/shared/ui/S2VSelect.vue'
 
 const app = useAppStore()
 const settings = ref<AdminSettings>({
@@ -30,18 +31,33 @@ const settings = ref<AdminSettings>({
   resultRetentionDays: '30',
   notifyTask: true,
   auditEnabled: true,
+  storageProvider: 'minio',
   cosSecretId: '',
   cosBucket: '',
   cosRegion: '',
   cosUseIntranet: false,
   cosSecretKeyConfigured: false,
+  minioEndpoint: '',
+  minioAccessKey: '',
+  minioBucket: '',
+  minioUseSsl: false,
+  minioPublicBase: '',
+  minioSecretKeyConfigured: false,
+  initialBalance: '256',
+  storageQuotaGb: '5',
 })
 const smtpPassword = ref('')
 const cosSecretKey = ref('')
+const minioSecretKey = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
 const error = ref('')
+
+const storageProviderOptions = [
+  { label: 'MinIO (S3)', value: 'minio' },
+  { label: '腾讯云 COS', value: 'cos' },
+]
 
 function apiErrorMessage(error: unknown, fallback: string) {
   const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
@@ -67,16 +83,19 @@ async function save() {
     const {
       smtpPasswordConfigured: _smtpConfigured,
       cosSecretKeyConfigured: _cosConfigured,
+      minioSecretKeyConfigured: _minioConfigured,
       ...payload
     } = settings.value
     const next = await updateAdminSettings({
       ...payload,
       ...(smtpPassword.value.trim() ? { smtpPassword: smtpPassword.value.trim() } : {}),
       ...(cosSecretKey.value.trim() ? { cosSecretKey: cosSecretKey.value.trim() } : {}),
+      ...(minioSecretKey.value.trim() ? { minioSecretKey: minioSecretKey.value.trim() } : {}),
     })
     settings.value = next
     smtpPassword.value = ''
     cosSecretKey.value = ''
+    minioSecretKey.value = ''
     app.notify('系统设置已保存')
   } catch (e: unknown) {
     error.value = apiErrorMessage(e, '保存系统设置失败')
@@ -106,7 +125,7 @@ onMounted(() => {
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="系统设置">
-      <template #description>配置邮件发送、腾讯云 COS 与注册邮箱验证。</template>
+      <template #description>配置邮件发送、对象存储与注册邮箱验证。</template>
       <template #actions>
         <S2VButton variant="primary" :loading="saving" :disabled="loading" @click="save"><Save class="h-3.5 w-3.5" />保存设置</S2VButton>
       </template>
@@ -147,28 +166,66 @@ onMounted(() => {
       <S2VCard>
         <div class="s2v-panel-header">
           <div>
-            <h2 class="s2v-section-title">腾讯云 COS</h2>
-            <p class="mt-1 text-xs text-s2v-muted">用于上传素材与拉取生成结果。SecretKey 加密存储。</p>
+            <h2 class="s2v-section-title">对象存储</h2>
+            <p class="mt-1 text-xs text-s2v-muted">默认 MinIO；密钥加密存储。内网地址公网 AutoDL 无法拉取。</p>
           </div>
-          <Cloud class="h-4 w-4 text-s2v-primary" />
+          <HardDrive class="h-4 w-4 text-s2v-primary" />
         </div>
         <div class="s2v-panel-body grid gap-4">
-          <S2VInput v-model="settings.cosSecretId" label="SecretId" placeholder="AKIDxxxxxxxx" :disabled="loading" />
-          <S2VInput v-model="cosSecretKey" label="SecretKey" type="password" :placeholder="settings.cosSecretKeyConfigured ? '留空以保持现有密钥' : 'COS SecretKey'" :disabled="loading">
-            <template #prefix><LockKeyhole class="h-4 w-4 text-s2v-muted" /></template>
-          </S2VInput>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <S2VInput v-model="settings.cosBucket" label="Bucket" placeholder="example-1250000000" :disabled="loading" />
-            <S2VInput v-model="settings.cosRegion" label="Region" placeholder="ap-shanghai" :disabled="loading" />
+          <S2VSelect v-model="settings.storageProvider" label="存储后端" :options="storageProviderOptions" />
+          <template v-if="settings.storageProvider === 'minio'">
+            <S2VInput v-model="settings.minioEndpoint" label="Endpoint" placeholder="192.168.0.103:9000" :disabled="loading" />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <S2VInput v-model="settings.minioAccessKey" label="Access Key" placeholder="api_user" :disabled="loading" />
+              <S2VInput v-model="minioSecretKey" label="Secret Key" type="password" :placeholder="settings.minioSecretKeyConfigured ? '留空以保持现有密钥' : 'MinIO SecretKey'" :disabled="loading">
+                <template #prefix><LockKeyhole class="h-4 w-4 text-s2v-muted" /></template>
+              </S2VInput>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <S2VInput v-model="settings.minioBucket" label="Bucket" placeholder="sub2video" :disabled="loading" />
+              <S2VInput v-model="settings.minioPublicBase" label="Public Base URL" placeholder="http://192.168.0.103:9000/sub2video" :disabled="loading" />
+            </div>
+            <label class="flex items-center justify-between gap-3 text-xs">
+              <span class="flex items-center gap-2"><HardDrive class="h-4 w-4 text-s2v-muted" />使用 HTTPS</span>
+              <input v-model="settings.minioUseSsl" type="checkbox" class="h-4 w-4 accent-s2v-primary" :disabled="loading" />
+            </label>
+            <p class="text-[11px] text-s2v-muted">
+              {{ settings.minioSecretKeyConfigured ? '已配置 MinIO SecretKey。' : '尚未配置 MinIO SecretKey。' }}
+              AutoDL Token 请到「供应商」页填写。
+            </p>
+          </template>
+          <template v-else>
+            <S2VInput v-model="settings.cosSecretId" label="SecretId" placeholder="AKIDxxxxxxxx" :disabled="loading" />
+            <S2VInput v-model="cosSecretKey" label="SecretKey" type="password" :placeholder="settings.cosSecretKeyConfigured ? '留空以保持现有密钥' : 'COS SecretKey'" :disabled="loading">
+              <template #prefix><LockKeyhole class="h-4 w-4 text-s2v-muted" /></template>
+            </S2VInput>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <S2VInput v-model="settings.cosBucket" label="Bucket" placeholder="example-1250000000" :disabled="loading" />
+              <S2VInput v-model="settings.cosRegion" label="Region" placeholder="ap-shanghai" :disabled="loading" />
+            </div>
+            <label class="flex items-center justify-between gap-3 text-xs">
+              <span class="flex items-center gap-2"><Cloud class="h-4 w-4 text-s2v-muted" />使用内网域名（同地域机器）</span>
+              <input v-model="settings.cosUseIntranet" type="checkbox" class="h-4 w-4 accent-s2v-primary" :disabled="loading" />
+            </label>
+            <p class="text-[11px] text-s2v-muted">
+              {{ settings.cosSecretKeyConfigured ? '已配置 COS SecretKey。' : '尚未配置 COS SecretKey。' }}
+              AutoDL Token 请到「供应商」页填写。
+            </p>
+          </template>
+        </div>
+      </S2VCard>
+
+      <S2VCard>
+        <div class="s2v-panel-header">
+          <div>
+            <h2 class="s2v-section-title">用户默认配额</h2>
+            <p class="mt-1 text-xs text-s2v-muted">新用户注册时的初始余额和存储空间。</p>
           </div>
-          <label class="flex items-center justify-between gap-3 text-xs">
-            <span class="flex items-center gap-2"><Cloud class="h-4 w-4 text-s2v-muted" />使用内网域名（同地域机器）</span>
-            <input v-model="settings.cosUseIntranet" type="checkbox" class="h-4 w-4 accent-s2v-primary" :disabled="loading" />
-          </label>
-          <p class="text-[11px] text-s2v-muted">
-            {{ settings.cosSecretKeyConfigured ? '已配置 SecretKey。' : '尚未配置 SecretKey。' }}
-            AutoDL Token 请到「供应商」页填写。
-          </p>
+          <Coins class="h-4 w-4 text-s2v-primary" />
+        </div>
+        <div class="s2v-panel-body grid gap-4 sm:grid-cols-2">
+          <S2VInput v-model="settings.initialBalance" label="初始余额 (¥)" type="number" placeholder="256" :disabled="loading" />
+          <S2VInput v-model="settings.storageQuotaGb" label="存储配额 (GB)" type="number" placeholder="5" :disabled="loading" />
         </div>
       </S2VCard>
 

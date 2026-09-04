@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -63,6 +64,25 @@ func (c *Client) PublicBaseURL() string {
 
 func (c *Client) ObjectURL(objectKey string) string {
 	return strings.TrimRight(c.PublicBaseURL(), "/") + "/" + strings.TrimLeft(objectKey, "/")
+}
+
+func (c *Client) PutFile(ctx context.Context, objectKey, filePath, contentType string) (string, error) {
+	body, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if err := c.PutObject(ctx, objectKey, body, contentType); err != nil {
+		return "", err
+	}
+	// Prefer long-lived signed URL so private buckets still work for AutoDL fetch.
+	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
+	if err == nil && signed != "" {
+		return signed, nil
+	}
+	return c.ObjectURL(objectKey), nil
 }
 
 func (c *Client) PutObject(ctx context.Context, objectKey string, body []byte, contentType string) error {

@@ -126,6 +126,9 @@ async function load() {
     data.value = overview
     app.balance = overview.wallet.balance
     auth.setBalance(overview.wallet.balance)
+    app.storageUsed = overview.storage.usedGb
+    app.storageQuota = overview.storage.quotaGb
+    void app.loadProjects()
   }
   catch (error) {
     app.notify(apiErrorMessage(error, '加载概览失败'))

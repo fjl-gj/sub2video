@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,7 +105,13 @@ func (s *Service) Register(ctx context.Context, email, password, displayName, ve
 	if displayName == "" {
 		displayName = strings.Split(email, "@")[0]
 	}
-	user, err := s.store.CreateUserWithWallet(ctx, email, hash, displayName, displayName+"工作室", 0)
+	initBal := 0.0
+	if v, _ := s.store.GetSetting(ctx, "initial_balance"); v != "" {
+		if f, err2 := strconv.ParseFloat(v, 64); err2 == nil && f >= 0 {
+			initBal = f
+		}
+	}
+	user, err := s.store.CreateUserWithWallet(ctx, email, hash, displayName, displayName+"工作室", initBal)
 	if err != nil {
 		return nil, nil, err
 	}

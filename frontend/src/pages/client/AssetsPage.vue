@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ArrowLeft, Folder, Search, Upload } from 'lucide-vue-next'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AssetCard from '@/features/assets/AssetCard.vue'
 import FolderCard from '@/features/assets/FolderCard.vue'
 import ProjectCard from '@/features/assets/ProjectCard.vue'
-import { countFolderFiles, countProjectFiles, DEFAULT_PROJECT_ID, resolveNode, type FsFolder, type FsItem } from '@/data/projects'
+import { countFolderFiles, countProjectFiles, resolveNode, type FsFolder, type FsItem } from '@/data/projects'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -24,6 +24,9 @@ const inside = ref(false)
 const path = ref<string[]>([])
 const trashOpen = ref(false)
 const pendingTrashId = ref('')
+const loading = ref(false)
+const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const project = computed(() => app.currentProject)
 const node = computed(() => project.value ? resolveNode(project.value, path.value) : { folders: {} as Record<string, FsFolder>, items: [] as FsItem[] })
@@ -38,11 +41,26 @@ const files = computed(() => {
   return node.value.items.filter((item) => !keyword || item.name.includes(keyword))
 })
 
-function enterProject(id: string) {
-  app.selectProject(id)
-  inside.value = true
-  path.value = []
-  search.value = ''
+async function bootstrap() {
+  loading.value = true
+  try {
+    await app.loadProjects()
+  } finally {
+    loading.value = false
+  }
+}
+
+async function enterProject(id: string) {
+  loading.value = true
+  try {
+    const ok = await app.selectProject(id)
+    if (!ok) return
+    inside.value = true
+    path.value = []
+    search.value = ''
+  } finally {
+    loading.value = false
+  }
 }
 
 function exitProject() {
@@ -62,12 +80,14 @@ function jumpTo(index: number) {
   search.value = ''
 }
 
-function confirmCreate() {
-  app.createProject(newName.value)
+async function confirmCreate() {
+  const id = await app.createProject(newName.value)
   newName.value = ''
   creating.value = false
-  inside.value = true
-  path.value = []
+  if (id) {
+    inside.value = true
+    path.value = []
+  }
 }
 
 function askTrash(id: string) {
@@ -75,8 +95,8 @@ function askTrash(id: string) {
   trashOpen.value = true
 }
 
-function confirmTrash() {
-  if (pendingTrashId.value) app.trashProject(pendingTrashId.value)
+async function confirmTrash() {
+  if (pendingTrashId.value) await app.trashProject(pendingTrashId.value)
   pendingTrashId.value = ''
   inside.value = false
   path.value = []
@@ -84,8 +104,25 @@ function confirmTrash() {
 
 function uploadHere() {
   if (!project.value) return
-  app.uploadAsset(project.value.id, path.value.length ? path.value : ['资产', '素材'])
+  fileInput.value?.click()
 }
+
+async function onFilePicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !project.value) return
+  uploading.value = true
+  try {
+    await app.uploadAsset(project.value.id, path.value.length ? path.value : ['资产', '素材'], file)
+  } finally {
+    uploading.value = false
+  }
+}
+
+onMounted(() => {
+  void bootstrap()
+})
 </script>
 
 <template>
@@ -93,7 +130,7 @@ function uploadHere() {
     <S2VPageHeader v-if="!inside" title="资产">
       <template #description>每个作品都是一套标准工程：资产（人物 / 场景 / 道具 / 素材）与视频。删除作品只会进入回收站。</template>
       <template #actions>
-        <S2VButton v-if="!creating" variant="primary" @click="creating = true">新建作品</S2VButton>
+        <S2VButton v-if="!creating" variant="primary" :disabled="loading" @click="creating = true">新建作品</S2VButton>
       </template>
     </S2VPageHeader>
     <S2VPageHeader v-else :title="project?.name || '作品'">
@@ -102,12 +139,14 @@ function uploadHere() {
           <template #icon><ArrowLeft class="h-4 w-4" /></template>
           返回作品列表
         </S2VButton>
-        <S2VButton variant="primary" @click="uploadHere">
+        <S2VButton variant="primary" :loading="uploading" @click="uploadHere">
           <template #icon><Upload class="h-4 w-4" /></template>
           上传素材
         </S2VButton>
       </template>
     </S2VPageHeader>
+
+    <input ref="fileInput" type="file" class="hidden" accept="image/*,video/mp4,audio/*" @change="onFilePicked" />
 
     <S2VCard variant="padded" class="mb-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -136,13 +175,13 @@ function uploadHere() {
           :key="item.id"
           :project="item"
           :file-count="countProjectFiles(item)"
-          :is-default="item.id === DEFAULT_PROJECT_ID"
+          :is-default="!!item.isDefault"
           :is-current="item.id === app.currentProject?.id"
           @enter="enterProject(item.id)"
           @trash="askTrash(item.id)"
         />
       </div>
-      <S2VCard v-if="!app.activeProjects.length" variant="padded" class="mt-4 grid place-items-center text-center">
+      <S2VCard v-if="!loading && !app.activeProjects.length" variant="padded" class="mt-4 grid place-items-center text-center">
         <Folder class="h-6 w-6 text-s2v-muted" />
         <p class="mt-2 text-xs text-s2v-muted">还没有作品，按标准模板新建一个，或从回收站恢复。</p>
       </S2VCard>

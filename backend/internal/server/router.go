@@ -27,6 +27,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 	authH := &handler.AuthHandler{Auth: authSvc, Store: st}
 	clientH := &handler.ClientHandler{Store: st}
 	uploadH := &handler.UploadHandler{Store: st, UploadDir: cfg.UploadDir}
+	projectH := &handler.ProjectHandler{Store: st, UploadDir: cfg.UploadDir}
 	adminH := &handler.AdminHandler{Store: st, Cfg: cfg, Mail: mailSvc}
 
 	v1 := r.Group("/api/v1")
@@ -54,11 +55,25 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				client.GET("/create/form", clientH.CreateForm)
 				client.POST("/uploads", uploadH.Create)
 				client.GET("/uploads/:id", uploadH.Get)
+				client.GET("/storage/usage", projectH.StorageUsage)
+				client.GET("/projects", projectH.ListProjects)
+				client.POST("/projects", projectH.CreateProject)
+				client.GET("/projects/:id/tree", projectH.GetTree)
+				client.GET("/projects/:id/nodes", projectH.GetNodes)
+				client.GET("/projects/:id/assets", projectH.ListAssets)
+				client.POST("/projects/:id/uploads", projectH.Upload)
+				client.DELETE("/projects/:id/files/:fileId", projectH.DeleteFile)
+				client.GET("/projects/:id/files/:fileId", projectH.GetFile)
+				client.POST("/projects/:id/trash", projectH.Trash)
+				client.POST("/projects/:id/restore", projectH.Restore)
+				client.DELETE("/projects/:id", projectH.DeleteProject)
+				client.PUT("/session/current-project", projectH.SetCurrentProject)
 				client.POST("/tasks/quote", clientH.QuoteTask)
 				client.POST("/tasks", clientH.CreateTask)
 				client.GET("/tasks", clientH.ListTasks)
 				client.POST("/tasks/:id/cancel", clientH.CancelTask)
 				client.POST("/tasks/:id/retry", clientH.RetryTask)
+				client.POST("/tasks/:id/save-to-project", clientH.SaveTaskToProject)
 				client.GET("/wallet", clientH.Wallet)
 				client.GET("/wallet/transactions", clientH.WalletTransactions)
 				client.POST("/wallet/redeem", clientH.Redeem)

@@ -21,6 +21,7 @@ type ProviderTask struct {
 	Prompt             string
 	SourceType         string
 	SourceRef          string
+	SourceMeta         SourceMeta
 	ClientWorkflow     string // derived from workflow label / stored later
 	WorkflowLabel      string
 	CarrierCode        string
@@ -62,7 +63,7 @@ func (s *Store) ListPendingProviderTasks(ctx context.Context, limit int) ([]Prov
 	}
 	rows, err := s.Pool.Query(ctx, `
 SELECT id, public_id, user_id, status, progress, duration_sec, resolution, COALESCE(aspect_ratio,''),
-       COALESCE(prompt,''), COALESCE(source_type,''), COALESCE(source_ref,''), workflow,
+       COALESCE(prompt,''), COALESCE(source_type,''), COALESCE(source_ref,''), COALESCE(source_meta,'{}'::jsonb), workflow,
        COALESCE(NULLIF(workflow_public_id,''), ''), carrier_code, model_code, supplier_code, supplier_route_id, upstream_workflow_id,
        upstream_task_id, upstream_status, result_url, result_oss_url, fail_reason, created_at
 FROM generation_tasks
@@ -77,14 +78,16 @@ LIMIT $1`, limit)
 	for rows.Next() {
 		var t ProviderTask
 		var wfPublic string
+		var metaRaw []byte
 		if err := rows.Scan(
 			&t.ID, &t.PublicID, &t.UserID, &t.Status, &t.Progress, &t.DurationSec, &t.Resolution, &t.AspectRatio,
-			&t.Prompt, &t.SourceType, &t.SourceRef, &t.WorkflowLabel, &wfPublic,
+			&t.Prompt, &t.SourceType, &t.SourceRef, &metaRaw, &t.WorkflowLabel, &wfPublic,
 			&t.CarrierCode, &t.ModelCode, &t.SupplierCode, &t.SupplierRouteID, &t.UpstreamWorkflowID,
 			&t.UpstreamTaskID, &t.UpstreamStatus, &t.ResultURL, &t.ResultOSSURL, &t.FailReason, &t.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
+		_ = json.Unmarshal(metaRaw, &t.SourceMeta)
 		if wfPublic != "" {
 			t.ClientWorkflow = wfPublic
 		} else {

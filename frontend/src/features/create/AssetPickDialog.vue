@@ -61,7 +61,7 @@ function onFileChange(event: Event) {
             class="s2v-wb-asset-item"
             @click="select(item.id)"
           >
-            <img class="s2v-wb-asset-thumb" :src="assetPreviewUrl(item.id)" :alt="item.name">
+            <img class="s2v-wb-asset-thumb" :src="assetPreviewUrl(item.id, item.url)" :alt="item.name">
             <span>{{ item.name }}</span>
           </button>
           <p v-if="!imageAssets.length" class="text-xs text-s2v-muted">当前作品里还没有图片</p>

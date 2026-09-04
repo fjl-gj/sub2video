@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RotateCcw, Trash2 } from 'lucide-vue-next'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { countProjectFiles } from '@/data/projects'
 import { useAppStore } from '@/stores/app'
 import S2VButton from '@/shared/ui/S2VButton.vue'
@@ -11,6 +11,7 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 const app = useAppStore()
 const purgeOpen = ref(false)
 const pendingId = ref('')
+const loading = ref(false)
 const pendingName = computed(() => app.trashedProjects.find((item) => item.id === pendingId.value)?.name || '')
 
 function askPurge(id: string) {
@@ -18,10 +19,19 @@ function askPurge(id: string) {
   purgeOpen.value = true
 }
 
-function confirmPurge() {
-  if (pendingId.value) app.purgeProject(pendingId.value)
+async function confirmPurge() {
+  if (pendingId.value) await app.purgeProject(pendingId.value)
   pendingId.value = ''
 }
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    await app.loadProjects({ includeTrash: true })
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -50,7 +60,7 @@ function confirmPurge() {
       </S2VCard>
     </div>
 
-    <S2VCard v-if="!app.trashedProjects.length" variant="padded" class="grid place-items-center text-center">
+    <S2VCard v-if="!loading && !app.trashedProjects.length" variant="padded" class="grid place-items-center text-center">
       <Trash2 class="h-6 w-6 text-s2v-muted" />
       <p class="mt-2 text-xs text-s2v-muted">回收站是空的</p>
     </S2VCard>

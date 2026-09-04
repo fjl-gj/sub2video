@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -53,6 +54,9 @@ func main() {
 	if err := st.SeedPlatformCommerce(ctx); err != nil {
 		log.Fatalf("seed commerce: %v", err)
 	}
+	if err := st.AlignSupplyChainH3(ctx); err != nil {
+		log.Fatalf("align supply h3: %v", err)
+	}
 	if err := ensureDemoUser(ctx, st, cfg); err != nil {
 		log.Fatalf("seed user: %v", err)
 	}
@@ -85,8 +89,13 @@ func main() {
 		if cfg.AutoDLToken == "" {
 			log.Printf("autodl token empty: text tasks fall back to simulator until admin/env configures token")
 		}
-		if cfg.COSSecretID == "" || cfg.COSBucket == "" {
-			log.Printf("cos not configured: image workflows stay on simulator until credentials arrive")
+		obj := st.LoadObjectStore(ctx, cfg)
+		if !obj.Configured() {
+			log.Printf("object storage not configured: image workflows stay on simulator until minio/cos credentials arrive")
+		} else if err := obj.EnsureBucket(ctx); err != nil {
+			log.Printf("object storage ensure bucket: %v", err)
+		} else {
+			log.Printf("object storage ready: provider=%s", obj.Provider())
 		}
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
@@ -118,9 +127,15 @@ func ensureDemoUser(ctx context.Context, st *store.Store, cfg config.Config) err
 	if _, err = st.Pool.Exec(ctx, `UPDATE workspaces SET name = '李维工作室' WHERE user_id = $1`, user.ID); err != nil {
 		return err
 	}
-	if _, err = st.Pool.Exec(ctx, `UPDATE wallets SET balance = 256 WHERE user_id = $1`, user.ID); err != nil {
+	initBal := 256.0
+	if v, _ := st.GetSetting(ctx, "initial_balance"); v != "" {
+		if f, err2 := strconv.ParseFloat(v, 64); err2 == nil && f >= 0 {
+			initBal = f
+		}
+	}
+	if _, err = st.Pool.Exec(ctx, `UPDATE wallets SET balance = $1 WHERE user_id = $2`, initBal, user.ID); err != nil {
 		return err
 	}
-	log.Printf("seeded demo user %s / %s (balance 256)", cfg.SeedEmail, cfg.SeedPassword)
+	log.Printf("seeded demo user %s / %s (balance %.2f)", cfg.SeedEmail, cfg.SeedPassword, initBal)
 	return nil
 }

@@ -50,74 +50,7 @@ type PricingRule struct {
 }
 
 func (s *Store) SeedPlatformCommerce(ctx context.Context) error {
-	var n int
-	if err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM platform_workflows`).Scan(&n); err != nil {
-		return err
-	}
-	if n > 0 {
-		return nil
-	}
-
-	type wfSeed struct {
-		code, name, desc, modelCode, status, badge string
-		order                                      int
-		enabled                                    bool
-	}
-	seeds := []wfSeed{
-		{"wf-h3-image", "图生视频", "一张图片 + 文字描述", "image-keyframes", "published", "", 1, true},
-		{"wf-h3-text", "文生视频", "纯文字描述生成视频", "text", "published", "", 2, true},
-		{"wf-h3-multi", "多图生视频", "多张参考图", "image-multi", "draft", "即将开放", 3, false},
-	}
-	params, _ := json.Marshal(WorkflowParams{
-		AspectRatios: []string{"16:9", "9:16", "1:1"},
-		Durations: []int{5, 10, 15}, DefaultDuration: 15,
-		Resolutions: []string{"768P", "1080P"}, DefaultResolution: "768P",
-	})
-
-	for _, w := range seeds {
-		status := w.status
-		if !w.enabled {
-			status = "draft"
-		}
-		_, err := s.Pool.Exec(ctx, `
-INSERT INTO platform_workflows (public_id, code, name, description, model_id, status, badge, sort_order, params)
-SELECT $1, $2, $3, $4, m.id, $5, $6, $7, $8::jsonb
-FROM models m WHERE m.code = $9
-ON CONFLICT (code) DO NOTHING`,
-			w.code, w.code, w.name, w.desc, status, w.badge, w.order, string(params), w.modelCode)
-		if err != nil {
-			return err
-		}
-	}
-
-	type priceSeed struct {
-		wf, resolution, name string
-		price, costHint      float64
-		version              string
-	}
-	prices := []priceSeed{
-		{"wf-h3-image", "768P", "H3 图生 / 768P", 0.50, 0.03, "v1.2"},
-		{"wf-h3-image", "1080P", "H3 图生 / 1080P", 0.80, 0.04, "v1.0"},
-		{"wf-h3-text", "768P", "H3 文生 / 768P", 0.50, 0.03, "v1.0"},
-		{"wf-h3-text", "1080P", "H3 文生 / 1080P", 0.80, 0.04, "v1.0"},
-		{"wf-h3-multi", "768P", "H3 多图 / 768P", 0.50, 0.03, "v0.1"},
-	}
-	for _, p := range prices {
-		status := "active"
-		if p.wf == "wf-h3-multi" {
-			status = "draft"
-		}
-		pid := "pr_" + shortID()
-		_, err := s.Pool.Exec(ctx, `
-INSERT INTO pricing_rules (public_id, workflow_id, name, resolution, price_per_sec, cost_hint_per_sec, version, status)
-SELECT $1, w.id, $2, $3, $4, $5, $6, $7
-FROM platform_workflows w WHERE w.code = $8
-ON CONFLICT (workflow_id, resolution, version) DO NOTHING`,
-			pid, p.name, p.resolution, p.price, p.costHint, p.version, status, p.wf)
-		if err != nil {
-			return err
-		}
-	}
+	// Canonical workflows/pricing are maintained by AlignSupplyChainH3.
 	return nil
 }
 
@@ -277,6 +210,15 @@ ORDER BY w.sort_order, r.resolution, r.version`)
 		items = append(items, r)
 	}
 	return items, rows.Err()
+}
+
+func (s *Store) CheapestActivePrice(ctx context.Context) (float64, error) {
+	var price float64
+	err := s.Pool.QueryRow(ctx, `SELECT MIN(price_per_sec::float8) FROM pricing_rules WHERE status='active'`).Scan(&price)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return price, err
 }
 
 func (s *Store) FindActivePrice(ctx context.Context, workflowCode, resolution string) (*PricingRule, error) {

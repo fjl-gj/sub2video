@@ -2,11 +2,16 @@
 import { Clock, Layers, Ratio } from 'lucide-vue-next'
 import type { CreateResolution } from '@/shared/lib/create-cost'
 
-defineProps<{
+withDefaults(defineProps<{
   ratio: string
   durationSec: string
   resolution: CreateResolution
-}>()
+  durationOptions?: string[]
+  resolutionOptions?: CreateResolution[]
+}>(), {
+  durationOptions: () => ['5', '10', '15'],
+  resolutionOptions: () => ['768P'],
+})
 
 const emit = defineEmits<{
   'update:ratio': [value: string]
@@ -33,18 +38,14 @@ const emit = defineEmits<{
       <label class="s2v-wb-setting-pill">
         <Clock class="h-3.5 w-3.5 text-s2v-muted" />
         <select :value="durationSec" @change="emit('update:durationSec', ($event.target as HTMLSelectElement).value)">
-          <option value="5">5 秒</option>
-          <option value="10">10 秒</option>
-          <option value="15">15 秒</option>
+          <option v-for="sec in durationOptions" :key="sec" :value="sec">{{ sec }} 秒</option>
         </select>
       </label>
 
       <label class="s2v-wb-setting-pill">
         <Layers class="h-3.5 w-3.5 text-s2v-muted" />
         <select :value="resolution" @change="emit('update:resolution', ($event.target as HTMLSelectElement).value as CreateResolution)">
-          <option value="720P">720P</option>
-          <option value="768P">768P</option>
-          <option value="1080P">1080P</option>
+          <option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</option>
         </select>
       </label>
     </div>

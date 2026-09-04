@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ImagePlus, Plus } from 'lucide-vue-next'
+import { ImagePlus, Plus, X } from 'lucide-vue-next'
 import { computed } from 'vue'
 import type { CreateFrameSlot, ImageVariant } from '@/shared/lib/create-draft'
 import { MAX_KEYFRAME_EXTRAS, MAX_REF_IMAGES } from '@/shared/lib/create-draft'
@@ -26,6 +26,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   slotClick: [descriptor: SlotDescriptor]
+  clearSlot: [descriptor: SlotDescriptor]
   addExtra: []
   addMulti: []
 }>()
@@ -75,7 +76,8 @@ function slotName(slot?: CreateFrameSlot) {
 
 function slotImage(slot?: CreateFrameSlot) {
   if (!slot || !slotReady(slot)) return ''
-  return assetPreviewUrl(slot.assetId, slot.previewUrl)
+  const asset = app.assets.find((item) => item.id === slot.assetId)
+  return assetPreviewUrl(slot.assetId, slot.previewUrl || asset?.url)
 }
 
 function onClick(descriptor: SlotDescriptor) {
@@ -88,6 +90,11 @@ function onClick(descriptor: SlotDescriptor) {
     return
   }
   emit('slotClick', descriptor)
+}
+
+function onClear(event: MouseEvent, descriptor: SlotDescriptor) {
+  event.stopPropagation()
+  emit('clearSlot', descriptor)
 }
 </script>
 
@@ -104,14 +111,17 @@ function onClick(descriptor: SlotDescriptor) {
         </span>
         <span v-else class="s2v-wb-slot-label">&nbsp;</span>
 
-        <button
-          type="button"
+        <div
           class="s2v-wb-slot-box"
           :class="cn(
             descriptor.slot && slotReady(descriptor.slot) && 's2v-wb-slot-box-filled',
             activeSlotKey === descriptor.key && 's2v-wb-slot-box-active',
           )"
+          role="button"
+          tabindex="0"
           @click="onClick(descriptor)"
+          @keydown.enter.prevent="onClick(descriptor)"
+          @keydown.space.prevent="onClick(descriptor)"
         >
           <template v-if="descriptor.add">
             <Plus class="h-4 w-4 text-s2v-muted" />
@@ -119,13 +129,21 @@ function onClick(descriptor: SlotDescriptor) {
           </template>
           <template v-else-if="descriptor.slot && slotReady(descriptor.slot)">
             <img :src="slotImage(descriptor.slot)" :alt="slotName(descriptor.slot)">
+            <button
+              type="button"
+              class="s2v-wb-slot-clear"
+              aria-label="清除图片"
+              @click="onClear($event, descriptor)"
+            >
+              <X class="h-3 w-3" />
+            </button>
             <span class="s2v-wb-slot-badge">{{ slotName(descriptor.slot) }}</span>
           </template>
           <template v-else>
             <ImagePlus class="h-4 w-4 text-s2v-muted" />
             <span class="s2v-wb-slot-hint">上传/选取</span>
           </template>
-        </button>
+        </div>
       </div>
     </div>
   </div>

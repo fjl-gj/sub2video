@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sbu2video/backend/internal/middleware"
 	"github.com/sbu2video/backend/internal/response"
+	"github.com/sbu2video/backend/internal/routing"
 	"github.com/sbu2video/backend/internal/store"
 )
 
@@ -41,20 +43,39 @@ func (h *ClientHandler) Overview(c *gin.Context) {
 		})
 	}
 
+	usedBytes, fileCount, _, trashCount, err := h.Store.StorageUsage(c.Request.Context(), user.ID)
+	if err != nil {
+		usedBytes, fileCount, trashCount = 0, 0, 0
+	}
+	quotaStr, _ := h.Store.GetSetting(c.Request.Context(), "storage_quota_gb")
+	quota := 5.0
+	if v, err := strconv.ParseFloat(quotaStr, 64); err == nil && v > 0 {
+		quota = v
+	}
+	usedGb := float64(usedBytes) / (1024 * 1024 * 1024)
+	usedGb = float64(int(usedGb*1000+0.5)) / 1000
+
 	response.OK(c, gin.H{
 		"workspace": gin.H{"displayName": ws},
 		"billing":   gin.H{"totalSpent": totalSpent, "monthSpent": monthSpent},
 		"wallet":    gin.H{"balance": bal},
-		"pricing": gin.H{
-			"referencePricePerSecond": 0.5,
-			"referenceNote":           "768P / 1080P 按秒计",
+		"pricing":   h.referencePricing(c),
+		"storage": gin.H{
+			"usedGb": usedGb, "quotaGb": quota, "fileCount": fileCount,
 		},
-		"storage": gin.H{"usedGb": 0, "quotaGb": 5, "fileCount": 0},
 		"tasks": gin.H{
 			"activeCount": activeCount, "activeTask": active, "recentCompleted": recent,
 		},
-		"navBadges": gin.H{"tasks": activeCount, "tickets": 0, "trash": 0},
+		"navBadges": gin.H{"tasks": activeCount, "tickets": 0, "trash": trashCount},
 	})
+}
+
+func (h *ClientHandler) referencePricing(c *gin.Context) gin.H {
+	price, err := h.Store.CheapestActivePrice(c.Request.Context())
+	if err != nil || price <= 0 {
+		price = 0.5
+	}
+	return gin.H{"referencePricePerSecond": price, "referenceNote": "768P / 1080P 按秒计"}
 }
 
 func (h *ClientHandler) CreateForm(c *gin.Context) {
@@ -66,36 +87,42 @@ func (h *ClientHandler) CreateForm(c *gin.Context) {
 		return
 	}
 	list := make([]gin.H, 0, len(wfs))
-	params := gin.H{
-		"aspectRatios": []string{"16:9", "9:16", "1:1"},
-		"durations": []int{5, 10, 15},
-		"defaultDuration": 15,
-		"resolution": "768P",
-	}
+	var defaultParams gin.H
 	for _, w := range wfs {
 		item := gin.H{
 			"id": w.Code, "name": w.Name, "description": w.Description,
 			"enabled": w.Status == "published",
+			"modelCode": w.ModelCode, "carrierCode": w.CarrierCode,
+			"params": gin.H{
+				"aspectRatios": w.Params.AspectRatios,
+				"durations": w.Params.Durations,
+				"defaultDuration": w.Params.DefaultDuration,
+				"resolutions": w.Params.Resolutions,
+				"defaultResolution": w.Params.DefaultResolution,
+			},
 		}
 		if w.Badge != "" {
 			item["badge"] = w.Badge
 		}
 		list = append(list, item)
-		if w.Status == "published" && w.Params.DefaultDuration > 0 {
-			params["aspectRatios"] = w.Params.AspectRatios
-			params["durations"] = w.Params.Durations
-			params["defaultDuration"] = w.Params.DefaultDuration
-			if w.Params.DefaultResolution != "" {
-				params["resolution"] = w.Params.DefaultResolution
-			}
+		if w.Status == "published" && defaultParams == nil {
+			defaultParams = item["params"].(gin.H)
 		}
 	}
+	if defaultParams == nil {
+		defaultParams = gin.H{
+			"aspectRatios": []string{"16:9", "9:16", "1:1"},
+			"durations": []int{5, 10, 15}, "defaultDuration": 5,
+			"resolutions": []string{"768P"}, "defaultResolution": "768P",
+		}
+	}
+	cur, _ := h.Store.ResolveCurrentProjectID(c.Request.Context(), user.ID)
 	response.OK(c, gin.H{
 		"wallet": gin.H{"balance": bal},
 		"draftPrompt": "",
-		"currentProjectId": "prj_default",
+		"currentProjectId": cur,
 		"workflows": list,
-		"parameters": params,
+		"parameters": defaultParams,
 		"suggestedTags": []string{"电影感", "缓慢推进", "自然光", "细节丰富"},
 	})
 }
@@ -105,6 +132,8 @@ func (h *ClientHandler) QuoteTask(c *gin.Context) {
 		WorkflowID      string `json:"workflowId"`
 		DurationSeconds int    `json:"durationSeconds"`
 		Resolution      string `json:"resolution"`
+		AspectRatio     string `json:"aspectRatio"`
+		SourceType      string `json:"sourceType"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
@@ -116,19 +145,55 @@ func (h *ClientHandler) QuoteTask(c *gin.Context) {
 	if req.DurationSeconds <= 0 {
 		req.DurationSeconds = 15
 	}
+	if req.AspectRatio == "" {
+		req.AspectRatio = "16:9"
+	}
+	if req.SourceType == "" {
+		switch req.WorkflowID {
+		case "wf-h3-text":
+			req.SourceType = "text"
+		default:
+			req.SourceType = "upload"
+		}
+	}
+	wf, err := h.Store.GetPlatformWorkflow(c.Request.Context(), req.WorkflowID)
+	if err != nil || wf.Status != "published" {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "工作流未开放")
+		return
+	}
 	rule, err := h.Store.FindActivePrice(c.Request.Context(), req.WorkflowID, req.Resolution)
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "暂无该工作流/分辨率定价")
+		return
+	}
+	routes, err := h.Store.ListRoutes(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	selected, costPerSec := routing.SelectLowestCost(routes, routing.Request{
+		ClientWorkflowID: req.WorkflowID,
+		SourceType:       req.SourceType,
+		DurationSec:      req.DurationSeconds,
+		Resolution:       req.Resolution,
+		AspectRatio:      req.AspectRatio,
+	})
+	if selected == nil {
+		response.Fail(c, http.StatusBadRequest, "NO_ROUTE", "当前参数暂无可用供应商路由，请调整时长或分辨率")
 		return
 	}
 	cost := rule.PricePerSec * float64(req.DurationSeconds)
 	user := middleware.CurrentUser(c)
 	bal, _ := h.Store.GetBalance(c.Request.Context(), user.ID)
 	response.OK(c, gin.H{
-		"estimatedCost": cost,
-		"billingNote":   "按输出秒数计费",
+		"estimatedCost":  cost,
+		"billingNote":    "按输出秒数计费",
 		"pricePerSecond": rule.PricePerSec,
-		"walletBalance": bal,
+		"walletBalance":  bal,
+		"route": gin.H{
+			"id": selected.ID, "name": selected.Name, "workflowId": selected.WorkflowID,
+			"costPerSec": costPerSec, "supplierCode": selected.SupplierCode,
+		},
 		"priceSnapshot": gin.H{
 			"ruleId": rule.ID, "version": rule.Version, "pricePerSecond": rule.PricePerSec,
 			"estimatedCost": cost,
@@ -150,6 +215,7 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 			UploadID string `json:"uploadId"`
 			AssetID  string `json:"assetId"`
 		} `json:"source"`
+		SourceMeta *store.SourceMeta `json:"sourceMeta"`
 		PriceSnapshot struct {
 			RuleID         string  `json:"ruleId"`
 			Version        string  `json:"version"`
@@ -167,6 +233,9 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 		EstimatedCost: req.PriceSnapshot.EstimatedCost, PricePerSecond: req.PriceSnapshot.PricePerSecond,
 		RuleID: req.PriceSnapshot.RuleID, Version: req.PriceSnapshot.Version,
 	}
+	if req.SourceMeta != nil {
+		in.SourceMeta = *req.SourceMeta
+	}
 	if req.Source != nil {
 		in.SourceType = req.Source.Type
 		in.SourceRef = req.Source.Ref
@@ -178,6 +247,43 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 			in.SourceType = "asset"
 			in.SourceRef = req.Source.AssetID
 		}
+	}
+	if in.SourceType == "" && req.WorkflowID == "wf-h3-text" {
+		in.SourceType = "text"
+	}
+	if in.AspectRatio == "" {
+		in.AspectRatio = "16:9"
+	}
+	if in.Resolution == "" {
+		in.Resolution = "768P"
+	}
+	if in.DurationSeconds <= 0 {
+		in.DurationSeconds = 15
+	}
+	// Ensure SourceType is set for route matching when only sourceMeta is provided
+	if in.SourceType == "" {
+		if in.SourceMeta.First != nil {
+			in.SourceType = in.SourceMeta.First.Type
+			in.SourceRef = in.SourceMeta.First.ID
+		} else if len(in.SourceMeta.Refs) > 0 {
+			in.SourceType = in.SourceMeta.Refs[0].Type
+			in.SourceRef = in.SourceMeta.Refs[0].ID
+		}
+	}
+	routes, err := h.Store.ListRoutes(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	if selected, _ := routing.SelectLowestCost(routes, routing.Request{
+		ClientWorkflowID: in.WorkflowID,
+		SourceType:       in.SourceType,
+		DurationSec:      in.DurationSeconds,
+		Resolution:       in.Resolution,
+		AspectRatio:      in.AspectRatio,
+	}); selected == nil {
+		response.Fail(c, http.StatusBadRequest, "NO_ROUTE", "当前参数暂无可用供应商路由，请调整时长或分辨率")
+		return
 	}
 	user := middleware.CurrentUser(c)
 	task, ledgerID, balance, err := h.Store.CreateTask(c.Request.Context(), user.ID, in)
@@ -326,6 +432,34 @@ func (h *ClientHandler) ListTickets(c *gin.Context) {
 		pageSize = 10
 	}
 	response.OK(c, gin.H{"items": list, "total": total, "page": page, "pageSize": pageSize})
+}
+
+func (h *ClientHandler) SaveTaskToProject(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	var req struct {
+		ProjectID string `json:"projectId"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	item, path, err := h.Store.SaveTaskToProject(c.Request.Context(), user.ID, c.Param("id"), req.ProjectID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			response.Fail(c, http.StatusNotFound, "NOT_FOUND", "任务不存在")
+			return
+		}
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	projectID := req.ProjectID
+	if projectID == "" {
+		projectID, _ = h.Store.ResolveCurrentProjectID(c.Request.Context(), user.ID)
+	}
+	response.OK(c, gin.H{
+		"asset": gin.H{
+			"id": item.ID, "name": item.Name, "type": item.Type, "sourceTask": item.SourceTask,
+			"url": fmt.Sprintf("/api/v1/client/projects/%s/files/%s", projectID, item.ID),
+		},
+		"path": path,
+	})
 }
 
 func (h *ClientHandler) CreateTicket(c *gin.Context) {

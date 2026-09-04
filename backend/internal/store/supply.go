@@ -81,69 +81,7 @@ func (s *Store) SeedSupplyChain(ctx context.Context, secretKey string) error {
 	if n > 0 {
 		return nil
 	}
-
-	carrierID := "car_" + shortID()
-	if _, err := s.Pool.Exec(ctx, `
-INSERT INTO carriers (public_id, code, name, description, enabled, sort_order)
-VALUES ($1, 'minimax-h3', 'MiniMax H3', 'MiniMax H3 视频生成能力', TRUE, 1)`, carrierID); err != nil {
-		return err
-	}
-
-	type modelSeed struct {
-		code, name, desc, wf string
-		order                int
-	}
-	models := []modelSeed{
-		{"text", "文生视频", "纯文字描述生成视频", "wf-h3-text", 1},
-		{"image-keyframes", "首尾帧图生视频", "首帧/尾帧图片 + 提示词", "wf-h3-image", 2},
-		{"image-multi", "多图参考生视频", "多张参考图 + 提示词", "wf-h3-multi", 3},
-	}
-	modelIDs := map[string]string{}
-	for _, m := range models {
-		id := "mdl_" + shortID()
-		modelIDs[m.code] = id
-		if _, err := s.Pool.Exec(ctx, `
-INSERT INTO models (public_id, carrier_id, code, name, description, client_workflow_id, enabled, sort_order)
-SELECT $1, id, $2, $3, $4, $5, TRUE, $6 FROM carriers WHERE public_id = $7`,
-			id, m.code, m.name, m.desc, m.wf, m.order, carrierID); err != nil {
-			return err
-		}
-	}
-
-	supplierID := "sup_" + shortID()
-	if _, err := s.Pool.Exec(ctx, `
-INSERT INTO suppliers (public_id, code, name, base_url, auth_header, token_encrypted, enabled, status)
-VALUES ($1, 'autodl', 'AutoDL', 'https://autodl.art', 'Authorization', '', TRUE, 'unknown')`, supplierID); err != nil {
-		return err
-	}
-
-	type routeSeed struct {
-		modelCode, workflowID, name string
-		peak, off                   float64
-		cond                        RouteConditions
-		enabled                     bool
-	}
-	routes := []routeSeed{
-		{"text", "minimax_h3_lightx2v_no_pic", "H3文生(lightx2v)", 0.03, 0.02, RouteConditions{MaxDuration: 15, Resolutions: []string{"480P", "768P"}, RequireSource: []string{"text"}}, true},
-		{"text", "minimax_h3_b99_001", "H3文生(b99)", 0.03, 0.02, RouteConditions{MaxDuration: 15, Resolutions: []string{"768P"}, RequireSource: []string{"text"}}, true},
-		{"image-keyframes", "minimax_h3_lightx2v", "H3首尾帧(lightx2v)", 0.03, 0.02, RouteConditions{MaxDuration: 10, Resolutions: []string{"480P", "768P"}, RequireSource: []string{"upload", "asset"}}, true},
-		{"image-keyframes", "minimax_h3_b99_002", "H3首尾帧(b99)", 0.03, 0.02, RouteConditions{MaxDuration: 15, Resolutions: []string{"768P"}, RequireSource: []string{"upload", "asset"}}, true},
-		{"image-multi", "minimax_h3_lightx2v_v5_15s", "H3多图15s", 0.03, 0.02, RouteConditions{MaxDuration: 15, Resolutions: []string{"480P", "768P"}, RequireSource: []string{"upload", "asset"}}, false},
-	}
-	for i, r := range routes {
-		cond, _ := json.Marshal(r.cond)
-		if _, err := s.Pool.Exec(ctx, `
-INSERT INTO supplier_routes (
-  public_id, supplier_id, model_id, workflow_id, name, enabled,
-  cost_per_sec_peak, cost_per_sec_offpeak, conditions, priority
-) SELECT $1, s.id, m.id, $2, $3, $4, $5, $6, $7::jsonb, $8
-FROM suppliers s, models m
-WHERE s.public_id = $9 AND m.public_id = $10`,
-			"rte_"+shortID(), r.workflowID, r.name, r.enabled, r.peak, r.off, string(cond), 100+i,
-			supplierID, modelIDs[r.modelCode]); err != nil {
-			return err
-		}
-	}
+	// Fresh install: AlignSupplyChainH3 creates the canonical MINMAX/H3 tree.
 	_ = secretKey
 	return nil
 }
@@ -234,7 +172,9 @@ FROM suppliers WHERE public_id = $1`, publicID).Scan(
 func (s *Store) ListRoutes(ctx context.Context) ([]SupplierRoute, error) {
 	rows, err := s.Pool.Query(ctx, `
 SELECT r.public_id, s.public_id, s.code, s.name, s.base_url, s.auth_header, s.token_encrypted,
-       m.public_id, m.code, m.client_workflow_id, r.workflow_id, r.name, r.enabled,
+       m.public_id, m.code,
+       COALESCE(NULLIF(r.client_workflow_id,''), m.client_workflow_id),
+       r.workflow_id, r.name, r.enabled,
        r.cost_per_sec_peak::float8, r.cost_per_sec_offpeak::float8, r.conditions, r.priority
 FROM supplier_routes r
 JOIN suppliers s ON s.id = r.supplier_id
@@ -399,8 +339,9 @@ FROM carriers c WHERE c.public_id=$6 OR c.code=$6`,
 	return nil, ErrNotFound
 }
 
-func (s *Store) CreateRoute(ctx context.Context, supplierPublicID, modelPublicID, workflowID, name string, peak, off float64, enabled bool, cond RouteConditions) (*SupplierRoute, error) {
+func (s *Store) CreateRoute(ctx context.Context, supplierPublicID, modelPublicID, workflowID, name string, peak, off float64, enabled bool, cond RouteConditions, clientWorkflowID string) (*SupplierRoute, error) {
 	workflowID = strings.TrimSpace(workflowID)
+	clientWorkflowID = strings.TrimSpace(clientWorkflowID)
 	if supplierPublicID == "" || modelPublicID == "" || workflowID == "" {
 		return nil, errors.New("supplier, model and upstream workflowId required")
 	}
@@ -418,12 +359,12 @@ func (s *Store) CreateRoute(ctx context.Context, supplierPublicID, modelPublicID
 	tag, err := s.Pool.Exec(ctx, `
 INSERT INTO supplier_routes (
   public_id, supplier_id, model_id, workflow_id, name, enabled,
-  cost_per_sec_peak, cost_per_sec_offpeak, conditions, priority
+  cost_per_sec_peak, cost_per_sec_offpeak, conditions, priority, client_workflow_id
 ) SELECT $1, s.id, m.id, $2, $3, $4, $5, $6, $7::jsonb,
-  COALESCE((SELECT MAX(priority)+1 FROM supplier_routes), 100)
+  COALESCE((SELECT MAX(priority)+1 FROM supplier_routes), 100), $8
 FROM suppliers s, models m
-WHERE (s.public_id=$8 OR s.code=$8) AND (m.public_id=$9 OR m.code=$9)`,
-		id, workflowID, name, enabled, peak, off, string(condRaw), supplierPublicID, modelPublicID)
+WHERE (s.public_id=$9 OR s.code=$9) AND (m.public_id=$10 OR m.code=$10)`,
+		id, workflowID, name, enabled, peak, off, string(condRaw), clientWorkflowID, supplierPublicID, modelPublicID)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,8 @@ export interface FsItem {
   time: string
   meta?: string
   sourceTask?: string
+  url?: string
+  remoteUrl?: string
 }
 
 export interface FsFolder {
@@ -25,6 +27,8 @@ export interface WorkProject {
   createdAt: string
   trashed: boolean
   trashedAt?: string
+  isDefault?: boolean
+  fileCount?: number
   folders: Record<string, FsFolder>
 }
 
@@ -36,9 +40,9 @@ export interface Asset {
   folder: string
   updated: string
   sourceTask?: string
+  url?: string
 }
 
-export const DEFAULT_PROJECT_ID = 'prj_default'
 export const SYSTEM_ROOTS = ['资产', '视频'] as const
 export const ASSET_BUCKETS = ['人物', '场景', '道具', '素材'] as const
 export const DEFAULT_VIDEO_ALBUM = '正片镜头'
@@ -114,6 +118,7 @@ export function countFolderFiles(folder: FsFolder): number {
 }
 
 export function countProjectFiles(project: WorkProject): number {
+  if (typeof project.fileCount === 'number') return project.fileCount
   return Object.values(project.folders).reduce((sum, folder) => sum + countFolderFiles(folder), 0)
 }
 
@@ -136,6 +141,7 @@ export function flattenProject(project: WorkProject): Asset[] {
           folder: name,
           updated: item.time,
           sourceTask: item.sourceTask,
+          url: item.url || item.remoteUrl,
         })
       }
       walk(folder.folders)
@@ -160,9 +166,3 @@ export function findFileInProject(project: WorkProject, id: string): { folder: F
   }
   return walk(project.folders)
 }
-
-function seedDefaultProject(): WorkProject {
-  return createWorkProject(DEFAULT_PROJECT_ID, 'default作品', '系统默认工程', new Date().toISOString().slice(0, 10))
-}
-
-export const initialProjects: WorkProject[] = [seedDefaultProject()]

@@ -66,9 +66,11 @@ const assetDialogOpen = computed({
   },
 })
 
+const durationOptions = computed(() => (mode.value === 'image' && imageVariant.value === 'multi' ? ['5', '10', '12'] : ['5', '10', '15']))
 const parsedDuration = computed(() => Number(durationSec.value))
-const durationValid = computed(() => [5, 10, 15].includes(parsedDuration.value))
-const cost = computed(() => estimateCreateCost(parsedDuration.value, resolution.value))
+const durationValid = computed(() => durationOptions.value.includes(durationSec.value))
+const quotedCost = ref<number | null>(null)
+const cost = computed(() => quotedCost.value ?? estimateCreateCost(parsedDuration.value, resolution.value))
 const recentTasks = ref<Task[]>([])
 
 const canSubmit = computed(() => {
@@ -140,12 +142,29 @@ function fillSlot(slot: FrameSlot, payload: {
 function handleSlotClick(descriptor: SlotDescriptor) {
   const slot = descriptor.slot
   if (!slot) return
-  if (frameReady(slot)) {
-    setStageFromSlot(slot, descriptor)
-    return
-  }
+  // Filled slots can be replaced by opening the picker again.
   pickingSlotRef.value = slot
   activeSlotKey.value = descriptor.key
+  if (frameReady(slot)) setStageFromSlot(slot, descriptor)
+}
+
+function clearFrameSlot(slot: FrameSlot) {
+  if (slot.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(slot.previewUrl)
+  slot.uploaded = false
+  slot.assetId = ''
+  slot.picking = false
+  slot.previewUrl = undefined
+  slot.fileName = undefined
+  slot.file = undefined
+  slot.uploadId = undefined
+}
+
+function handleClearSlot(descriptor: SlotDescriptor) {
+  const slot = descriptor.slot
+  if (!slot) return
+  clearFrameSlot(slot)
+  if (activeSlotKey.value === descriptor.key) resetStageIdle()
+  app.notify('已清除，可重新上传或选取')
 }
 
 function confirmAssetPick(assetId: string) {
@@ -186,7 +205,8 @@ function addMulti() {
 }
 
 function workflowId() {
-  return mode.value === 'text' ? 'wf-h3-text' : 'wf-h3-image'
+  if (mode.value === 'text') return 'wf-h3-text'
+  return imageVariant.value === 'multi' ? 'wf-h3-multi' : 'wf-h3-image'
 }
 
 function taskStamp() {
@@ -210,19 +230,52 @@ function primaryImageSlot(): FrameSlot | null {
   return multiFrames.value.find((slot) => frameReady(slot)) ?? null
 }
 
-async function resolveSource(): Promise<Record<string, string> | undefined> {
-  if (mode.value === 'text') return { type: 'text' }
-  const slot = primaryImageSlot()
-  if (!slot) throw new Error('请先上传或选择图片')
-  if (slot.uploadId) return { type: 'upload', uploadId: slot.uploadId }
+async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: string }> {
+  if (slot.uploadId) return { type: 'upload', id: slot.uploadId }
   if (slot.file) {
     const uploaded = await uploadImage(slot.file)
     slot.uploadId = uploaded.id
     slot.file = undefined
-    return { type: 'upload', uploadId: uploaded.id }
+    return { type: 'upload', id: uploaded.id }
   }
-  if (slot.assetId) return { type: 'asset', assetId: slot.assetId }
+  if (slot.assetId) return { type: 'asset', id: slot.assetId }
   throw new Error('请先上传或选择图片')
+}
+
+async function resolveSourcePayload(): Promise<{
+  source?: Record<string, string>
+  sourceMeta?: Record<string, unknown>
+}> {
+  if (mode.value === 'text') return { source: { type: 'text' } }
+
+  if (imageVariant.value === 'keyframes') {
+    if (!frameReady(firstFrame.value)) throw new Error('请先上传或选择首帧图片')
+    const first = await ensureSlotUpload(firstFrame.value)
+    const meta: Record<string, unknown> = { first }
+    if (frameReady(lastFrame.value)) {
+      meta.last = await ensureSlotUpload(lastFrame.value)
+    }
+    const extras = []
+    for (const slot of extraFrames.value) {
+      if (frameReady(slot)) extras.push(await ensureSlotUpload(slot))
+    }
+    if (extras.length) meta.extras = extras
+    return {
+      source: first.type === 'upload' ? { type: 'upload', uploadId: first.id } : { type: 'asset', assetId: first.id },
+      sourceMeta: meta,
+    }
+  }
+
+  const refs = []
+  for (const slot of multiFrames.value) {
+    if (frameReady(slot)) refs.push(await ensureSlotUpload(slot))
+  }
+  if (!refs.length) throw new Error('请至少选择一张参考图')
+  const primary = refs[0]!
+  return {
+    source: primary.type === 'upload' ? { type: 'upload', uploadId: primary.id } : { type: 'asset', assetId: primary.id },
+    sourceMeta: { refs },
+  }
 }
 
 function syncBalance(balance: number) {
@@ -244,12 +297,15 @@ async function submit() {
   if (loading.value) return
   loading.value = true
   try {
-    const source = await resolveSource()
+    const { source, sourceMeta } = await resolveSourcePayload()
     const quote = await quoteTask({
       workflowId: workflowId(),
       durationSeconds: parsedDuration.value,
       resolution: resolution.value,
+      aspectRatio: ratio.value,
+      sourceType: mode.value === 'text' ? 'text' : 'upload',
     })
+    quotedCost.value = quote.estimatedCost
     const result = await createTask({
       workflowId: workflowId(),
       title: buildTaskTitle(),
@@ -258,6 +314,7 @@ async function submit() {
       durationSeconds: parsedDuration.value,
       resolution: resolution.value,
       source,
+      sourceMeta,
       priceSnapshot: {
         ruleId: quote.priceSnapshot.ruleId,
         version: quote.priceSnapshot.version,
@@ -349,6 +406,10 @@ onMounted(() => {
   if (mode.value === 'text') syncTextStage()
   draftReady.value = true
   void loadRecentTasks()
+  void (async () => {
+    await app.loadProjects()
+    if (app.currentProjectId) await app.loadProjectTree(app.currentProjectId)
+  })()
 })
 
 onBeforeUnmount(() => {
@@ -363,6 +424,9 @@ watch([resolution, durationSec], () => {
 
 watch(imageVariant, () => {
   activeSlotKey.value = null
+  if (!durationOptions.value.includes(durationSec.value)) {
+    durationSec.value = durationOptions.value[0] || '5'
+  }
 })
 
 watch(mode, (next) => {
@@ -421,6 +485,7 @@ watch(prompt, () => {
             :multi-frames="multiFrames"
             :active-slot-key="activeSlotKey"
             @slot-click="handleSlotClick"
+            @clear-slot="handleClearSlot"
             @add-extra="addExtra"
             @add-multi="addMulti"
           />
@@ -428,6 +493,8 @@ watch(prompt, () => {
             :ratio="ratio"
             :duration-sec="durationSec"
             :resolution="resolution"
+            :duration-options="durationOptions"
+            :resolution-options="['768P']"
             @update:ratio="ratio = $event"
             @update:duration-sec="durationSec = $event"
             @update:resolution="resolution = $event"

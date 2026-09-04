@@ -114,6 +114,14 @@ async function retry(id: string) {
   }
 }
 
+async function saveToProject(task: WorksTask) {
+  const ok = await app.saveWorkToAsset(task.id)
+  if (ok) {
+    task.savedToProject = true
+    await loadTasks()
+  }
+}
+
 function askRefund(task: WorksTask) {
   refundTask.value = task
   refundOpen.value = true
@@ -223,7 +231,7 @@ onBeforeUnmount(() => {
                 <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
                 <template v-else>
                   <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
-                  <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
+                  <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="saveToProject(task)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
                 </template>
                 <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
               </div>
@@ -246,7 +254,7 @@ onBeforeUnmount(() => {
           <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
           <template v-else>
             <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
-            <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="app.saveWorkToAsset(task.id)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
+            <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="saveToProject(task)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
           </template>
           <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
         </template>

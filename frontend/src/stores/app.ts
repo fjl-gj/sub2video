@@ -19,16 +19,43 @@ import {
   cloneFolders,
   countProjectFiles,
   createStandardFolders,
-  DEFAULT_PROJECT_ID,
   flattenProject,
-  initialProjects,
   type WorkProject,
 } from '@/data/projects'
+import {
+  createProject as createProjectApi,
+  deleteProjectFile,
+  fetchProjectAssets,
+  fetchProjects,
+  fetchProjectTree,
+  fetchStorageUsage,
+  purgeProject as purgeProjectApi,
+  restoreProject as restoreProjectApi,
+  saveTaskToProject,
+  setCurrentProject as setCurrentProjectApi,
+  trashProject as trashProjectApi,
+  uploadProjectFile,
+  type ProjectSummary,
+} from '@/api/client'
 
 export type { AdminTask, AdminTicket, UserAccount }
 export type DeviceSession = { id: string; name: string; meta: string; current: boolean }
 
 const NOT_CONNECTED = '功能尚未接入后端'
+
+function summaryToProject(item: ProjectSummary): WorkProject {
+  return {
+    id: item.id,
+    name: item.name,
+    desc: item.desc,
+    createdAt: item.createdAt,
+    trashed: item.trashed,
+    trashedAt: item.trashedAt,
+    isDefault: item.isDefault,
+    fileCount: item.fileCount,
+    folders: cloneFolders(createStandardFolders()),
+  }
+}
 
 export const useAppStore = defineStore('app', () => {
   const balance = ref(0)
@@ -37,11 +64,12 @@ export const useAppStore = defineStore('app', () => {
   const adminTasks = ref<AdminTask[]>([])
   const adminTickets = ref<AdminTicket[]>([])
   const tickets = ref<ClientTicket[]>([])
-  const projects = ref<WorkProject[]>(initialProjects.map((project) => ({
-    ...project,
-    folders: cloneFolders(project.folders),
-  })))
-  const currentProjectId = ref(DEFAULT_PROJECT_ID)
+  const projects = ref<WorkProject[]>([])
+  const currentProjectId = ref('')
+  const projectsLoaded = ref(false)
+  const storageUsed = ref(0)
+  const storageQuota = ref(5)
+  const storageFileCount = ref(0)
   const transactions = ref<LedgerEntry[]>([])
   const users = ref<UserAccount[]>([])
   const usedCodes = ref<string[]>([])
@@ -68,7 +96,6 @@ export const useAppStore = defineStore('app', () => {
   const toast = ref('')
 
   let toastTimer: ReturnType<typeof setTimeout> | undefined
-  let projectSeq = 2
 
   const openTicketCount = computed(() => adminTickets.value.filter((item) => item.status !== '已解决').length)
   const openClientTicketCount = computed(() => tickets.value.filter((item) => item.status !== '已解决').length)
@@ -78,10 +105,11 @@ export const useAppStore = defineStore('app', () => {
   const trashedProjects = computed(() => projects.value.filter((project) => project.trashed))
   const currentProject = computed(() => activeProjects.value.find((project) => project.id === currentProjectId.value) ?? activeProjects.value[0] ?? null)
   const assets = computed(() => (currentProject.value ? flattenProject(currentProject.value) : []))
-  const fileCount = computed(() => activeProjects.value.reduce((sum, project) => sum + countProjectFiles(project), 0))
-  const storageUsed = computed(() => 0)
-  const storageQuota = 5
-  const storagePercent = computed(() => Math.min(100, Math.round((storageUsed.value / storageQuota) * 100)))
+  const fileCount = computed(() => storageFileCount.value || activeProjects.value.reduce((sum, project) => sum + countProjectFiles(project), 0))
+  const storagePercent = computed(() => {
+    if (!storageQuota.value) return 0
+    return Math.min(100, Math.round((storageUsed.value / storageQuota.value) * 100))
+  })
 
   function notify(message: string) {
     toast.value = message
@@ -94,10 +122,74 @@ export const useAppStore = defineStore('app', () => {
     return false
   }
 
-  function selectProject(id: string) {
+  function apiErrorMessage(error: unknown, fallback: string) {
+    const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
+    return err.response?.data?.message || err.response?.data?.error || err.message || fallback
+  }
+
+  function upsertProject(next: WorkProject) {
+    const index = projects.value.findIndex((item) => item.id === next.id)
+    if (index >= 0) {
+      projects.value[index] = { ...projects.value[index], ...next, folders: next.folders }
+    } else {
+      projects.value.unshift(next)
+    }
+  }
+
+  async function refreshStorage() {
+    try {
+      const usage = await fetchStorageUsage()
+      storageUsed.value = usage.usedGb
+      storageQuota.value = usage.quotaGb
+      storageFileCount.value = usage.fileCount
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function loadProjects(options?: { includeTrash?: boolean }) {
+    const includeTrash = options?.includeTrash ?? true
+    const active = await fetchProjects(false)
+    const mapped = active.items.map(summaryToProject)
+    if (includeTrash) {
+      const trash = await fetchProjects(true)
+      mapped.push(...trash.items.map(summaryToProject))
+    }
+    projects.value = mapped
+    currentProjectId.value = active.currentProjectId || mapped.find((item) => !item.trashed)?.id || ''
+    projectsLoaded.value = true
+    await refreshStorage()
+    return mapped
+  }
+
+  async function loadProjectTree(id: string) {
+    const tree = await fetchProjectTree(id)
+    const project: WorkProject = {
+      id: tree.id,
+      name: tree.name,
+      desc: tree.desc,
+      createdAt: tree.createdAt,
+      trashed: tree.trashed,
+      trashedAt: tree.trashedAt,
+      isDefault: tree.isDefault,
+      fileCount: tree.fileCount,
+      folders: tree.folders || cloneFolders(createStandardFolders()),
+    }
+    upsertProject(project)
+    return project
+  }
+
+  async function selectProject(id: string) {
     const project = activeProjects.value.find((item) => item.id === id)
     if (!project) return false
     currentProjectId.value = id
+    try {
+      await setCurrentProjectApi(id)
+      await loadProjectTree(id)
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '切换作品失败'))
+      return false
+    }
     return true
   }
 
@@ -110,64 +202,72 @@ export const useAppStore = defineStore('app', () => {
     return null
   }
 
-  function createProject(name: string) {
-    const trimmed = name.trim() || `未命名作品 ${projectSeq}`
-    const project: WorkProject = {
-      id: `prj_${projectSeq++}`,
-      name: trimmed,
-      desc: '空白工程',
-      createdAt: '刚刚',
-      trashed: false,
-      folders: cloneFolders(createStandardFolders()),
+  async function createProject(name: string) {
+    try {
+      const { project } = await createProjectApi(name)
+      const next = summaryToProject(project)
+      upsertProject(next)
+      currentProjectId.value = next.id
+      await loadProjectTree(next.id)
+      await refreshStorage()
+      notify(`已创建空白作品「${next.name}」`)
+      return next.id
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '创建作品失败'))
+      return ''
     }
-    projects.value.unshift(project)
-    currentProjectId.value = project.id
-    notify(`已创建空白作品「${project.name}」`)
-    return project.id
   }
 
-  function trashProject(id: string) {
-    if (id === DEFAULT_PROJECT_ID) {
-      notify('默认作品不能移入回收站')
+  async function trashProject(id: string) {
+    try {
+      const { project } = await trashProjectApi(id)
+      const existing = projects.value.find((item) => item.id === id)
+      upsertProject({
+        ...(existing || summaryToProject(project)),
+        ...summaryToProject(project),
+        folders: existing?.folders || cloneFolders(createStandardFolders()),
+      })
+      if (currentProjectId.value === id) ensureCurrentProject()
+      await refreshStorage()
+      notify(`「${project.name}」已移入回收站`)
+      return true
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '移入回收站失败'))
       return false
     }
-    const project = projects.value.find((item) => item.id === id)
-    if (!project || project.trashed) {
-      notify('该作品无法移入回收站')
-      return false
-    }
-    project.trashed = true
-    project.trashedAt = '刚刚'
-    if (currentProjectId.value === id) ensureCurrentProject()
-    notify(`「${project.name}」已移入回收站`)
-    return true
   }
 
-  function restoreProject(id: string) {
-    const project = projects.value.find((item) => item.id === id)
-    if (!project || !project.trashed) {
-      notify('该作品不在回收站')
+  async function restoreProject(id: string) {
+    try {
+      const { project } = await restoreProjectApi(id)
+      const existing = projects.value.find((item) => item.id === id)
+      upsertProject({
+        ...(existing || summaryToProject(project)),
+        ...summaryToProject(project),
+        folders: existing?.folders || cloneFolders(createStandardFolders()),
+      })
+      if (!currentProjectId.value) currentProjectId.value = project.id
+      await refreshStorage()
+      notify(`已恢复「${project.name}」`)
+      return true
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '恢复失败'))
       return false
     }
-    project.trashed = false
-    project.trashedAt = undefined
-    if (!currentProjectId.value) currentProjectId.value = project.id
-    notify(`已恢复「${project.name}」`)
-    return true
   }
 
-  function purgeProject(id: string) {
-    const index = projects.value.findIndex((item) => item.id === id && item.trashed)
-    if (index < 0) {
-      notify('只能从回收站彻底删除作品')
+  async function purgeProject(id: string) {
+    try {
+      await purgeProjectApi(id)
+      projects.value = projects.value.filter((item) => item.id !== id)
+      if (currentProjectId.value === id) ensureCurrentProject()
+      await refreshStorage()
+      notify('已彻底删除作品')
+      return true
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '彻底删除失败'))
       return false
     }
-    const project = projects.value[index]
-    if (!project) return false
-    projects.value.splice(index, 1)
-    if (currentProjectId.value === id) ensureCurrentProject()
-    notify(`已彻底删除「${project.name}」`)
-    return true
   }
 
   function createTask(_cost: number, _options?: {
@@ -195,20 +295,61 @@ export const useAppStore = defineStore('app', () => {
     return notifyUnavailable()
   }
 
-  function saveWorkToAsset(_id: string) {
-    return notifyUnavailable()
+  async function saveWorkToAsset(id: string) {
+    try {
+      await saveTaskToProject(id, currentProjectId.value || undefined)
+      if (currentProjectId.value) await loadProjectTree(currentProjectId.value)
+      await refreshStorage()
+      notify('已保存到当前作品')
+      return true
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '保存到作品失败'))
+      return false
+    }
   }
 
-  function isWorkSaved(_taskId: string) {
-    return false
+  function isWorkSaved(taskId: string) {
+    return assets.value.some((asset) => asset.sourceTask === taskId)
   }
 
-  function uploadAsset(_projectId?: string, _path: string[] = []) {
-    return notifyUnavailable()
+  async function uploadAsset(projectId?: string, path: string[] = [], file?: File) {
+    const id = projectId || currentProjectId.value
+    if (!id || !file) {
+      notify('请选择要上传的文件')
+      return false
+    }
+    try {
+      await uploadProjectFile(id, path.length ? path : ['资产', '素材'], file)
+      await loadProjectTree(id)
+      await refreshStorage()
+      notify('素材已上传')
+      return true
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '上传失败'))
+      return false
+    }
   }
 
-  function removeAsset(_id: string) {
-    return notifyUnavailable()
+  async function removeAsset(id: string) {
+    const projectId = currentProjectId.value
+    if (!projectId) return false
+    try {
+      await deleteProjectFile(projectId, id)
+      await loadProjectTree(projectId)
+      await refreshStorage()
+      notify('已删除文件')
+      return true
+    } catch (e: unknown) {
+      notify(apiErrorMessage(e, '删除失败'))
+      return false
+    }
+  }
+
+  async function loadCurrentAssets(type?: string) {
+    const id = currentProjectId.value
+    if (!id) return []
+    const { items } = await fetchProjectAssets(id, type)
+    return items
   }
 
   function createTicket(_title: string, _category: string, _task = '-') {
@@ -284,6 +425,7 @@ export const useAppStore = defineStore('app', () => {
     adminTickets,
     tickets,
     projects,
+    projectsLoaded,
     currentProjectId,
     currentProject,
     activeProjects,
@@ -302,6 +444,10 @@ export const useAppStore = defineStore('app', () => {
     storageQuota,
     storagePercent,
     notify,
+    loadProjects,
+    loadProjectTree,
+    refreshStorage,
+    loadCurrentAssets,
     createTask,
     recharge,
     redeem,
