@@ -246,7 +246,20 @@ WHERE public_id=$7`, found.Enabled, found.CostPerSecPeak, found.CostPerSecOffpea
 }
 
 func (s *Store) ListCarriersWithModels(ctx context.Context) ([]Carrier, []Model, error) {
-	crows, err := s.Pool.Query(ctx, `SELECT public_id, code, name, description, enabled, sort_order FROM carriers ORDER BY sort_order`)
+	// Models bound directly to client_workflow_id belong to the retired
+	// pre-catalog contract. The current management surface owns workflow
+	// support through mode_model_policies, so it must not present those rows as
+	// carriers or models that an administrator could configure again.
+	crows, err := s.Pool.Query(ctx, `
+SELECT c.public_id, c.code, c.name, c.description, c.enabled, c.sort_order
+FROM carriers c
+WHERE EXISTS (
+  SELECT 1 FROM models m
+  WHERE m.carrier_id = c.id AND COALESCE(m.client_workflow_id, '') = ''
+) OR NOT EXISTS (
+  SELECT 1 FROM models m WHERE m.carrier_id = c.id
+)
+ORDER BY c.sort_order`)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -261,7 +274,10 @@ func (s *Store) ListCarriersWithModels(ctx context.Context) ([]Carrier, []Model,
 	}
 	mrows, err := s.Pool.Query(ctx, `
 SELECT m.public_id, c.public_id, c.code, m.code, m.name, m.description, m.client_workflow_id, m.enabled, m.sort_order
-FROM models m JOIN carriers c ON c.id = m.carrier_id ORDER BY c.sort_order, m.sort_order`)
+FROM models m
+JOIN carriers c ON c.id = m.carrier_id
+WHERE COALESCE(m.client_workflow_id, '') = ''
+ORDER BY c.sort_order, m.sort_order`)
 	if err != nil {
 		return nil, nil, err
 	}

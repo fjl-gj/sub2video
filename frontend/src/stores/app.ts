@@ -291,10 +291,6 @@ export const useAppStore = defineStore('app', () => {
     return notifyUnavailable()
   }
 
-  function retryTask(_id: string) {
-    return notifyUnavailable()
-  }
-
   async function saveWorkToAsset(id: string) {
     try {
       await saveTaskToProject(id, currentProjectId.value || undefined)
@@ -452,7 +448,6 @@ export const useAppStore = defineStore('app', () => {
     recharge,
     redeem,
     cancelTask,
-    retryTask,
     saveWorkToAsset,
     isWorkSaved,
     uploadAsset,

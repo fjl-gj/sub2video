@@ -135,20 +135,20 @@
 
 ## 业务规则
 
-1. **default作品**（`prj_default`）可进入、可上传，是否允许移入回收站由产品决定（原型允许）。
+1. **default作品**（`prj_default`）可进入、可上传，但不可移入回收站或彻底删除。
 2. 系统目录 `isSystem: true` 不可删除；`资产` 下四个桶不可删。
 3. 任务「保存到作品」写入 `视频/正片镜头/`，见 [任务](./client-tasks.md)。
 4. 创作页「从资产选择」使用 `GET .../assets?type=image`（当前作品图片扁平列表）。
 5. 回收站流程见 [回收站](./client-trash.md)。
 
-## 与当前 mock 对应
+## 当前实现映射
 
-| 行为 | store / 模块 |
+| 行为 | 前端状态 / 后端接口 |
 | --- | --- |
-| 作品列表 | `activeProjects` |
-| 当前作品 | `currentProjectId`, `currentProject` |
-| 创建 | `createProject(name)` |
-| 移入回收站 | `trashProject(id)` |
-| 上传 | `uploadAsset(projectId, path)` |
-| 删除文件 | `removeAsset(id)` |
-| 目录解析 | `resolveNode(project, path)` |
+| 作品列表 | `GET /client/projects` → `app.loadProjects()` |
+| 当前作品 | `PUT /client/session/current-project` |
+| 创建 | `POST /client/projects` |
+| 移入回收站 | `POST /client/projects/{id}/trash` |
+| 上传 | `POST /client/projects/{id}/uploads` multipart |
+| 删除文件 | `DELETE /client/projects/{id}/files/{fileId}` |
+| 目录树 | `GET /client/projects/{id}/tree` |

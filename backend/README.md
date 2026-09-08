@@ -36,15 +36,67 @@ POST /api/v1/auth/logout
 GET  /api/v1/auth/me          # Bearer access token
 ```
 
-## 已挂载客户端接口
+## 客户端核心接口
 
 ```
 GET  /api/v1/client/overview
+GET  /api/v1/client/create/catalog
+GET  /api/v1/client/create/options
+POST /api/v1/client/tasks/quote
+POST /api/v1/client/tasks                 # body 只接受 quoteId、title、prompt、sourceMeta
+GET  /api/v1/client/tasks
+GET  /api/v1/client/tasks/:id             # 不返回供应商、成本或上游 URL
+POST /api/v1/client/tasks/:id/cancel
+POST /api/v1/client/tasks/:id/save-to-project
+POST /api/v1/client/uploads
+GET/POST/DELETE /api/v1/client/projects/...
 GET  /api/v1/client/wallet
+GET  /api/v1/client/wallet/transactions
 POST /api/v1/client/wallet/redeem
+GET/POST /api/v1/client/tickets
 ```
 
-其余创作/任务/资产接口按 `docs/api/` 后续补齐。
+新建生成任务只使用“固定创作模式 → 可选承运商/模型 → 服务器报价 → quoteId”合同。`workflowId`、客户端价格快照、供应商、成本和上游工作流 ID 均不是新任务接口字段。
+
+管理端接口位于 `/api/v1/admin/...`，包括创作模式、承运商/模型、供应商供给、采购成本、对客售价、任务、工单、设置与操作审计。旧 `routes`、`workflows`、`pricing` 接口已不再挂载，也不参与启动 seed、报价、任务创建或 Worker 路由；其旧表仅为已部署数据库的迁移兼容保留。
+
+## 执行与交付
+
+- 报价只会选择已启用、已配置凭据、健康可用且由当前 Worker 支持的供应商供给；未部署适配器的供给不能保存为可报价配置。
+- 新任务的 `quoteId`、供给、成本与售价都会写入不可变快照；Worker 不会重新按当前最低成本换路由。上游提交前以数据库条件更新原子认领任务，避免多实例重复提交；未取得上游任务 ID 的配置等待状态会释放认领，已提交任务只会继续轮询。
+- 缺失锁定供应商凭据或图片任务对象存储时，任务保持排队并标记等待配置，不会模拟成功；上游已完成但对象存储不可用时，任务保持等待持久化交付并自动重试。
+- 上游失败会在同一退款语义下写入一次退款流水；连续三次失败会将该供给标为不可用。
+- 客户端只可下载 `result_oss_url` 的持久化交付结果，无法下载或保存上游临时 URL。
+
+## 验证
+
+```bash
+cd backend
+go test ./...
+```
+
+真实 PostgreSQL 集成测试默认跳过。仅在专用测试库上执行：
+
+```bash
+SUB2VIDEO_RUN_INTEGRATION=1 \
+SUB2VIDEO_TEST_DATABASE_URL='postgres://.../sub2video_test?sslmode=disable' \
+SUB2VIDEO_TEST_REDIS_URL='redis://127.0.0.1:16379/15' \
+go test ./internal/store -run Integration
+```
+
+测试库名称必须包含 `test`，避免误连开发或生产数据库；测试在启动时会连接并 Ping Redis。
+
+部署后的 UAT 预检会登录测试账号，检查三种固定模式（文生、首尾帧、多图）的目录、能力与报价合同，但不创建任务或预扣余额：
+
+```bash
+SUB2VIDEO_UAT_BASE=http://host:12000/api/v1 python3 backend/scripts/verify_uat_create.py
+```
+
+完整任务验收需要显式开启，并会上传一张测试图、创建三种任务、预扣 UAT 钱包余额，且可能调用已配置的上游供应商。仅在确认测试账号余额、供应商额度和对象存储均可消耗后执行：
+
+```bash
+SUB2VIDEO_UAT_BASE=http://host:12000/api/v1 python3 backend/scripts/verify_uat_create.py --create-tasks
+```
 
 ## 107 部署
 

@@ -10,7 +10,7 @@
 | --- | --- |
 | 前端路由 | `/app/overview` |
 | 页面组件 | `frontend/src/pages/client/OverviewPage.vue` |
-| 当前数据来源 | Pinia `useAppStore` + 页面内硬编码指标 |
+| 当前数据来源 | `GET /api/v1/client/overview`；Pinia 仅缓存余额、容量和工程状态 |
 
 ## 页面区块与数据映射
 
@@ -34,7 +34,7 @@
 
 | UI 字段 | 类型 | 说明 | 当前实现 |
 | --- | --- | --- | --- |
-| `workspace.displayName` | `string` | 工作区/创作者显示名 | 硬编码「李维工作室」 |
+| `workspace.displayName` | `string` | 工作区/创作者显示名 | 后端工作区名称 |
 | — | — | 「查看任务队列」跳转 `/app/works` | 纯导航 |
 | — | — | 「新建生成任务」跳转 `/app/create` | 纯导航 |
 
@@ -47,7 +47,8 @@
 | 累计支出 | `billing.totalSpent` | `number` | 历史任务消费总额（不含充值） |
 | （副文案） | `billing.monthSpent` | `number` | 自然月内消费额 |
 | 可用余额 | `wallet.balance` | `number` | 可下单余额 |
-| 每秒视频均价 | `pricing.referencePricePerSecond` | `number` | 参考价，用于概览展示；实际扣费以任务提交时快照为准 |
+| 每秒视频均价 | `pricing.available` | `boolean` | 当前是否存在可报价且可执行的创作能力；为 `false` 时 UI 显示不可用 |
+| | `pricing.referencePricePerSecond` | `number` | `available = true` 时的最低有效参考价；实际扣费以任务提交时快照为准 |
 | （副文案） | `pricing.referenceNote` | `string` | 如「768P / 1080P 按秒计」 |
 | 空间资源占用 | `storage.usedGb` | `number` | 已用容量 |
 | | `storage.quotaGb` | `number` | 套餐配额 |
@@ -65,7 +66,7 @@
 | --- | --- | --- |
 | `id` | `string` | 任务 ID，如 `tsk_88921` |
 | `title` | `string` | 作品/任务标题 |
-| `workflow` | `string` | 创作模式展示名，如 `首尾帧生成视频`；历史字段名保留以兼容任务列表 |
+| `mode` | `string` | 创作模式展示名，如 `首尾帧生成视频` |
 | `status` | `TaskStatus` | 见枚举 |
 | `progress` | `integer` | 0–100 |
 | `duration` | `string` | 展示用时长，如 `15 秒` |
@@ -126,6 +127,7 @@ Authorization: Bearer <token>
     "balance": 256.0
   },
   "pricing": {
+    "available": true,
     "referencePricePerSecond": 0.2,
     "referenceNote": "768P / 1080P 按秒计"
   },
@@ -139,7 +141,7 @@ Authorization: Bearer <token>
     "activeTask": {
       "id": "tsk_88921",
       "title": "雨夜街道霓虹漫步",
-      "workflow": "首尾帧生成视频",
+      "mode": "首尾帧生成视频",
       "status": "生成中",
       "progress": 68,
       "duration": "15 秒",
@@ -168,44 +170,26 @@ Authorization: Bearer <token>
 | `tasks.activeTask` | 是 | 无活跃任务时为 `null` |
 | `tasks.recentCompleted` | 否 | 无数据时 `[]` |
 
-### 方案 B：拆分接口（复用领域 API）
-
-| 区块 | 接口 | 备注 |
-| --- | --- | --- |
-| 工作区名称 | `GET /api/v1/client/profile` | 或 JWT claims |
-| 余额 | `GET /api/v1/client/wallet` | 与钱包页共用 |
-| 消费汇总 | `GET /api/v1/client/billing/summary` | `totalSpent`, `monthSpent` |
-| 参考单价 | `GET /api/v1/client/pricing/reference` | 或工作流列表默认项 |
-| 存储 | `GET /api/v1/client/storage/usage` | 与资产页共用 |
-| 活跃任务 | `GET /api/v1/client/tasks?status=active&limit=1` | |
-| 最近完成 | `GET /api/v1/client/tasks?status=completed&limit=2` | |
-
-聚合接口内部可调用上述领域服务组装，对外仍暴露方案 A。
-
 ## 业务规则
 
 1. **余额与预扣：** 进行中任务展示的 `cost` 为提交时已预扣金额；失败或终止后按钱包规则退款（见钱包域）。
-2. **参考单价：** 概览仅展示参考价；实际创作必须先取得服务器 `quoteId`，任务由该一次性报价固化售价、成本和供给快照，与概览解耦。
+2. **参考单价：** 概览仅展示当前可报价、可执行组合的最低参考价；没有可用组合时 `pricing.available = false`，页面不得回退为固定价格。实际创作必须先取得服务器 `quoteId`，任务由该一次性报价固化售价、成本和供给快照，与概览解耦。
 3. **活跃任务数：** 与侧栏「任务」角标、`tasks.activeCount` 一致，均统计 `排队中` + `生成中`。
 4. **存储统计：** `usedGb` / `fileCount` 跨所有未删除作品；删除作品进入回收站后是否计入配额由存储域定义（建议：回收站占用配额直至清空）。
 5. **刷新策略：** 进行中任务建议 WebSocket / SSE 推送 `progress`，或前端轮询（间隔 ≥ 5s）；指标卡可在进入页面时拉取一次，从任务页返回时可 `invalidate`。
 
-## 与当前前端 mock 的对应
+## 当前前端状态映射
 
-| 接口字段 | 当前 store / mock |
+| 接口字段 | 当前前端状态 |
 | --- | --- |
-| `wallet.balance` | `app.balance`（初始 `256.0`） |
-| `storage.usedGb` | `app.storageUsed`（由作品文件数推算） |
-| `storage.quotaGb` | `app.storageQuota`（`5`） |
-| `storage.fileCount` | `app.fileCount` |
-| `tasks.activeCount` | `app.activeTasks.length` |
-| `tasks.activeTask` | `app.activeTasks[0]` |
-| `tasks.recentCompleted` | `app.tasks` 过滤 `已完成` 取前 2 |
-| `billing.totalSpent` | **页面硬编码** `148.00` / `36.00` |
-| `pricing.referencePricePerSecond` | **页面硬编码** `0.20` |
-| `workspace.displayName` | **页面硬编码** |
+| `wallet.balance` | 概览响应写回 `app.balance` 与认证余额 |
+| `storage.*` | 概览响应写回 `app.storageUsed`、`app.storageQuota` |
+| `tasks.*` | 直接使用概览响应；任务页另行分页拉取 |
+| `billing.*` | 后端按钱包流水汇总 |
+| `pricing.*` | 后端当前可执行组合的参考价与可用性 |
+| `workspace.displayName` | 后端工作区名称 |
 
-类型定义参考：`frontend/src/data/mock.ts` → `Task`、`TaskStatus`。
+类型定义参考：`frontend/src/entities/types.ts` → `Task`、`TaskStatus`。
 
 ## 关联导航数据（非本页主体）
 

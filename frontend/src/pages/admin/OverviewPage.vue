@@ -3,13 +3,15 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { RefreshCw, Route, Server, Workflow } from 'lucide-vue-next'
 import {
-  fetchAdminRoutes,
+  fetchAdminCreationModes,
+  fetchAdminModelConfigurations,
+  fetchAdminOfferings,
   fetchAdminSuppliers,
   fetchAdminTasks,
-  fetchAdminWorkflows,
-  type AdminRoute,
+  type AdminCreationMode,
+  type AdminModelConfiguration,
+  type AdminOffering,
   type AdminSupplier,
-  type AdminWorkflow,
 } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
@@ -21,8 +23,9 @@ const router = useRouter()
 const app = useAppStore()
 const loading = ref(false)
 const suppliers = ref<AdminSupplier[]>([])
-const routes = ref<AdminRoute[]>([])
-const workflows = ref<AdminWorkflow[]>([])
+const offerings = ref<AdminOffering[]>([])
+const modes = ref<AdminCreationMode[]>([])
+const modelConfigurations = ref<AdminModelConfiguration[]>([])
 const taskTotal = ref(0)
 const queued = ref(0)
 const running = ref(0)
@@ -37,10 +40,11 @@ function apiErrorMessage(error: unknown, fallback: string) {
 async function load() {
   loading.value = true
   try {
-    const [s, r, w, all, q, run, fail, done] = await Promise.all([
+    const [s, o, m, configurations, all, q, run, fail, done] = await Promise.all([
       fetchAdminSuppliers(),
-      fetchAdminRoutes(),
-      fetchAdminWorkflows(),
+      fetchAdminOfferings(),
+      fetchAdminCreationModes(),
+      fetchAdminModelConfigurations(),
       fetchAdminTasks({ page: 1, pageSize: 1 }),
       fetchAdminTasks({ status: '排队中', page: 1, pageSize: 1 }),
       fetchAdminTasks({ status: '生成中', page: 1, pageSize: 1 }),
@@ -48,8 +52,9 @@ async function load() {
       fetchAdminTasks({ status: '已完成', page: 1, pageSize: 1 }),
     ])
     suppliers.value = s.items
-    routes.value = r.items
-    workflows.value = w.items
+    offerings.value = o.items
+    modes.value = m.items
+    modelConfigurations.value = configurations.items
     taskTotal.value = all.total
     queued.value = q.total
     running.value = run.total
@@ -68,10 +73,10 @@ onMounted(() => { void load() })
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="运行大盘">
-      <template #description>看任务量与供应商供给状态；调度细节在「模型与供应商」。</template>
+      <template #description>看任务量与供应商供给状态；调度细节在「供应商与模型」。</template>
       <template #actions>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
-        <S2VButton size="sm" @click="router.push('/admin/providers')">供应商链路</S2VButton>
+        <S2VButton size="sm" @click="router.push('/admin/supplier-models')">供应商链路</S2VButton>
       </template>
     </S2VPageHeader>
 
@@ -92,16 +97,16 @@ onMounted(() => { void load() })
         <span class="mt-1 block text-[10px] text-s2v-label">共 {{ suppliers.length }} 家接入</span>
       </S2VCard>
       <S2VCard variant="metric">
-        <div class="text-xs font-medium text-s2v-muted">启用路由</div>
-        <strong class="s2v-mono mt-2 block text-2xl font-bold tabular-nums text-s2v-ink">{{ routes.filter((item) => item.enabled).length }}</strong>
-        <span class="mt-1 block text-[10px] text-s2v-label">上架工作流 {{ workflows.filter((item) => item.statusRaw === 'published' || item.status === '已上架').length }}</span>
+        <div class="text-xs font-medium text-s2v-muted">启用供给</div>
+        <strong class="s2v-mono mt-2 block text-2xl font-bold tabular-nums text-s2v-ink">{{ offerings.filter((item) => item.enabled).length }}</strong>
+        <span class="mt-1 block text-[10px] text-s2v-label">上架创作模式 {{ modes.filter((item) => item.status === 'published').length }}</span>
       </S2VCard>
     </div>
 
     <S2VCard variant="padded" class="mt-6">
       <div class="flex items-center justify-between gap-3">
         <h2 class="s2v-section-title">供应商供给链路</h2>
-        <button type="button" class="text-xs font-semibold text-s2v-primary hover:underline" @click="router.push('/admin/providers')">管理供应商 →</button>
+        <button type="button" class="text-xs font-semibold text-s2v-primary hover:underline" @click="router.push('/admin/supplier-models')">管理供应商 →</button>
       </div>
       <div class="mt-3 grid gap-3 sm:grid-cols-3">
         <div v-for="sp in suppliers" :key="sp.id" class="s2v-inset">
@@ -116,10 +121,10 @@ onMounted(() => { void load() })
             <span class="truncate font-mono">{{ sp.code }} · {{ sp.baseUrl || '未配置 URL' }}</span>
           </p>
           <p class="mt-1 text-[10px] text-s2v-label">
-            关联路由 {{ routes.filter((item) => item.supplierCode === sp.code).length }} 条
+            关联供给 {{ offerings.filter((item) => item.supplierId === sp.id).length }} 条
           </p>
         </div>
-        <p v-if="!suppliers.length" class="s2v-inset-dashed sm:col-span-3">暂无供应商，请先在「模型与供应商」接入。</p>
+        <p v-if="!suppliers.length" class="s2v-inset-dashed sm:col-span-3">暂无供应商，请先在「供应商与模型」接入。</p>
       </div>
     </S2VCard>
 
@@ -127,41 +132,41 @@ onMounted(() => { void load() })
       <S2VCard>
         <div class="s2v-panel-header">
           <div>
-            <h2 class="s2v-section-title">路由摘要</h2>
-            <p class="mt-1 text-xs text-s2v-muted">模型 → 供应商上游工作流，按成本选路。</p>
+            <h2 class="s2v-section-title">供给摘要</h2>
+            <p class="mt-1 text-xs text-s2v-muted">供应商供给锁定模型、创作模式和上游工作流。</p>
           </div>
           <Route class="h-4 w-4 text-s2v-primary" />
         </div>
         <div class="divide-y divide-s2v-line/70 px-4">
-          <div v-for="rt in routes.slice(0, 6)" :key="rt.id" class="flex items-center gap-3 py-3">
+          <div v-for="offering in offerings.slice(0, 6)" :key="offering.id" class="flex items-center gap-3 py-3">
             <div class="min-w-0 flex-1">
-              <strong class="block truncate text-xs">{{ rt.name || rt.modelCode }}</strong>
-              <span class="mt-0.5 block truncate font-mono text-[10px] text-s2v-muted">{{ rt.supplierCode }} · {{ rt.workflowId || '无 upstream id' }}</span>
+              <strong class="block truncate text-xs">{{ offering.name || offering.modelName }}</strong>
+              <span class="mt-0.5 block truncate font-mono text-[10px] text-s2v-muted">{{ offering.supplierName }} · {{ offering.upstreamWorkflowId || '无 upstream id' }}</span>
             </div>
-            <span class="shrink-0 font-mono text-[10px] text-s2v-muted">¥{{ rt.costPerSecPeak.toFixed(3) }}/s</span>
-            <S2VBadge :tone="rt.enabled ? 'success' : 'warning'">{{ rt.enabled ? '启用' : '停用' }}</S2VBadge>
+            <span class="shrink-0 font-mono text-[10px] text-s2v-muted">优先级 {{ offering.priority }}</span>
+            <S2VBadge :tone="offering.enabled && offering.healthStatus !== 'unavailable' ? 'success' : 'warning'">{{ offering.enabled ? offering.healthStatus : '停用' }}</S2VBadge>
           </div>
-          <p v-if="!routes.length" class="py-4 text-xs text-s2v-muted">暂无路由。</p>
+          <p v-if="!offerings.length" class="py-4 text-xs text-s2v-muted">暂无供给。</p>
         </div>
       </S2VCard>
 
       <S2VCard>
         <div class="s2v-panel-header">
           <div>
-            <h2 class="s2v-section-title">平台工作流</h2>
-            <p class="mt-1 text-xs text-s2v-muted">客户端可见能力由上架状态控制。</p>
+            <h2 class="s2v-section-title">工作流</h2>
+            <p class="mt-1 text-xs text-s2v-muted">客户端固定工作流可配置展示和启用状态。</p>
           </div>
           <Workflow class="h-4 w-4 text-s2v-primary" />
         </div>
         <div class="divide-y divide-s2v-line/70 px-4">
-          <div v-for="wf in workflows.slice(0, 6)" :key="wf.id" class="flex items-center gap-3 py-3">
+          <div v-for="mode in modes.slice(0, 6)" :key="mode.id" class="flex items-center gap-3 py-3">
             <div class="min-w-0 flex-1">
-              <strong class="block truncate text-xs">{{ wf.name }}</strong>
-              <span class="mt-0.5 block truncate text-[10px] text-s2v-muted">{{ wf.carrier }} · {{ wf.modelCode }}</span>
+              <strong class="block truncate text-xs">{{ mode.name }}</strong>
+              <span class="mt-0.5 block truncate text-[10px] text-s2v-muted">可选模型 {{ modelConfigurations.filter((item) => item.workflowId === mode.id && item.enabled).length }} 个</span>
             </div>
-            <S2VBadge :tone="wf.status === '已上架' || wf.statusRaw === 'published' ? 'success' : 'warning'">{{ wf.status }}</S2VBadge>
+            <S2VBadge :tone="mode.status === 'published' ? 'success' : 'warning'">{{ mode.status === 'published' ? '上架' : '停用' }}</S2VBadge>
           </div>
-          <p v-if="!workflows.length" class="py-4 text-xs text-s2v-muted">暂无工作流。</p>
+          <p v-if="!modes.length" class="py-4 text-xs text-s2v-muted">暂无创作模式。</p>
         </div>
       </S2VCard>
     </div>

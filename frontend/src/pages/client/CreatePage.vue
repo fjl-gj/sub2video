@@ -10,14 +10,14 @@ import CreateStagePlayer from '@/features/create/workbench/CreateStagePlayer.vue
 import CreateWorkbenchToolbar from '@/features/create/workbench/CreateWorkbenchToolbar.vue'
 import { assetPreviewUrl } from '@/shared/lib/asset-preview'
 import {
-	clearCreateDraft,
-	emptySlot,
-	loadCreateDraft,
-	MAX_REF_IMAGES,
+  clearCreateDraft,
+  emptySlot,
+  loadCreateDraft,
+  MAX_REF_IMAGES,
   saveCreateDraft,
   type CreateFrameSlot,
-  type CreateMode,
   type ImageVariant,
+  type WorkflowInputType,
 } from '@/shared/lib/create-draft'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
@@ -41,8 +41,8 @@ const router = useRouter()
 const app = useAppStore()
 const auth = useAuthStore()
 
-const mode = ref<CreateMode>('image')
-const imageVariant = ref<ImageVariant>('keyframes')
+const workflowInputType = ref<WorkflowInputType>('text')
+const imageVariant = computed<ImageVariant>(() => workflowInputType.value === 'multi_image' ? 'multi' : 'keyframes')
 const prompt = ref('')
 const ratio = ref('9:16')
 const durationSec = ref('15')
@@ -51,6 +51,7 @@ const selectedCarrierId = ref('')
 const selectedModelId = ref('')
 const generateAudio = ref(false)
 const catalog = ref<CreationCatalog>({ modes: [], carriers: [], models: [] })
+const catalogLoaded = ref(false)
 const creationOptions = ref<CreationOptions>({
   durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false,
   minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P',
@@ -80,28 +81,30 @@ const assetDialogOpen = computed({
   },
 })
 
-const activeModeCode = computed(() => {
-  if (mode.value === 'text') return 'text_to_video'
-  return imageVariant.value === 'multi' ? 'multi_image_to_video' : 'first_last_frame_to_video'
-})
-const activeModeId = computed(() => catalog.value.modes.find((item) => item.code === activeModeCode.value)?.id || '')
-const modeModels = computed(() => catalog.value.models.filter((item) => item.modes.includes(activeModeCode.value)))
+const workflowOrder: Record<WorkflowInputType, number> = { text: 0, multi_image: 1, first_last: 2 }
+const creationModes = computed(() => catalog.value.modes
+  .filter((item) => item.enabled && item.inputType !== 'unsupported')
+  .sort((left, right) => workflowOrder[left.inputType as WorkflowInputType] - workflowOrder[right.inputType as WorkflowInputType])
+  .map((item) => ({ inputType: item.inputType as WorkflowInputType, name: item.name })))
+const activeModeId = computed(() => catalog.value.modes.find((item) => item.inputType === workflowInputType.value && item.enabled)?.id || '')
+const modeModels = computed(() => catalog.value.models.filter((item) => item.inputTypes.includes(workflowInputType.value)))
 const visibleModels = computed(() => modeModels.value.filter((item) => !selectedCarrierId.value || item.carrierId === selectedCarrierId.value))
 const visibleCarriers = computed(() => catalog.value.carriers.filter((carrier) => modeModels.value.some((model) => model.carrierId === carrier.id)))
 const durationOptions = computed(() => creationOptions.value.durations.map(String))
 const maxReferenceImages = computed(() => creationOptions.value.maxImages || MAX_REF_IMAGES)
 const parsedDuration = computed(() => Number(durationSec.value))
 const durationValid = computed(() => durationOptions.value.includes(durationSec.value))
+const generationUnavailable = computed(() => catalogLoaded.value && (!activeModeId.value || !visibleModels.value.length || !creationOptions.value.durations.length))
 const quotedCost = ref<number | null>(null)
 const cost = computed(() => quotedCost.value ?? 0)
 const recentTasks = ref<Task[]>([])
 
 const canSubmit = computed(() => {
-  return durationValid.value && prompt.value.trim().length > 0 && (mode.value === 'text' || hasRequiredImageInput.value)
+  return !generationUnavailable.value && durationValid.value && prompt.value.trim().length > 0 && (workflowInputType.value === 'text' || hasRequiredImageInput.value)
 })
 
 const hasRequiredImageInput = computed(() => {
-  if (mode.value !== 'image') return false
+  if (workflowInputType.value === 'text') return false
   if (imageVariant.value === 'keyframes') return frameReady(firstFrame.value) && frameReady(lastFrame.value)
   return multiFrames.value.filter((slot) => frameReady(slot)).length >= Math.max(creationOptions.value.minImages, 1)
 })
@@ -228,9 +231,8 @@ function taskStamp() {
 
 function buildTaskTitle() {
   const seq = recentTasks.value.length + 1
-  if (mode.value === 'text') return `文生 ${taskStamp()} #${seq}`
-  const variant = imageVariant.value === 'keyframes' ? '首尾帧' : '多图'
-  return `${variant} ${taskStamp()} #${seq}`
+  const titles: Record<WorkflowInputType, string> = { text: '文生', first_last: '首尾帧', multi_image: '多图' }
+  return `${titles[workflowInputType.value]} ${taskStamp()} #${seq}`
 }
 
 async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: string }> {
@@ -246,7 +248,7 @@ async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: st
 }
 
 async function resolveSourcePayload(): Promise<Record<string, unknown> | undefined> {
-  if (mode.value === 'text') return undefined
+  if (workflowInputType.value === 'text') return undefined
 
   if (imageVariant.value === 'keyframes') {
     if (!frameReady(firstFrame.value) || !frameReady(lastFrame.value)) throw new Error('请先上传或选择首帧和尾帧图片')
@@ -276,7 +278,8 @@ function apiErrorMessage(error: unknown, fallback: string) {
 async function submit() {
   if (!canSubmit.value) {
     if (!prompt.value.trim()) app.notify('请先填写画面描述')
-    else app.notify(imageVariant.value === 'keyframes' ? '请先上传或选择首帧和尾帧图片' : '请至少选择一张参考图')
+    else if (workflowInputType.value === 'first_last') app.notify('请先上传或选择首帧和尾帧图片')
+    else app.notify('请至少选择一张参考图')
     return
   }
   if (loading.value) return
@@ -314,7 +317,10 @@ async function submit() {
 }
 
 async function loadCreationOptions() {
-  if (!activeModeId.value) return
+  if (!activeModeId.value) {
+    creationOptions.value = { durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false, minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P' }
+    return
+  }
   try {
     const next = await fetchCreationOptions(activeModeId.value, selectedModelId.value || undefined)
     creationOptions.value = next
@@ -328,11 +334,18 @@ async function loadCreationOptions() {
 }
 
 async function loadCreationCatalog() {
+  catalogLoaded.value = false
   try {
     catalog.value = await fetchCreationCatalog()
+    if (!creationModes.value.some((item) => item.inputType === workflowInputType.value)) {
+      const fallback = creationModes.value[0]
+      if (fallback) workflowInputType.value = fallback.inputType
+    }
     await loadCreationOptions()
   } catch (error) {
     app.notify(apiErrorMessage(error, '加载创作目录失败'))
+  } finally {
+    catalogLoaded.value = true
   }
 }
 
@@ -348,8 +361,7 @@ function applyDraftFromStorage() {
   const plazaPrompt = app.draftPrompt.trim()
   const saved = loadCreateDraft()
   if (saved) {
-    mode.value = saved.mode
-    imageVariant.value = saved.imageVariant
+    workflowInputType.value = saved.workflowInputType
     ratio.value = saved.ratio
     durationSec.value = saved.durationSec
     resolution.value = saved.resolution
@@ -373,8 +385,7 @@ function scheduleDraftSave() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveCreateDraft({
-      mode: mode.value,
-      imageVariant: imageVariant.value,
+      workflowInputType: workflowInputType.value,
       prompt: prompt.value,
       ratio: ratio.value,
       durationSec: durationSec.value,
@@ -392,6 +403,7 @@ async function loadRecentTasks() {
     const result = await listTasks({ page: 1, pageSize: 3 })
     recentTasks.value = result.items.map((task) => ({
       ...task,
+      workflow: task.mode,
       status: task.status as Task['status'],
       thumb: task.thumbUrl,
     }))
@@ -402,7 +414,7 @@ async function loadRecentTasks() {
 
 onMounted(() => {
   applyDraftFromStorage()
-  if (mode.value === 'text') syncTextStage()
+  if (workflowInputType.value === 'text') syncTextStage()
   draftReady.value = true
   void loadRecentTasks()
 	void loadCreationCatalog()
@@ -416,7 +428,7 @@ onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
 })
 
-watch([mode, imageVariant, prompt, ratio, durationSec, resolution, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
+watch([workflowInputType, prompt, ratio, durationSec, resolution, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
 
 watch([activeModeId, selectedModelId], () => {
   quotedCost.value = null
@@ -431,17 +443,14 @@ watch([resolution, durationSec], () => {
   if (stageTitle.value === '等待装填素材') stageSubtitle.value = `${resolution.value} · 24fps`
 })
 
-watch(imageVariant, () => {
+watch(workflowInputType, (next) => {
   activeSlotKey.value = null
-})
-
-watch(mode, (next) => {
   if (next === 'text') syncTextStage()
   else resetStageIdle()
 })
 
 watch(prompt, () => {
-  if (mode.value !== 'text') return
+  if (workflowInputType.value !== 'text') return
   stageTitle.value = prompt.value.trim() ? '文生描述已就绪' : '等待输入描述'
 })
 </script>
@@ -456,10 +465,9 @@ watch(prompt, () => {
 
     <div class="s2v-wb-card">
       <CreateWorkbenchToolbar
-        :mode="mode"
-        :image-variant="imageVariant"
-        @update:mode="mode = $event"
-        @update:image-variant="imageVariant = $event"
+        :workflow-input-type="workflowInputType"
+        :modes="creationModes"
+        @update:workflow-input-type="workflowInputType = $event"
       />
 
       <div class="s2v-wb-body">
@@ -483,7 +491,7 @@ watch(prompt, () => {
 
         <div class="s2v-wb-panel-col">
           <CreateSlotsTrack
-            v-if="mode === 'image'"
+            v-if="workflowInputType !== 'text'"
             :variant="imageVariant"
             :first-frame="firstFrame"
             :last-frame="lastFrame"
@@ -520,6 +528,7 @@ watch(prompt, () => {
             :cost="cost"
             :loading="loading"
             :disabled="!canSubmit"
+            :unavailable="generationUnavailable"
             @submit="submit"
           />
         </div>

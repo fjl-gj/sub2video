@@ -15,7 +15,7 @@ import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 type OverviewTask = {
   id: string
   title: string
-  workflow: string
+  mode: string
   status: string
   progress: number
   duration: string
@@ -28,7 +28,7 @@ type OverviewData = {
   workspace: { displayName: string }
   billing: { totalSpent: number; monthSpent: number }
   wallet: { balance: number }
-  pricing: { referencePricePerSecond: number; referenceNote: string }
+  pricing: { available: boolean; referencePricePerSecond: number; referenceNote: string }
   storage: { usedGb: number; quotaGb: number; fileCount: number }
   tasks: {
     activeCount: number
@@ -59,7 +59,7 @@ const activeTask = computed<Task | null>(() => {
   return {
     id: raw.id,
     title: raw.title,
-    workflow: raw.workflow,
+    workflow: raw.mode,
     status: raw.status as TaskStatus,
     progress: raw.progress,
     duration: raw.duration,
@@ -99,9 +99,9 @@ const metrics = computed(() => {
     },
     {
       label: '每秒视频均价',
-      value: `¥ ${(d?.pricing.referencePricePerSecond ?? 0.5).toFixed(2)}`,
-      unit: '/s',
-      note: d?.pricing.referenceNote || '768P / 1080P 按秒计',
+      value: d?.pricing.available ? `¥ ${d.pricing.referencePricePerSecond.toFixed(2)}` : '—',
+      unit: d?.pricing.available ? '/s' : undefined,
+      note: d?.pricing.referenceNote || '当前无可用生成能力',
     },
     {
       label: '空间资源占用',

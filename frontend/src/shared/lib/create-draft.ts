@@ -1,7 +1,5 @@
-import type { CreateResolution } from '@/shared/lib/create-cost'
-
-export type CreateMode = 'image' | 'text'
 export type ImageVariant = 'keyframes' | 'multi'
+export type WorkflowInputType = 'text' | 'first_last' | 'multi_image'
 
 export const MAX_REF_IMAGES = 9
 export const MAX_KEYFRAME_EXTRAS = 6
@@ -18,13 +16,12 @@ export interface CreateFrameSlot {
 }
 
 export interface CreateDraft {
-  version: 2
-  mode: CreateMode
-  imageVariant: ImageVariant
+  version: 3
+  workflowInputType: WorkflowInputType
   prompt: string
   ratio: string
   durationSec: string
-  resolution: CreateResolution
+  resolution: string
   firstFrame: CreateFrameSlot
   lastFrame: CreateFrameSlot
   extraFrames: CreateFrameSlot[]
@@ -39,9 +36,8 @@ export function emptySlot(): CreateFrameSlot {
 
 export function emptyCreateDraft(): CreateDraft {
   return {
-    version: 2,
-    mode: 'image',
-    imageVariant: 'keyframes',
+    version: 3,
+    workflowInputType: 'first_last',
     prompt: '',
     ratio: '9:16',
     durationSec: '15',
@@ -67,16 +63,12 @@ function sanitizeSlot(slot: CreateFrameSlot): CreateFrameSlot {
   }
 }
 
-function isCreateMode(value: unknown): value is CreateMode {
-  return value === 'image' || value === 'text'
+function isWorkflowInputType(value: unknown): value is WorkflowInputType {
+  return value === 'text' || value === 'first_last' || value === 'multi_image'
 }
 
-function isImageVariant(value: unknown): value is ImageVariant {
-  return value === 'keyframes' || value === 'multi'
-}
-
-function parseResolution(value: unknown): CreateResolution {
-  if (value === '720P' || value === '768P' || value === '1080P') return value
+function parseResolution(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) return value
   return '768P'
 }
 
@@ -101,26 +93,30 @@ function parseSlots(value: unknown, max: number, fallback: CreateFrameSlot[] = [
 }
 
 type LegacyCreateDraft = Partial<Omit<CreateDraft, 'version'>> & {
-  version?: 1 | 2
-  mode?: CreateMode | 'video'
+  version?: 1 | 2 | 3
+  mode?: 'image' | 'text' | 'video'
+  imageVariant?: ImageVariant
   referenceVideoUploaded?: boolean
 }
 
-function normalizeMode(value: unknown): CreateMode | null {
-  if (value === 'video') return 'image'
-  return isCreateMode(value) ? value : null
+function normalizeWorkflowInputType(parsed: LegacyCreateDraft): WorkflowInputType | null {
+  if (isWorkflowInputType(parsed.workflowInputType)) return parsed.workflowInputType
+  if (parsed.mode === 'text') return 'text'
+  if (parsed.mode === 'image' || parsed.mode === 'video') {
+    return parsed.imageVariant === 'multi' ? 'multi_image' : 'first_last'
+  }
+  return null
 }
 
 function migrateDraft(parsed: LegacyCreateDraft): CreateDraft | null {
-  const mode = normalizeMode(parsed.mode)
-  if (!mode || !isImageVariant(parsed.imageVariant)) return null
+  const workflowInputType = normalizeWorkflowInputType(parsed)
+  if (!workflowInputType) return null
 
   const legacyMulti = Array.isArray(parsed.multiFrames) ? parsed.multiFrames : []
 
   return {
-    version: 2,
-    mode,
-    imageVariant: parsed.imageVariant,
+    version: 3,
+    workflowInputType,
     prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
     ratio: typeof parsed.ratio === 'string' ? parsed.ratio : '9:16',
     durationSec: typeof parsed.durationSec === 'string' ? parsed.durationSec : '15',
@@ -128,7 +124,7 @@ function migrateDraft(parsed: LegacyCreateDraft): CreateDraft | null {
     firstFrame: parseSlot(parsed.firstFrame),
     lastFrame: parseSlot(parsed.lastFrame),
     extraFrames: parseSlots(parsed.extraFrames, MAX_REF_IMAGES),
-    multiFrames: parsed.version === 2
+    multiFrames: parsed.version === 2 || parsed.version === 3
       ? parseSlots(parsed.multiFrames, MAX_REF_IMAGES, [emptySlot()])
       : parseSlots(legacyMulti, MAX_REF_IMAGES, [emptySlot()]),
   }
@@ -140,10 +136,10 @@ export function loadCreateDraft(): CreateDraft | null {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as LegacyCreateDraft
-    if (parsed.version !== 1 && parsed.version !== 2) return null
+    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) return null
     const draft = migrateDraft(parsed)
     if (!draft) return null
-    if (draft.imageVariant === 'multi' && !draft.multiFrames.length) draft.multiFrames = [emptySlot()]
+    if (draft.workflowInputType === 'multi_image' && !draft.multiFrames.length) draft.multiFrames = [emptySlot()]
     return draft
   }
   catch {
@@ -154,9 +150,8 @@ export function loadCreateDraft(): CreateDraft | null {
 export function saveCreateDraft(draft: Omit<CreateDraft, 'version'>) {
   if (typeof window === 'undefined') return
   const payload: CreateDraft = {
-    version: 2,
-    mode: draft.mode,
-    imageVariant: draft.imageVariant,
+    version: 3,
+    workflowInputType: draft.workflowInputType,
     prompt: draft.prompt,
     ratio: draft.ratio,
     durationSec: draft.durationSec,

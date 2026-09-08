@@ -2,7 +2,7 @@
 import { Ban, BookmarkPlus, Download, ExternalLink, MoreHorizontal, Plus, RefreshCw } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { cancelTask as cancelTaskApi, listTasks } from '@/api/client'
+import { cancelTask as cancelTaskApi, fetchTask, listTasks } from '@/api/client'
 import MobileRecordCard from '@/features/lists/MobileRecordCard.vue'
 import type { Task, TaskStatus } from '@/entities/types'
 import { PAGE_SIZE } from '@/shared/lib/paginate'
@@ -42,7 +42,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 function mapTask(raw: {
   id: string
   title: string
-  workflow: string
+  mode: string
   status: string
   progress: number
   duration: string
@@ -55,7 +55,7 @@ function mapTask(raw: {
   return {
     id: raw.id,
     title: raw.title,
-    workflow: raw.workflow,
+    workflow: raw.mode,
     status: raw.status as TaskStatus,
     progress: raw.progress,
     duration: raw.duration,
@@ -106,6 +106,23 @@ async function loadTasks() {
 function reconfigureCreation() {
   app.notify('请重新配置并获取新报价后再提交')
   router.push('/app/create')
+}
+
+function openDetail(task: WorksTask) {
+  void router.push(`/app/works/${task.id}`)
+}
+
+async function downloadResult(task: WorksTask) {
+  try {
+    const detail = await fetchTask(task.id)
+    if (!detail.downloadUrl) {
+      app.notify('成片正在完成对象存储交付，暂不可下载')
+      return
+    }
+    window.open(detail.downloadUrl, '_blank', 'noopener,noreferrer')
+  } catch (error) {
+    app.notify(apiErrorMessage(error, '获取下载地址失败'))
+  }
 }
 
 async function saveToProject(task: WorksTask) {
@@ -224,10 +241,10 @@ onBeforeUnmount(() => {
                 <S2VIconButton v-if="task.status === '失败'" label="重新配置创作" @click="reconfigureCreation"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
                 <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
                 <template v-else>
-                  <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+                  <S2VIconButton label="下载结果" @click="downloadResult(task)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
                   <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="saveToProject(task)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
                 </template>
-                <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
+                <S2VIconButton label="查看详情" @click="openDetail(task)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
               </div>
             </td>
           </tr>
@@ -247,10 +264,10 @@ onBeforeUnmount(() => {
           <S2VIconButton v-if="task.status === '失败'" label="重新配置创作" @click="reconfigureCreation"><RefreshCw class="h-3.5 w-3.5" /></S2VIconButton>
           <S2VIconButton v-else-if="task.status === '生成中' || task.status === '排队中'" label="终止任务并退款" @click="askRefund(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
           <template v-else>
-            <S2VIconButton label="下载结果" @click="app.notify(`已模拟下载 ${task.title}.mp4`)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
+            <S2VIconButton label="下载结果" @click="downloadResult(task)"><Download class="h-3.5 w-3.5" /></S2VIconButton>
             <S2VIconButton :label="task.savedToProject || app.isWorkSaved(task.id) ? '已保存到作品' : '保存到当前作品'" @click="saveToProject(task)"><BookmarkPlus class="h-3.5 w-3.5" /></S2VIconButton>
           </template>
-          <S2VIconButton label="查看详情" @click="app.notify(`${task.id} · ${task.workflow} · ${task.resolution}`)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
+          <S2VIconButton label="查看详情" @click="openDetail(task)"><ExternalLink class="h-3.5 w-3.5" /></S2VIconButton>
         </template>
       </MobileRecordCard>
     </div>

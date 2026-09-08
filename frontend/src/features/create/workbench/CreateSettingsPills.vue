@@ -44,7 +44,7 @@ const emit = defineEmits<{
     <div class="s2v-wb-settings-row">
       <label class="s2v-wb-setting-pill">
         <Layers class="h-3.5 w-3.5 text-s2v-muted" />
-        <select :value="carrierId" @change="emit('update:carrierId', ($event.target as HTMLSelectElement).value)">
+        <select aria-label="承运商" :value="carrierId" @change="emit('update:carrierId', ($event.target as HTMLSelectElement).value)">
           <option value="">智能推荐</option>
           <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">{{ carrier.name }}</option>
         </select>
@@ -52,7 +52,7 @@ const emit = defineEmits<{
 
       <label class="s2v-wb-setting-pill">
         <Layers class="h-3.5 w-3.5 text-s2v-muted" />
-        <select :value="modelId" @change="emit('update:modelId', ($event.target as HTMLSelectElement).value)">
+        <select aria-label="模型" :value="modelId" @change="emit('update:modelId', ($event.target as HTMLSelectElement).value)">
           <option value="">智能推荐</option>
           <option v-for="model in models" :key="model.id" :value="model.id">{{ model.name }}</option>
         </select>
@@ -60,21 +60,21 @@ const emit = defineEmits<{
 
       <label class="s2v-wb-setting-pill">
         <Ratio class="h-3.5 w-3.5 text-s2v-muted" />
-        <select :value="ratio" @change="emit('update:ratio', ($event.target as HTMLSelectElement).value)">
+        <select aria-label="画幅比例" :value="ratio" @change="emit('update:ratio', ($event.target as HTMLSelectElement).value)">
           <option v-for="item in aspectRatioOptions" :key="item" :value="item">{{ item }}</option>
         </select>
       </label>
 
       <label class="s2v-wb-setting-pill">
         <Clock class="h-3.5 w-3.5 text-s2v-muted" />
-        <select :value="durationSec" @change="emit('update:durationSec', ($event.target as HTMLSelectElement).value)">
+        <select aria-label="视频时长" :value="durationSec" @change="emit('update:durationSec', ($event.target as HTMLSelectElement).value)">
           <option v-for="sec in durationOptions" :key="sec" :value="sec">{{ sec }} 秒</option>
         </select>
       </label>
 
       <label class="s2v-wb-setting-pill">
         <Layers class="h-3.5 w-3.5 text-s2v-muted" />
-        <select :value="resolution" @change="emit('update:resolution', ($event.target as HTMLSelectElement).value)">
+        <select aria-label="输出分辨率" :value="resolution" @change="emit('update:resolution', ($event.target as HTMLSelectElement).value)">
           <option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</option>
         </select>
       </label>

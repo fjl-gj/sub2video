@@ -10,27 +10,6 @@ export type AdminSupplier = {
   status: string
 }
 
-export type AdminRoute = {
-  id: string
-  supplierId?: string
-  supplierCode: string
-  supplierName: string
-  modelId?: string
-  modelCode: string
-  clientWorkflowId: string
-  workflowId: string
-  name: string
-  enabled: boolean
-  costPerSecPeak: number
-  costPerSecOffpeak: number
-  conditions: {
-    max_duration?: number
-    resolutions?: string[]
-    require_source?: string[]
-  }
-  priority: number
-}
-
 export type AdminSettings = {
   smtpHost: string
   smtpPort: string
@@ -89,49 +68,12 @@ export async function updateAdminSupplier(id: string, payload: {
   return data as AdminSupplier
 }
 
-export async function fetchAdminRoutes() {
-  const { data } = await http.get('/admin/routes')
-  return data as { items: AdminRoute[] }
-}
-
-export async function createAdminRoute(payload: {
-  supplierId: string
-  modelId: string
-  workflowId: string
-  clientWorkflowId?: string
-  name?: string
-  enabled?: boolean
-  costPerSecPeak?: number
-  costPerSecOffpeak?: number
-  conditions?: {
-    max_duration?: number
-    resolutions?: string[]
-    require_source?: string[]
-    aspect_ratios?: string[]
-  }
-}) {
-  const { data } = await http.post('/admin/routes', payload)
-  return data as AdminRoute
-}
-
-export async function updateAdminRoute(id: string, payload: {
-  enabled?: boolean
-  costPerSecPeak?: number
-  costPerSecOffpeak?: number
-  workflowId?: string
-  name?: string
-}) {
-  const { data } = await http.patch(`/admin/routes/${id}`, payload)
-  return data as AdminRoute
-}
-
 export type AdminModel = {
   id: string
   carrierId: string
   code: string
   name: string
   description?: string
-  clientWorkflowId: string
   enabled: boolean
   carrierCode?: string
 }
@@ -177,7 +119,6 @@ export async function createAdminModel(payload: {
   code: string
   name: string
   description?: string
-  clientWorkflowId?: string
 }) {
   const { data } = await http.post('/admin/models', payload)
   return data as AdminModel
@@ -213,38 +154,11 @@ export async function testAdminSMTP() {
   return data
 }
 
-export type AdminWorkflow = {
-  id: string
-  code: string
-  name: string
-  description: string
-  status: string
-  statusRaw: string
-  badge?: string
-  modelId?: string
-  modelCode: string
-  carrier: string
-  price: string
-}
-
-export type AdminPricingRule = {
-  id: string
-  name: string
-  workflowCode: string
-  resolution: string
-  cost: string
-  price: string
-  pricePerSec: number
-  duration: string
-  status: string
-  version: string
-}
-
 export type AdminTaskItem = {
   id: string
   title: string
-  workflow: string
-  workflowId: string
+  mode: string
+  modeId: string
   status: string
   progress: number
   resolution: string
@@ -259,44 +173,6 @@ export type AdminTaskItem = {
   time: string
 }
 
-export async function fetchAdminWorkflows() {
-  const { data } = await http.get('/admin/workflows')
-  return data as { items: AdminWorkflow[] }
-}
-
-export async function createAdminWorkflow(payload: {
-  code: string
-  name: string
-  description?: string
-  modelId: string
-  status?: string
-  badge?: string
-}) {
-  const { data } = await http.post('/admin/workflows', payload)
-  return data as { id: string; code: string; name: string; status: string; modelCode: string }
-}
-
-export async function updateAdminWorkflow(id: string, payload: {
-  status?: string
-  name?: string
-  description?: string
-  modelId?: string
-  badge?: string
-}) {
-  const { data } = await http.patch(`/admin/workflows/${id}`, payload)
-  return data as { id: string; code: string; status: string; name?: string; description?: string; modelCode?: string }
-}
-
-export async function fetchAdminPricing() {
-  const { data } = await http.get('/admin/pricing')
-  return data as { items: AdminPricingRule[] }
-}
-
-export async function updateAdminPricing(id: string, payload: { pricePerSec: number }) {
-  const { data } = await http.patch(`/admin/pricing/${id}`, payload)
-  return data as { id: string; pricePerSec: number; version: string }
-}
-
 export type AdminCreationMode = {
   id: string
   code: string
@@ -304,16 +180,6 @@ export type AdminCreationMode = {
   description: string
   status: 'published' | 'disabled'
   sortOrder: number
-  policies: Array<{
-    modelId: string
-    modelName: string
-    carrierName: string
-    enabled: boolean
-    recommendationRank: number
-    displayBadge: string
-    defaultDuration: number
-    defaultResolution: string
-  }>
 }
 
 export type AdminOffering = {
@@ -367,6 +233,21 @@ export type AdminRetailPricing = {
   status: string
 }
 
+export type AdminModelConfiguration = {
+  modelId: string
+  modelCode: string
+  modelName: string
+  carrierId: string
+  carrierName: string
+  workflowId: string
+  workflowName: string
+  enabled: boolean
+  recommendationRank: number
+  displayBadge: string
+  defaultDuration: number
+  defaultResolution: string
+}
+
 export async function fetchAdminCreationModes() {
   const { data } = await http.get('/admin/creation-modes')
   return data as { items: AdminCreationMode[] }
@@ -377,8 +258,13 @@ export async function updateAdminCreationMode(id: string, payload: Partial<Pick<
   return data as AdminCreationMode
 }
 
-export async function upsertAdminModePolicy(modeId: string, payload: AdminCreationMode['policies'][number]) {
-  const { data } = await http.put(`/admin/creation-modes/${modeId}/policies`, payload)
+export async function fetchAdminModelConfigurations() {
+  const { data } = await http.get('/admin/model-configurations')
+  return data as { items: AdminModelConfiguration[] }
+}
+
+export async function upsertAdminModelConfiguration(payload: Pick<AdminModelConfiguration, 'modelId' | 'workflowId' | 'enabled' | 'recommendationRank' | 'displayBadge' | 'defaultDuration' | 'defaultResolution'>) {
+  const { data } = await http.put('/admin/model-configurations', payload)
   return data as { ok: boolean }
 }
 
@@ -445,11 +331,6 @@ export async function cancelAdminTask(id: string) {
   return data as { task: { id: string; status: string }; refund: number }
 }
 
-export async function retryAdminTask(id: string) {
-  const { data } = await http.post(`/admin/tasks/${id}/retry`)
-  return data as { task: { id: string; status: string } }
-}
-
 export type AdminTicketItem = {
   id: string
   title: string
@@ -469,4 +350,20 @@ export async function fetchAdminTickets(params?: { page?: number; pageSize?: num
 export async function updateAdminTicket(id: string, payload: { status: string }) {
   const { data } = await http.patch(`/admin/tickets/${id}`, payload)
   return data as { id: string; status: string }
+}
+
+export type AdminAuditLog = {
+  id: string
+  time: string
+  operator: string
+  operatorEmail: string
+  action: string
+  targetType: string
+  target: string
+  details: Record<string, unknown>
+}
+
+export async function fetchAdminAuditLogs(limit = 100) {
+  const { data } = await http.get('/admin/audit-logs', { params: { limit } })
+  return data as { items: AdminAuditLog[] }
 }

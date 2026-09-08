@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Sparkles } from 'lucide-vue-next'
+import S2VBadge from '@/shared/ui/S2VBadge.vue'
 
 defineProps<{
   cost: number
   loading: boolean
   disabled: boolean
+  unavailable?: boolean
 }>()
 
 const prompt = defineModel<string>('prompt', { required: true })
@@ -28,6 +30,7 @@ const emit = defineEmits<{ submit: [] }>()
     <div class="s2v-wb-cost-row">
       <span class="s2v-wb-cost-label">预计费用</span>
       <strong class="s2v-wb-cost-value s2v-mono">¥ {{ cost.toFixed(2) }}</strong>
+      <S2VBadge v-if="unavailable" tone="warning">当前没有可用生成能力，暂不可提交</S2VBadge>
     </div>
     <button
       type="button"

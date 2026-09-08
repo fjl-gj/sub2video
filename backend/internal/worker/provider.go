@@ -44,12 +44,6 @@ func (r *Runner) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	routes, err := r.Store.ListRoutes(ctx)
-	if err != nil {
-		return err
-	}
-
-	needSimulate := false
 	for i := range tasks {
 		t := &tasks[i]
 		if t.UpstreamTaskID != "" {
@@ -58,22 +52,21 @@ func (r *Runner) Tick(ctx context.Context) error {
 			}
 			continue
 		}
-		handled, err := r.dispatch(ctx, t, routes)
+		claimed, err := r.Store.ClaimTaskForDispatch(ctx, t.ID)
 		if err != nil {
-			log.Printf("dispatch %s: %v", t.PublicID, err)
-			_ = r.Store.FailTaskUpstream(ctx, t.ID, err.Error())
+			log.Printf("claim dispatch %s: %v", t.PublicID, err)
 			continue
 		}
-		if !handled {
-			needSimulate = true
+		if !claimed {
+			continue
+		}
+		if err := r.dispatchLockedOffering(ctx, t); err != nil {
+			log.Printf("dispatch %s: %v", t.PublicID, err)
+			_ = r.Store.FailTaskUpstream(ctx, t.ID, err.Error())
 		}
 	}
-	if needSimulate || len(tasks) == 0 {
-		if err := r.Store.AdvanceSimulatedTasks(ctx); err != nil {
-			return err
-		}
-	} else {
-		_ = r.Store.AdvanceSimulatedTasks(ctx)
+	if err := r.Store.AdvanceSimulatedTasks(ctx); err != nil {
+		return err
 	}
 	return nil
 }
@@ -82,85 +75,16 @@ func (r *Runner) objectStore(ctx context.Context) blob.Store {
 	return r.Store.LoadObjectStore(ctx, r.Cfg)
 }
 
-func (r *Runner) dispatch(ctx context.Context, t *store.ProviderTask, routes []store.SupplierRoute) (bool, error) {
-	if t.QuotePublicID != "" {
-		return r.dispatchLockedOffering(ctx, t)
-	}
-	selected, cost := routing.SelectLowestCost(routes, routing.Request{
-		ClientWorkflowID: t.ClientWorkflow,
-		SourceType:       t.SourceType,
-		DurationSec:      t.DurationSec,
-		Resolution:       t.Resolution,
-		AspectRatio:      t.AspectRatio,
-		Now:              time.Now(),
-	})
-	if selected == nil {
-		return false, nil
-	}
-
-	token, err := r.Store.ResolveSupplierToken(ctx, r.Cfg.SecretKey, selected.SupplierCode, r.Cfg.AutoDLToken)
-	if err != nil || token == "" {
-		return false, nil
-	}
-
-	baseURL := selected.SupplierBaseURL
-	if baseURL == "" {
-		baseURL = r.Cfg.AutoDLBaseURL
-	}
-	client := autodl.New(baseURL, token, selected.SupplierAuthHeader)
-
-	body := map[string]any{
-		"prompt":     t.Prompt,
-		"duration":   t.DurationSec,
-		"resolution": routing.MapResolutionToUpstream(t.Resolution, t.AspectRatio),
-	}
-
-	if !isTextCreation(t.ClientWorkflow) {
-		storeClient := r.objectStore(ctx)
-		if !storeClient.Configured() {
-			log.Printf("skip image workflow %s: object storage not configured", t.PublicID)
-			return false, nil
-		}
-		_ = storeClient.EnsureBucket(ctx)
-		if err := r.attachImageURLs(ctx, storeClient, t, body); err != nil {
-			return true, err
-		}
-	}
-
-	_ = r.Store.AttachTaskRoute(ctx, t.ID, store.RouteAttach{
-		CarrierCode:        "minimax",
-		ModelCode:          selected.ModelCode,
-		SupplierCode:       selected.SupplierCode,
-		SupplierRouteID:    selected.ID,
-		UpstreamWorkflowID: selected.WorkflowID,
-		Snapshot: map[string]any{
-			"routeId": selected.ID, "workflowId": selected.WorkflowID, "costPerSec": cost,
-			"name": selected.Name, "resolution": body["resolution"],
-		},
-	})
-	_, _ = r.Store.Pool.Exec(ctx, `UPDATE generation_tasks SET cost_per_sec=$1 WHERE id=$2`, cost, t.ID)
-
-	res, err := client.Submit(ctx, selected.WorkflowID, body)
-	if err != nil {
-		return true, err
-	}
-	if err := r.Store.MarkTaskSubmitted(ctx, t.ID, res.TaskID, res.Status); err != nil {
-		return true, err
-	}
-	log.Printf("submitted %s -> autodl %s via %s", t.PublicID, res.TaskID, selected.WorkflowID)
-	return true, nil
-}
-
-func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTask) (bool, error) {
+func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTask) error {
 	if t.SupplierRouteID == "" || t.UpstreamWorkflowID == "" {
-		return true, fmt.Errorf("任务缺少锁定供给")
+		return fmt.Errorf("任务缺少锁定供给")
 	}
 	if t.AdapterCode != "autodl_h3_v1" {
-		return true, fmt.Errorf("不支持的锁定供给适配器: %s", t.AdapterCode)
+		return fmt.Errorf("不支持的锁定供给适配器: %s", t.AdapterCode)
 	}
 	token, err := r.Store.ResolveSupplierToken(ctx, r.Cfg.SecretKey, t.SupplierCode, r.Cfg.AutoDLToken)
 	if err != nil || token == "" {
-		return false, nil
+		return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, "锁定供应商凭据尚未配置")
 	}
 	baseURL := r.Cfg.AutoDLBaseURL
 	authHeader := "Authorization"
@@ -187,23 +111,27 @@ func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTa
 	if !isTextCreation(t.ClientWorkflow) {
 		storeClient := r.objectStore(ctx)
 		if !storeClient.Configured() {
-			log.Printf("skip image workflow %s: object storage not configured", t.PublicID)
-			return false, nil
+			return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, "对象存储尚未配置，无法提交图片素材")
 		}
-		_ = storeClient.EnsureBucket(ctx)
+		if err := storeClient.EnsureBucket(ctx); err != nil {
+			return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err))
+		}
 		if err := r.attachImageURLs(ctx, storeClient, t, body); err != nil {
-			return true, err
+			if !strings.Contains(err.Error(), "素材") && !strings.Contains(err.Error(), "首尾帧") && !strings.Contains(err.Error(), "多图") {
+				return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err))
+			}
+			return err
 		}
 	}
 	res, err := client.Submit(ctx, t.UpstreamWorkflowID, body)
 	if err != nil {
-		return true, err
+		return err
 	}
 	if err := r.Store.MarkTaskSubmitted(ctx, t.ID, res.TaskID, res.Status); err != nil {
-		return true, err
+		return err
 	}
 	log.Printf("submitted %s via locked offering %s", t.PublicID, t.SupplierRouteID)
-	return true, nil
+	return nil
 }
 
 func isTextCreation(code string) bool {
@@ -312,9 +240,12 @@ func extOf(path, mime string) string {
 }
 
 func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
+	if t.UpstreamStatus == "WAITING_STORAGE" && t.ResultURL != "" {
+		return r.persistResult(ctx, t, t.ResultURL, 0)
+	}
 	token, err := r.Store.ResolveSupplierToken(ctx, r.Cfg.SecretKey, t.SupplierCode, r.Cfg.AutoDLToken)
 	if err != nil || token == "" {
-		return nil
+		return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, "锁定供应商凭据尚未配置")
 	}
 	baseURL := r.Cfg.AutoDLBaseURL
 	authHeader := "Authorization"
@@ -334,29 +265,14 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 	status := strings.ToUpper(res.Status)
 	switch status {
 	case "SUCCESS", "COMPLETED", "DONE":
-		url := ""
+		url := t.ResultURL
 		for _, item := range res.Results {
 			if item.URL != "" {
 				url = item.URL
 				break
 			}
 		}
-		ossURL := ""
-		storeClient := r.objectStore(ctx)
-		if storeClient.Configured() && url != "" {
-			_ = storeClient.EnsureBucket(ctx)
-			key := fmt.Sprintf("results/%s/%s.mp4", time.Now().UTC().Format("20060102"), t.PublicID)
-			pulled, err := storeClient.PullURL(ctx, url, key, "video/mp4")
-			if err != nil {
-				log.Printf("object store pull %s: %v (keep ephemeral url)", t.PublicID, err)
-			} else {
-				ossURL = pulled
-				log.Printf("task %s pulled to %s %s", t.PublicID, storeClient.Provider(), ossURL)
-			}
-		} else {
-			log.Printf("task %s success; object storage not configured, keep ephemeral url", t.PublicID)
-		}
-		return r.Store.CompleteTaskUpstream(ctx, t.ID, url, ossURL, res.Duration)
+		return r.persistResult(ctx, t, url, res.Duration)
 	case "FAILED", "ERROR", "CANCELLED", "CANCELED":
 		return r.Store.FailTaskUpstream(ctx, t.ID, "upstream "+status)
 	case "QUEUED", "PENDING":
@@ -372,4 +288,24 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 	default:
 		return r.Store.UpdateTaskUpstream(ctx, t.ID, res.Status, t.Progress)
 	}
+}
+
+func (r *Runner) persistResult(ctx context.Context, t *store.ProviderTask, resultURL string, upstreamDuration int) error {
+	if resultURL == "" {
+		return fmt.Errorf("upstream success without result URL")
+	}
+	storeClient := r.objectStore(ctx)
+	if !storeClient.Configured() {
+		return r.Store.MarkTaskDeliveryPending(ctx, t.ID, resultURL, "对象存储尚未配置，无法完成持久化交付")
+	}
+	if err := storeClient.EnsureBucket(ctx); err != nil {
+		return r.Store.MarkTaskDeliveryPending(ctx, t.ID, resultURL, fmt.Sprintf("对象存储桶不可用: %v", err))
+	}
+	key := fmt.Sprintf("results/%s/%s.mp4", time.Now().UTC().Format("20060102"), t.PublicID)
+	ossURL, err := storeClient.PullURL(ctx, resultURL, key, "video/mp4")
+	if err != nil {
+		return r.Store.MarkTaskDeliveryPending(ctx, t.ID, resultURL, fmt.Sprintf("对象存储交付失败: %v", err))
+	}
+	log.Printf("task %s pulled to %s %s", t.PublicID, storeClient.Provider(), ossURL)
+	return r.Store.CompleteTaskUpstream(ctx, t.ID, resultURL, ossURL, upstreamDuration)
 }

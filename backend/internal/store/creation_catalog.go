@@ -155,10 +155,18 @@ type SupplierCostRule struct {
 	Status           string
 }
 
-type CreationModePolicy struct {
+// ModelConfiguration is the administrator-facing ownership of a model's
+// support for one fixed client workflow. The underlying relationship remains
+// compatible with existing quote snapshots while the management surface is
+// migrated away from workflow-owned policies.
+type ModelConfiguration struct {
 	ModelID            string
+	ModelCode          string
 	ModelName          string
+	CarrierID          string
 	CarrierName        string
+	WorkflowID         string
+	WorkflowName       string
 	Enabled            bool
 	RecommendationRank int
 	DisplayBadge       string
@@ -166,10 +174,7 @@ type CreationModePolicy struct {
 	DefaultResolution  string
 }
 
-type AdminCreationMode struct {
-	CreationMode
-	Policies []CreationModePolicy
-}
+type AdminCreationMode struct{ CreationMode }
 
 func (s *Store) SeedCreationCatalog(ctx context.Context) error {
 	if _, err := s.Pool.Exec(ctx, `
@@ -202,8 +207,8 @@ ON CONFLICT (code) DO NOTHING`); err != nil {
 	} {
 		if _, err := s.Pool.Exec(ctx, `
 INSERT INTO models (public_id, carrier_id, code, name, description, client_workflow_id, enabled, sort_order)
-SELECT $1, id, $2, $3, $3 || ' 视频模型', '', TRUE, 10 FROM carriers WHERE code='volcengine'
-ON CONFLICT (carrier_id, code) DO NOTHING`, item.id, item.code, item.name); err != nil {
+SELECT $1, id, $2, $3, $4, '', TRUE, 10 FROM carriers WHERE code='volcengine'
+ON CONFLICT (carrier_id, code) DO NOTHING`, item.id, item.code, item.name, item.name+" 视频模型"); err != nil {
 			return fmt.Errorf("seed %s: %w", item.code, err)
 		}
 	}
@@ -315,9 +320,17 @@ FROM carriers c
 JOIN models m ON m.carrier_id=c.id AND m.enabled
 JOIN mode_model_policies p ON p.model_id=m.id AND p.enabled
 JOIN supplier_offerings o ON o.model_id=m.id AND o.mode_id=p.mode_id AND o.enabled AND o.health_status <> 'unavailable'
-JOIN suppliers s ON s.id=o.supplier_id AND s.enabled
+  AND o.adapter_code='autodl_h3_v1'
+JOIN suppliers s ON s.id=o.supplier_id AND s.enabled AND s.token_encrypted <> ''
 JOIN retail_price_rules r ON r.model_id=m.id AND r.mode_id=p.mode_id AND r.status='active'
+  AND (r.effective_from IS NULL OR r.effective_from <= NOW())
+  AND (r.effective_to IS NULL OR r.effective_to > NOW())
+  AND o.resolutions ? r.resolution
+  AND (NOT r.generate_audio OR o.supports_generated_audio)
 JOIN supplier_cost_rules cost ON cost.offering_id=o.id AND cost.status='active'
+  AND cost.resolution=r.resolution AND cost.generate_audio=r.generate_audio
+  AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
+  AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
 ORDER BY c.sort_order, c.code`)
 	if err != nil {
 		return nil, err
@@ -340,11 +353,19 @@ JOIN carriers c ON c.id=m.carrier_id AND c.enabled
 JOIN mode_model_policies p ON p.model_id=m.id AND p.enabled
 JOIN creation_modes mode ON mode.id=p.mode_id AND mode.status='published'
 JOIN supplier_offerings o ON o.model_id=m.id AND o.mode_id=mode.id AND o.enabled AND o.health_status <> 'unavailable'
-JOIN suppliers supplier ON supplier.id=o.supplier_id AND supplier.enabled
+  AND o.adapter_code='autodl_h3_v1'
+JOIN suppliers supplier ON supplier.id=o.supplier_id AND supplier.enabled AND supplier.token_encrypted <> ''
 JOIN retail_price_rules retail ON retail.model_id=m.id AND retail.mode_id=mode.id AND retail.status='active'
+  AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
+  AND (retail.effective_to IS NULL OR retail.effective_to > NOW())
+  AND o.resolutions ? retail.resolution
+  AND (NOT retail.generate_audio OR o.supports_generated_audio)
 JOIN supplier_cost_rules cost ON cost.offering_id=o.id AND cost.status='active'
+  AND cost.resolution=retail.resolution AND cost.generate_audio=retail.generate_audio
+  AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
+  AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
 WHERE m.enabled
-GROUP BY m.public_id, c.public_id, c.code, c.name, m.code, m.name, m.description
+GROUP BY m.public_id, c.public_id, c.code, c.name, m.code, m.name, m.description, m.sort_order
 ORDER BY c.code, m.sort_order, m.code`)
 	if err != nil {
 		return nil, err
@@ -478,7 +499,7 @@ func (s *Store) createQuoteForModel(ctx context.Context, userID int64, mode *Cre
 		if !offeringMatches(*offering, in) {
 			continue
 		}
-		unitCost, ruleID, version, err := s.findSupplierCost(ctx, offering.ID, in.Resolution, in.GenerateAudio, time.Now())
+		unitCost, ruleID, version, err := s.findSupplierCost(ctx, offering.ID, in.Resolution, in.GenerateAudio)
 		if err != nil {
 			continue
 		}
@@ -490,7 +511,7 @@ func (s *Store) createQuoteForModel(ctx context.Context, userID int64, mode *Cre
 		return nil, errors.New("当前参数暂无可用供给")
 	}
 	quote := &TaskQuote{
-		ID: NewQuoteID(), ExpiresAt: time.Now().Add(quoteTTL),
+		ID:     NewQuoteID(),
 		ModeID: mode.ID, ModeCode: mode.Code, ModeName: mode.Name,
 		ModelID: model.ID, ModelCode: model.Code, ModelName: model.Name,
 		CarrierID: model.CarrierID, CarrierCode: model.CarrierCode, CarrierName: model.CarrierName,
@@ -510,13 +531,14 @@ func (s *Store) createQuoteForModel(ctx context.Context, userID int64, mode *Cre
 	retailRaw, _ := json.Marshal(quote.RetailSnapshot)
 	costRaw, _ := json.Marshal(quote.CostSnapshot)
 	offeringRaw, _ := json.Marshal(quote.OfferingSnapshot)
-	_, err = s.Pool.Exec(ctx, `
+	err = s.Pool.QueryRow(ctx, `
 INSERT INTO task_quotes (public_id, user_id, mode_id, model_id, offering_id, retail_rule_id, cost_rule_id, request_snapshot, retail_snapshot, cost_snapshot, offering_snapshot, expires_at)
-SELECT $1, $2, mode.id, model.id, offering.id, retail.id, cost.id, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7
+SELECT $1, $2, mode.id, model.id, offering.id, retail.id, cost.id, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, NOW() + $7 * INTERVAL '1 second'
 FROM creation_modes mode, models model, supplier_offerings offering, retail_price_rules retail, supplier_cost_rules cost
-WHERE mode.public_id=$8 AND model.public_id=$9 AND offering.public_id=$10 AND retail.public_id=$11 AND cost.public_id=$12`,
-		quote.ID, userID, string(requestRaw), string(retailRaw), string(costRaw), string(offeringRaw), quote.ExpiresAt,
-		mode.ID, model.ID, selected.ID, retail.ID, costRuleID)
+WHERE mode.public_id=$8 AND model.public_id=$9 AND offering.public_id=$10 AND retail.public_id=$11 AND cost.public_id=$12
+RETURNING expires_at`,
+		quote.ID, userID, string(requestRaw), string(retailRaw), string(costRaw), string(offeringRaw), int64(quoteTTL/time.Second),
+		mode.ID, model.ID, selected.ID, retail.ID, costRuleID).Scan(&quote.ExpiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +590,7 @@ INSERT INTO generation_tasks (
   supplier_route_id, upstream_workflow_id, mode_public_id, model_public_id, generate_audio, quote_public_id,
   retail_snapshot, cost_snapshot, offering_snapshot, input_snapshot
 ) VALUES (
-  $1,$2,$3,$4,'queued',0,$5,$6,$7,'',$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::jsonb,$31::jsonb,$32::jsonb,$33::jsonb
+  $1,$2,$3,$4,'queued',0,$5,$6,$7,'',$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::jsonb,$31::jsonb,$32::jsonb
 ) RETURNING id`,
 		taskID, userID, title, quote.ModeName, quote.DurationSeconds, quote.Resolution, quote.Total,
 		sourceType, sourceRef, string(metaRaw), prompt, quote.AspectRatio, quote.ModeCode,
@@ -668,13 +690,14 @@ FROM task_quotes q
 JOIN creation_modes mode ON mode.id=q.mode_id
 JOIN models model ON model.id=q.model_id
 JOIN carriers carrier ON carrier.id=model.carrier_id
-JOIN supplier_offerings offering ON offering.id=q.offering_id
+JOIN supplier_offerings offering ON offering.id=q.offering_id AND offering.adapter_code='autodl_h3_v1'
 JOIN suppliers supplier ON supplier.id=offering.supplier_id
 JOIN supplier_cost_rules cost ON cost.id=q.cost_rule_id
 JOIN retail_price_rules retail ON retail.id=q.retail_rule_id
 WHERE q.public_id=$1 AND q.user_id=$2
+	  AND q.expires_at > NOW()
   AND mode.status='published' AND model.enabled AND carrier.enabled
-  AND offering.enabled AND offering.health_status <> 'unavailable' AND supplier.enabled
+  AND offering.enabled AND offering.health_status <> 'unavailable' AND supplier.enabled AND supplier.token_encrypted <> ''
   AND cost.status='active' AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
   AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
   AND retail.status='active' AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
@@ -695,9 +718,6 @@ FOR UPDATE`, quoteID, userID).Scan(
 	}
 	if consumedAt != nil {
 		return nil, errors.New("报价已使用")
-	}
-	if time.Now().After(quote.ExpiresAt) {
-		return nil, errors.New("报价已过期")
 	}
 	_ = json.Unmarshal(retailRaw, &quote.RetailSnapshot)
 	_ = json.Unmarshal(costRaw, &quote.CostSnapshot)
@@ -777,9 +797,17 @@ FROM mode_model_policies p
 JOIN models m ON m.id=p.model_id AND m.enabled
 JOIN carriers c ON c.id=m.carrier_id AND c.enabled
 JOIN supplier_offerings o ON o.model_id=m.id AND o.mode_id=p.mode_id AND o.enabled AND o.health_status <> 'unavailable'
-JOIN suppliers supplier ON supplier.id=o.supplier_id AND supplier.enabled
+  AND o.adapter_code='autodl_h3_v1'
+JOIN suppliers supplier ON supplier.id=o.supplier_id AND supplier.enabled AND supplier.token_encrypted <> ''
 JOIN retail_price_rules retail ON retail.model_id=m.id AND retail.mode_id=p.mode_id AND retail.status='active'
+  AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
+  AND (retail.effective_to IS NULL OR retail.effective_to > NOW())
+  AND o.resolutions ? retail.resolution
+  AND (NOT retail.generate_audio OR o.supports_generated_audio)
 JOIN supplier_cost_rules cost ON cost.offering_id=o.id AND cost.status='active'
+  AND cost.resolution=retail.resolution AND cost.generate_audio=retail.generate_audio
+  AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
+  AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
 WHERE p.mode_id=(SELECT id FROM creation_modes WHERE public_id=$1) AND p.enabled
 GROUP BY m.public_id
 ORDER BY MIN(p.recommendation_rank), m.public_id`, modeID)
@@ -806,11 +834,12 @@ SELECT o.public_id, supplier.public_id, supplier.code, supplier.name, supplier.b
        o.min_duration_sec, o.max_duration_sec, o.resolutions, o.aspect_ratios, o.min_images, o.max_images,
        o.supports_generated_audio
 FROM supplier_offerings o
-JOIN suppliers supplier ON supplier.id=o.supplier_id AND supplier.enabled
+JOIN suppliers supplier ON supplier.id=o.supplier_id AND supplier.enabled AND supplier.token_encrypted <> ''
 JOIN models model ON model.id=o.model_id AND model.enabled
 JOIN carriers carrier ON carrier.id=model.carrier_id AND carrier.enabled
 JOIN creation_modes mode ON mode.id=o.mode_id AND mode.status='published'
 WHERE mode.public_id=$1 AND model.public_id=$2 AND o.enabled AND o.health_status <> 'unavailable'
+  AND o.adapter_code='autodl_h3_v1'
 ORDER BY o.priority, o.public_id`, modeID, modelID)
 	if err != nil {
 		return nil, err
@@ -897,6 +926,39 @@ SELECT EXISTS(
 	return err == nil && available
 }
 
+// CheapestAvailableRetailPrice is the overview-only reference price. Unlike
+// the historical pricing table, it only considers combinations that can be
+// quoted and executed by the current creation catalog.
+func (s *Store) CheapestAvailableRetailPrice(ctx context.Context) (float64, bool, error) {
+	var price *float64
+	err := s.Pool.QueryRow(ctx, `
+SELECT MIN(retail.price_per_sec::float8)
+FROM retail_price_rules retail
+JOIN creation_modes mode ON mode.id=retail.mode_id AND mode.status='published'
+JOIN models model ON model.id=retail.model_id AND model.enabled
+JOIN carriers carrier ON carrier.id=model.carrier_id AND carrier.enabled
+JOIN mode_model_policies policy ON policy.mode_id=mode.id AND policy.model_id=model.id AND policy.enabled
+JOIN supplier_offerings offering ON offering.mode_id=mode.id AND offering.model_id=model.id
+  AND offering.enabled AND offering.health_status <> 'unavailable' AND offering.adapter_code='autodl_h3_v1'
+  AND offering.resolutions ? retail.resolution
+  AND (NOT retail.generate_audio OR offering.supports_generated_audio)
+JOIN suppliers supplier ON supplier.id=offering.supplier_id AND supplier.enabled AND supplier.token_encrypted <> ''
+JOIN supplier_cost_rules cost ON cost.offering_id=offering.id AND cost.resolution=retail.resolution
+  AND cost.generate_audio=retail.generate_audio AND cost.status='active'
+  AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
+  AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
+WHERE retail.status='active'
+  AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
+  AND (retail.effective_to IS NULL OR retail.effective_to > NOW())`).Scan(&price)
+	if err != nil {
+		return 0, false, err
+	}
+	if price == nil {
+		return 0, false, nil
+	}
+	return *price, true, nil
+}
+
 func includes(values []string, value string) bool {
 	for _, item := range values {
 		if item == value {
@@ -904,6 +966,10 @@ func includes(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func supportedProviderAdapter(adapterCode string) bool {
+	return adapterCode == "autodl_h3_v1"
 }
 
 func (s *Store) findRetailPrice(ctx context.Context, modeID, modelID, resolution string, generateAudio bool) (*RetailPriceRule, error) {
@@ -930,15 +996,16 @@ ORDER BY retail.updated_at DESC LIMIT 1`, modeID, modelID, resolution, generateA
 	return &item, nil
 }
 
-func (s *Store) findSupplierCost(ctx context.Context, offeringID, resolution string, generateAudio bool, now time.Time) (float64, string, string, error) {
+func (s *Store) findSupplierCost(ctx context.Context, offeringID, resolution string, generateAudio bool) (float64, string, string, error) {
 	var id, version string
 	var peak, off float64
+	var databaseNow time.Time
 	err := s.Pool.QueryRow(ctx, `
-SELECT public_id, version, price_per_sec_peak::float8, price_per_sec_offpeak::float8
+SELECT public_id, version, price_per_sec_peak::float8, price_per_sec_offpeak::float8, NOW()
 FROM supplier_cost_rules
 WHERE offering_id=(SELECT id FROM supplier_offerings WHERE public_id=$1) AND resolution=$2 AND generate_audio=$3
   AND status='active' AND (effective_from IS NULL OR effective_from <= NOW()) AND (effective_to IS NULL OR effective_to > NOW())
-ORDER BY updated_at DESC LIMIT 1`, offeringID, resolution, generateAudio).Scan(&id, &version, &peak, &off)
+ORDER BY updated_at DESC LIMIT 1`, offeringID, resolution, generateAudio).Scan(&id, &version, &peak, &off, &databaseNow)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, "", "", errors.New("当前供给暂无成本规则")
 	}
@@ -946,7 +1013,7 @@ ORDER BY updated_at DESC LIMIT 1`, offeringID, resolution, generateAudio).Scan(&
 		return 0, "", "", err
 	}
 	loc, _ := time.LoadLocation("Asia/Shanghai")
-	hour := now.In(loc).Hour()
+	hour := databaseNow.In(loc).Hour()
 	if hour >= 8 && hour < 24 {
 		return peak, id, version, nil
 	}
@@ -960,41 +1027,17 @@ func (s *Store) ListAdminCreationModes(ctx context.Context) ([]AdminCreationMode
 	}
 	defer rows.Close()
 	items := []AdminCreationMode{}
-	byID := map[string]*AdminCreationMode{}
 	for rows.Next() {
 		var item AdminCreationMode
 		if err := rows.Scan(&item.ID, &item.Code, &item.Name, &item.Description, &item.Status, &item.SortOrder); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
-		byID[item.ID] = &items[len(items)-1]
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	policies, err := s.Pool.Query(ctx, `
-SELECT mode.public_id, model.public_id, model.name, carrier.name, policy.enabled, policy.recommendation_rank,
-       policy.display_badge, policy.default_duration, policy.default_resolution
-FROM mode_model_policies policy
-JOIN creation_modes mode ON mode.id=policy.mode_id
-JOIN models model ON model.id=policy.model_id
-JOIN carriers carrier ON carrier.id=model.carrier_id
-ORDER BY mode.sort_order, policy.recommendation_rank, model.sort_order, model.name`)
-	if err != nil {
-		return nil, err
-	}
-	defer policies.Close()
-	for policies.Next() {
-		var modeID string
-		var policy CreationModePolicy
-		if err := policies.Scan(&modeID, &policy.ModelID, &policy.ModelName, &policy.CarrierName, &policy.Enabled, &policy.RecommendationRank, &policy.DisplayBadge, &policy.DefaultDuration, &policy.DefaultResolution); err != nil {
-			return nil, err
-		}
-		if mode := byID[modeID]; mode != nil {
-			mode.Policies = append(mode.Policies, policy)
-		}
-	}
-	return items, policies.Err()
+	return items, nil
 }
 
 func (s *Store) UpdateCreationMode(ctx context.Context, modeID string, name, description, status *string, sortOrder *int) (*CreationMode, error) {
@@ -1049,6 +1092,33 @@ ON CONFLICT (mode_id, model_id) DO UPDATE SET enabled=EXCLUDED.enabled, recommen
 	return nil
 }
 
+func (s *Store) ListModelConfigurations(ctx context.Context) ([]ModelConfiguration, error) {
+	rows, err := s.Pool.Query(ctx, `
+SELECT model.public_id, model.code, model.name, carrier.public_id, carrier.name,
+       mode.public_id, mode.name, policy.enabled, policy.recommendation_rank,
+       policy.display_badge, policy.default_duration, policy.default_resolution
+FROM mode_model_policies policy
+JOIN models model ON model.id=policy.model_id
+JOIN carriers carrier ON carrier.id=model.carrier_id
+JOIN creation_modes mode ON mode.id=policy.mode_id
+ORDER BY carrier.sort_order, model.sort_order, mode.sort_order, policy.recommendation_rank`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ModelConfiguration{}
+	for rows.Next() {
+		var item ModelConfiguration
+		if err := rows.Scan(&item.ModelID, &item.ModelCode, &item.ModelName, &item.CarrierID, &item.CarrierName,
+			&item.WorkflowID, &item.WorkflowName, &item.Enabled, &item.RecommendationRank,
+			&item.DisplayBadge, &item.DefaultDuration, &item.DefaultResolution); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *Store) ListSupplierOfferings(ctx context.Context) ([]SupplierOffering, error) {
 	rows, err := s.Pool.Query(ctx, `
 SELECT o.public_id, supplier.public_id, supplier.code, supplier.name, supplier.base_url, supplier.auth_header,
@@ -1090,6 +1160,9 @@ func (s *Store) CreateSupplierOffering(ctx context.Context, in SupplierOffering)
 	if in.AdapterCode == "" {
 		in.AdapterCode = "autodl_h3_v1"
 	}
+	if !supportedProviderAdapter(in.AdapterCode) {
+		return nil, fmt.Errorf("当前部署未启用供给适配器: %s", in.AdapterCode)
+	}
 	if in.MinDurationSec < 1 {
 		in.MinDurationSec = 1
 	}
@@ -1126,6 +1199,9 @@ func (s *Store) UpdateSupplierOffering(ctx context.Context, offeringID string, i
 	}
 	if in.AdapterCode != "" {
 		current.AdapterCode = in.AdapterCode
+	}
+	if !supportedProviderAdapter(current.AdapterCode) {
+		return nil, fmt.Errorf("当前部署未启用供给适配器: %s", current.AdapterCode)
 	}
 	if in.HealthStatus != "" {
 		current.HealthStatus = in.HealthStatus

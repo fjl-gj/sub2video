@@ -26,6 +26,19 @@ type Task struct {
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
 }
+
+// ClientTaskDetail is the creator-safe task view. It deliberately excludes
+// supplier, procurement cost, route, upstream task, and raw provider result
+// URL fields. The creator-facing precharged amount is retained on Task.
+type ClientTaskDetail struct {
+	Task
+	AspectRatio      string
+	GenerateAudio    bool
+	FailureReason    string
+	DeliveryStatus   string
+	DownloadURL      string
+	ExecutionWaiting bool
+}
 type CreateTaskInput struct {
 	WorkflowID      string
 	Title           string
@@ -305,6 +318,42 @@ FROM generation_tasks WHERE user_id = $1`
 	return items, total, counts, nil
 }
 
+func (s *Store) GetClientTaskDetail(ctx context.Context, userID int64, taskID string) (*ClientTaskDetail, error) {
+	var item ClientTaskDetail
+	var status, upstreamStatus, resultOSS string
+	var completed *time.Time
+	err := s.Pool.QueryRow(ctx, `
+SELECT public_id, title, workflow, status, progress, duration_sec, resolution, cost::float8,
+       thumb_url, saved_to_project, completed_at, created_at, updated_at,
+       COALESCE(aspect_ratio,''), generate_audio, COALESCE(fail_reason,''),
+       COALESCE(upstream_status,''), COALESCE(result_oss_url,'')
+FROM generation_tasks
+WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
+		&item.ID, &item.Title, &item.Workflow, &status, &item.Progress, &item.DurationSec, &item.Resolution,
+		&item.Cost, &item.ThumbURL, &item.SavedToProject, &completed, &item.CreatedAt, &item.UpdatedAt,
+		&item.AspectRatio, &item.GenerateAudio, &item.FailureReason, &upstreamStatus, &resultOSS,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	item.Status = statusCN(status)
+	item.CompletedAt = completed
+	item.ExecutionWaiting = upstreamStatus == "WAITING_CONFIGURATION"
+	switch {
+	case item.Status == "已完成" && resultOSS != "":
+		item.DeliveryStatus = "ready"
+		item.DownloadURL = resultOSS
+	case item.Status == "已完成" || upstreamStatus == "WAITING_STORAGE":
+		item.DeliveryStatus = "pending_storage"
+	default:
+		item.DeliveryStatus = "not_ready"
+	}
+	return &item, nil
+}
+
 func scanTask(scanner interface{ Scan(dest ...any) error }) (*Task, error) {
 	var t Task
 	var status string
@@ -342,7 +391,10 @@ SELECT id, status, cost::float8, title FROM generation_tasks WHERE public_id = $
 	if status != "queued" && status != "running" {
 		return nil, 0, 0, errors.New("该任务无法终止")
 	}
-	if _, err = tx.Exec(ctx, `UPDATE generation_tasks SET status = 'failed', progress = 0, updated_at = NOW() WHERE id = $1`, id); err != nil {
+	if _, err = tx.Exec(ctx, `
+UPDATE generation_tasks SET status='failed', progress=0, upstream_status='CANCELLED_BY_USER',
+  fail_reason='用户终止并退款', updated_at=NOW()
+WHERE id=$1`, id); err != nil {
 		return nil, 0, 0, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE wallets SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2`, cost, userID); err != nil {

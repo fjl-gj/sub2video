@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
+  // A single Vite server serves deterministic screenshot fixtures. Four
+  // workers keep browser coverage concurrent without starving route loads.
+  workers: 4,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: [['list'], ['html', { outputFolder: '.tmp_playwright_report', open: 'never' }]],
@@ -16,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev --host 127.0.0.1 --port 4185',
     url: 'http://127.0.0.1:4185',
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === '1',
     timeout: 120_000,
   },
   projects: [

@@ -10,16 +10,16 @@ const cases = [
   { name: 'client-wallet', path: '/app/wallet', heading: '钱包', auth: true },
   { name: 'client-tickets', path: '/app/tickets', heading: '帮助与工单', auth: true },
   { name: 'client-profile', path: '/app/profile', heading: '个人资料', auth: true },
-  { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘', auth: false },
-  { name: 'admin-workflows', path: '/admin/workflows', heading: '创作模式', auth: false },
-  { name: 'admin-providers', path: '/admin/providers', heading: '模型与供应商', auth: false },
-  { name: 'admin-pricing', path: '/admin/pricing', heading: '定价规则', auth: false },
-  { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心', auth: false },
-  { name: 'admin-tickets', path: '/admin/tickets', heading: '工单中心', auth: false },
-  { name: 'admin-orders', path: '/admin/orders', heading: '订单管理', auth: false },
+  { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘', auth: true, role: 'admin' },
+  { name: 'admin-workflows', path: '/admin/workflows', heading: '工作流', auth: true, role: 'admin' },
+  { name: 'admin-carriers-models', path: '/admin/carriers-models', heading: '承运商与模型', auth: true, role: 'admin' },
+  { name: 'admin-supplier-models', path: '/admin/supplier-models', heading: '供应商与模型', auth: true, role: 'admin' },
+  { name: 'admin-pricing', path: '/admin/pricing', heading: '价格审计', auth: true, role: 'admin' },
+  { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心', auth: true, role: 'admin' },
+  { name: 'admin-tickets', path: '/admin/tickets', heading: '工单中心', auth: true, role: 'admin' },
 ]
 
-async function seedClientAuth(page: Page) {
+async function seedClientAuth(page: Page, role = 'user') {
   await page.route('**/api/v1/auth/me', async (route) => {
     await route.fulfill({
       status: 200,
@@ -28,7 +28,7 @@ async function seedClientAuth(page: Page) {
         id: 'u_visual',
         email: 'demo@sub2video.local',
         displayName: '林默',
-        role: 'user',
+        role,
         workspaceName: '李维工作室',
         balance: 256,
       }),
@@ -44,12 +44,12 @@ async function seedCreationAndSupply(page: Page) {
   await page.route('**/api/v1/client/create/catalog', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       modes: [
-        { id: 'mode_text_to_video', code: 'text_to_video', name: '文生视频', description: '通过文字描述生成视频', enabled: true },
-        { id: 'mode_first_last', code: 'first_last_frame_to_video', name: '首尾帧生成视频', description: '使用首帧、尾帧和提示词生成视频', enabled: true },
-        { id: 'mode_multi_image', code: 'multi_image_to_video', name: '多图生成视频', description: '使用多张参考图和提示词生成视频', enabled: true },
+        { id: 'mode_text_to_video', inputType: 'text', name: '文生视频', description: '通过文字描述生成视频', enabled: true },
+        { id: 'mode_first_last', inputType: 'first_last', name: '首尾帧生成视频', description: '使用首帧、尾帧和提示词生成视频', enabled: true },
+        { id: 'mode_multi_image', inputType: 'multi_image', name: '多图生成视频', description: '使用多张参考图和提示词生成视频', enabled: true },
       ],
       carriers: [{ id: 'car_minimax', name: 'MINMAX' }],
-      models: [{ id: 'mdl_h3', carrierId: 'car_minimax', name: 'H3', description: 'MiniMax H3 视频模型', modes: ['text_to_video', 'first_last_frame_to_video', 'multi_image_to_video'] }],
+      models: [{ id: 'mdl_h3', carrierId: 'car_minimax', name: 'H3', description: 'MiniMax H3 视频模型', inputTypes: ['text', 'first_last', 'multi_image'] }],
     }) })
   })
   await page.route('**/api/v1/client/create/options*', async (route) => {
@@ -60,13 +60,18 @@ async function seedCreationAndSupply(page: Page) {
   })
   await page.route('**/api/v1/admin/creation-modes', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
-      { id: 'mode_text_to_video', code: 'text_to_video', name: '文生视频', description: '通过文字描述生成视频', status: 'published', sortOrder: 1, policies: [{ modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', enabled: true, recommendationRank: 1, displayBadge: '推荐', defaultDuration: 5, defaultResolution: '768P' }] },
-      { id: 'mode_first_last', code: 'first_last_frame_to_video', name: '首尾帧生成视频', description: '首帧、尾帧和提示词', status: 'published', sortOrder: 2, policies: [{ modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', enabled: true, recommendationRank: 1, displayBadge: '推荐', defaultDuration: 5, defaultResolution: '768P' }] },
-      { id: 'mode_multi_image', code: 'multi_image_to_video', name: '多图生成视频', description: '多张参考图和提示词', status: 'published', sortOrder: 3, policies: [{ modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', enabled: true, recommendationRank: 1, displayBadge: '推荐', defaultDuration: 5, defaultResolution: '768P' }] },
+      { id: 'mode_text_to_video', code: 'text_to_video', name: '文生视频', description: '通过文字描述生成视频', status: 'published', sortOrder: 1 },
+      { id: 'mode_first_last', code: 'first_last_frame_to_video', name: '首尾帧生成视频', description: '首帧、尾帧和提示词', status: 'published', sortOrder: 2 },
+      { id: 'mode_multi_image', code: 'multi_image_to_video', name: '多图生成视频', description: '多张参考图和提示词', status: 'published', sortOrder: 3 },
     ] }) })
   })
   await page.route('**/api/v1/admin/carriers', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ carriers: [{ id: 'car_minimax', code: 'minimax', name: 'MINMAX', enabled: true }], models: [{ id: 'mdl_h3', code: 'h3', name: 'H3', carrierCode: 'minimax', enabled: true }], cosConfigured: false, autodlEnvToken: false }) })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ carriers: [{ id: 'car_minimax', code: 'minimax', name: 'MINMAX', enabled: true }], models: [{ id: 'mdl_h3', carrierId: 'car_minimax', code: 'h3', name: 'H3', carrierCode: 'minimax', enabled: true }], cosConfigured: false, autodlEnvToken: false }) })
+  })
+  await page.route('**/api/v1/admin/model-configurations', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
+      { modelId: 'mdl_h3', modelCode: 'h3', modelName: 'H3', carrierId: 'car_minimax', carrierName: 'MINMAX', workflowId: 'mode_text_to_video', workflowName: '文生视频', enabled: true, recommendationRank: 1, displayBadge: '', defaultDuration: 5, defaultResolution: '768P' },
+    ] }) })
   })
   await page.route('**/api/v1/admin/suppliers', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'sup_autodl', code: 'autodl', name: 'AutoDL', baseUrl: 'https://autodl.art', enabled: true, hasToken: true, status: '就绪' }] }) })
@@ -84,10 +89,11 @@ async function seedCreationAndSupply(page: Page) {
 
 for (const item of cases) {
   test(`${item.name} matches the surface baseline`, async ({ page }) => {
-    if (item.auth) await seedClientAuth(page)
+    if (item.auth) await seedClientAuth(page, item.role)
     await seedCreationAndSupply(page)
     await page.goto(item.path, { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: item.heading, exact: true })).toBeVisible({ timeout: 15_000 })
+    if (item.name === 'admin-carriers-models') await expect(page.getByText('H3', { exact: true })).toBeVisible()
     await expect(page).toHaveScreenshot(`${item.name}.png`, {
       fullPage: true,
       animations: 'disabled',

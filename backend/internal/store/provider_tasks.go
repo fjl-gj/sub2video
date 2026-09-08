@@ -73,7 +73,7 @@ SELECT id, public_id, user_id, status, progress, duration_sec, resolution, COALE
 	       quote_public_id, generate_audio, offering_snapshot,
        upstream_task_id, upstream_status, result_url, result_oss_url, fail_reason, created_at
 FROM generation_tasks
-WHERE status IN ('queued', 'running')
+WHERE status IN ('queued', 'running') AND execution_mode='provider'
 ORDER BY created_at ASC
 LIMIT $1`, limit)
 	if err != nil {
@@ -142,12 +142,60 @@ WHERE id=$7`, a.CarrierCode, a.ModelCode, a.SupplierCode, a.SupplierRouteID, a.U
 	return err
 }
 
+// ClaimTaskForDispatch gives exactly one worker the right to submit a queued
+// provider task. The claim is intentionally persisted before the external
+// call, so overlapping workers cannot submit the same immutable snapshot.
+func (s *Store) ClaimTaskForDispatch(ctx context.Context, taskID int64) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `
+UPDATE generation_tasks SET
+  status='running', progress=GREATEST(progress, 1), upstream_status='SUBMITTING',
+  started_at=COALESCE(started_at, NOW()), updated_at=NOW()
+WHERE id=$1 AND status='queued' AND execution_mode='provider' AND upstream_task_id=''`, taskID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 func (s *Store) MarkTaskSubmitted(ctx context.Context, taskID int64, upstreamTaskID, upstreamStatus string) error {
-	_, err := s.Pool.Exec(ctx, `
+	tag, err := s.Pool.Exec(ctx, `
 UPDATE generation_tasks SET
   status='running', progress=GREATEST(progress, 8), upstream_task_id=$1, upstream_status=$2,
   started_at=COALESCE(started_at, NOW()), updated_at=NOW()
-WHERE id=$3`, upstreamTaskID, upstreamStatus, taskID)
+WHERE id=$3 AND status='running' AND execution_mode='provider'
+  AND upstream_task_id='' AND upstream_status='SUBMITTING'`, upstreamTaskID, upstreamStatus, taskID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// MarkTaskWaitingForConfiguration is intentionally non-terminal: once an
+// administrator configures the locked supplier or object storage, the worker
+// can submit the same immutable task snapshot on its next poll. Submitted
+// work stays running so it is polled rather than submitted a second time.
+func (s *Store) MarkTaskWaitingForConfiguration(ctx context.Context, taskID int64, reason string) error {
+	_, err := s.Pool.Exec(ctx, `
+UPDATE generation_tasks SET
+  status=CASE WHEN upstream_task_id='' THEN 'queued' ELSE status END,
+  upstream_status='WAITING_CONFIGURATION', fail_reason=$1, updated_at=NOW()
+WHERE id=$2 AND status IN ('queued','running') AND execution_mode='provider'`, reason, taskID)
+	return err
+}
+
+// MarkTaskDeliveryPending keeps a provider task executable after its upstream
+// work has completed but the durable object-storage handoff is unavailable.
+// The worker retries from this immutable task snapshot; no provider fallback
+// or simulator completion is allowed.
+func (s *Store) MarkTaskDeliveryPending(ctx context.Context, taskID int64, resultURL, reason string) error {
+	_, err := s.Pool.Exec(ctx, `
+UPDATE generation_tasks SET
+  status='running', progress=GREATEST(progress, 95), upstream_status='WAITING_STORAGE',
+  result_url=$1, fail_reason=$2, updated_at=NOW()
+WHERE id=$3 AND status IN ('queued','running')`, resultURL, reason, taskID)
 	return err
 }
 
@@ -165,14 +213,36 @@ WHERE id=$3 AND status IN ('queued','running')`, upstreamStatus, progress, taskI
 }
 
 func (s *Store) CompleteTaskUpstream(ctx context.Context, taskID int64, resultURL, ossURL string, upstreamDuration int) error {
-	_, err := s.Pool.Exec(ctx, `
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var offeringID string
+	err = tx.QueryRow(ctx, `
 UPDATE generation_tasks SET
   status='completed', progress=100, upstream_status='SUCCESS',
   result_url=$1, result_oss_url=$2, upstream_duration_sec=$3,
-  thumb_url=CASE WHEN $1 <> '' THEN $1 ELSE thumb_url END,
+  thumb_url=CASE WHEN $2 <> '' THEN $2 ELSE thumb_url END,
   completed_at=NOW(), updated_at=NOW()
-WHERE id=$4`, resultURL, ossURL, upstreamDuration, taskID)
-	return err
+WHERE id=$4 AND status IN ('queued','running') AND execution_mode='provider'
+RETURNING supplier_route_id`, resultURL, ossURL, upstreamDuration, taskID).Scan(&offeringID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if offeringID != "" {
+		if _, err = tx.Exec(ctx, `
+UPDATE supplier_offerings SET failure_count=0, last_success_at=NOW(),
+  health_status=CASE WHEN health_status='unavailable' THEN health_status ELSE 'healthy' END,
+  updated_at=NOW()
+WHERE public_id=$1`, offeringID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) FailTaskUpstream(ctx context.Context, taskID int64, reason string) error {
@@ -182,9 +252,9 @@ func (s *Store) FailTaskUpstream(ctx context.Context, taskID int64, reason strin
 	}
 	defer tx.Rollback(ctx)
 	var userID int64
-	var publicID, status, title string
+	var publicID, status, title, offeringID string
 	var cost float64
-	err = tx.QueryRow(ctx, `SELECT user_id, public_id, status, title, cost::float8 FROM generation_tasks WHERE id=$1 FOR UPDATE`, taskID).Scan(&userID, &publicID, &status, &title, &cost)
+	err = tx.QueryRow(ctx, `SELECT user_id, public_id, status, title, cost::float8, supplier_route_id FROM generation_tasks WHERE id=$1 FOR UPDATE`, taskID).Scan(&userID, &publicID, &status, &title, &cost, &offeringID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -213,13 +283,26 @@ func (s *Store) FailTaskUpstream(ctx context.Context, taskID int64, reason strin
 			return err
 		}
 	}
+	if offeringID != "" {
+		if _, err = tx.Exec(ctx, `
+UPDATE supplier_offerings SET
+  failure_count=failure_count+1,
+  last_failure_at=NOW(),
+  health_status=CASE WHEN failure_count+1 >= 3 THEN 'unavailable' ELSE 'degraded' END,
+  enabled=CASE WHEN failure_count+1 >= 3 THEN FALSE ELSE enabled END,
+  updated_at=NOW()
+WHERE public_id=$1`, offeringID); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
 func (s *Store) MarkTaskSimulated(ctx context.Context, taskID int64) error {
 	_, err := s.Pool.Exec(ctx, `
-UPDATE generation_tasks SET supplier_code='simulator', upstream_status='SIMULATED', updated_at=NOW()
-WHERE id=$1 AND supplier_code=''`, taskID)
+UPDATE generation_tasks SET
+  execution_mode='simulated_legacy', supplier_code='simulator', upstream_status='SIMULATED', updated_at=NOW()
+WHERE id=$1 AND supplier_code='' AND execution_mode='simulated_legacy'`, taskID)
 	return err
 }
 
@@ -227,7 +310,7 @@ func (s *Store) AdvanceSimulatedTasks(ctx context.Context) error {
 	rows, err := s.Pool.Query(ctx, `
 SELECT id, status, progress FROM generation_tasks
 WHERE status IN ('queued', 'running')
-  AND quote_public_id = ''
+  AND execution_mode = 'simulated_legacy'
   AND (upstream_task_id = '' OR supplier_code = 'simulator' OR supplier_code = '')`)
 	if err != nil {
 		return err

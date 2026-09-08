@@ -165,7 +165,10 @@ SELECT id, user_id, status, cost::float8, title FROM generation_tasks WHERE publ
 	if status != "queued" && status != "running" {
 		return nil, 0, errors.New("该任务无法终止")
 	}
-	if _, err = tx.Exec(ctx, `UPDATE generation_tasks SET status='failed', progress=0, fail_reason='admin cancelled', updated_at=NOW() WHERE id=$1`, id); err != nil {
+	if _, err = tx.Exec(ctx, `
+UPDATE generation_tasks SET status='failed', progress=0, upstream_status='CANCELLED_BY_ADMIN',
+  fail_reason='管理员终止并退款', updated_at=NOW()
+WHERE id=$1`, id); err != nil {
 		return nil, 0, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE wallets SET balance=balance+$1, version=version+1, updated_at=NOW() WHERE user_id=$2`, cost, userID); err != nil {
@@ -218,17 +221,17 @@ WHERE public_id=$1`, taskPublicID)
 
 func (s *Store) GetAdminTaskDetail(ctx context.Context, taskPublicID string) (map[string]any, error) {
 	var (
-		title, workflow, wfID, modeID, modelID, quoteID, status, resolution, supplier, upWF, upTask, upStatus, fail string
-		progress, duration                                                                                          int
-		cost, pricePerSec, costPerSec                                                                               float64
-		priceSnap, routeSnap, retailSnap, costSnap, offeringSnap, inputSnap                                         []byte
-		generateAudio                                                                                               bool
-		userEmail, userName                                                                                         string
-		created, updated                                                                                            time.Time
-		resultURL, ossURL                                                                                           string
+		title, workflow, modeID, modelID, quoteID, status, resolution, supplier, upWF, upTask, upStatus, fail string
+		progress, duration                                                                                    int
+		cost, pricePerSec, costPerSec                                                                         float64
+		priceSnap, routeSnap, retailSnap, costSnap, offeringSnap, inputSnap                                   []byte
+		generateAudio                                                                                         bool
+		userEmail, userName                                                                                   string
+		created, updated                                                                                      time.Time
+		resultURL, ossURL                                                                                     string
 	)
 	err := s.Pool.QueryRow(ctx, `
-SELECT t.title, t.workflow, t.workflow_public_id, t.status, t.progress, t.duration_sec, t.resolution,
+SELECT t.title, t.workflow, t.status, t.progress, t.duration_sec, t.resolution,
        t.cost::float8, t.price_per_sec::float8, t.cost_per_sec::float8,
        t.supplier_code, t.upstream_workflow_id, t.upstream_task_id, t.upstream_status, t.fail_reason,
        t.price_snapshot, t.route_snapshot, t.mode_public_id, t.model_public_id, t.quote_public_id, t.generate_audio,
@@ -236,7 +239,7 @@ SELECT t.title, t.workflow, t.workflow_public_id, t.status, t.progress, t.durati
        u.email, u.display_name, t.created_at, t.updated_at
 FROM generation_tasks t JOIN users u ON u.id=t.user_id
 WHERE t.public_id=$1`, taskPublicID).Scan(
-		&title, &workflow, &wfID, &status, &progress, &duration, &resolution,
+		&title, &workflow, &status, &progress, &duration, &resolution,
 		&cost, &pricePerSec, &costPerSec,
 		&supplier, &upWF, &upTask, &upStatus, &fail,
 		&priceSnap, &routeSnap, &modeID, &modelID, &quoteID, &generateAudio,
@@ -250,8 +253,8 @@ WHERE t.public_id=$1`, taskPublicID).Scan(
 		return nil, err
 	}
 	return map[string]any{
-		"id": taskPublicID, "title": title, "workflow": workflow, "workflowId": wfID,
-		"modeId": modeID, "modelId": modelID, "quoteId": quoteID, "generateAudio": generateAudio,
+		"id": taskPublicID, "title": title, "mode": workflow, "modeId": modeID,
+		"modelId": modelID, "quoteId": quoteID, "generateAudio": generateAudio,
 		"status": statusCN(status), "progress": progress, "durationSec": duration, "resolution": resolution,
 		"cost": cost, "pricePerSec": pricePerSec, "costPerSec": costPerSec,
 		"supplierCode": supplier, "upstreamWorkflowId": upWF, "upstreamTaskId": upTask, "upstreamStatus": upStatus,

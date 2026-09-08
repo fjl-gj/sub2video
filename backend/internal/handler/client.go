@@ -70,60 +70,11 @@ func (h *ClientHandler) Overview(c *gin.Context) {
 }
 
 func (h *ClientHandler) referencePricing(c *gin.Context) gin.H {
-	price, err := h.Store.CheapestActivePrice(c.Request.Context())
-	if err != nil || price <= 0 {
-		price = 0.5
+	price, available, err := h.Store.CheapestAvailableRetailPrice(c.Request.Context())
+	if err != nil || !available || price <= 0 {
+		return gin.H{"available": false, "referencePricePerSecond": 0, "referenceNote": "当前无可用生成能力"}
 	}
-	return gin.H{"referencePricePerSecond": price, "referenceNote": "768P / 1080P 按秒计"}
-}
-
-func (h *ClientHandler) CreateForm(c *gin.Context) {
-	user := middleware.CurrentUser(c)
-	bal, _ := h.Store.GetBalance(c.Request.Context(), user.ID)
-	wfs, err := h.Store.ListPlatformWorkflows(c.Request.Context(), false)
-	if err != nil {
-		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
-		return
-	}
-	list := make([]gin.H, 0, len(wfs))
-	var defaultParams gin.H
-	for _, w := range wfs {
-		item := gin.H{
-			"id": w.Code, "name": w.Name, "description": w.Description,
-			"enabled":   w.Status == "published",
-			"modelCode": w.ModelCode, "carrierCode": w.CarrierCode,
-			"params": gin.H{
-				"aspectRatios":      w.Params.AspectRatios,
-				"durations":         w.Params.Durations,
-				"defaultDuration":   w.Params.DefaultDuration,
-				"resolutions":       w.Params.Resolutions,
-				"defaultResolution": w.Params.DefaultResolution,
-			},
-		}
-		if w.Badge != "" {
-			item["badge"] = w.Badge
-		}
-		list = append(list, item)
-		if w.Status == "published" && defaultParams == nil {
-			defaultParams = item["params"].(gin.H)
-		}
-	}
-	if defaultParams == nil {
-		defaultParams = gin.H{
-			"aspectRatios": []string{"16:9", "9:16", "1:1"},
-			"durations":    []int{5, 10, 15}, "defaultDuration": 5,
-			"resolutions": []string{"768P"}, "defaultResolution": "768P",
-		}
-	}
-	cur, _ := h.Store.ResolveCurrentProjectID(c.Request.Context(), user.ID)
-	response.OK(c, gin.H{
-		"wallet":           gin.H{"balance": bal},
-		"draftPrompt":      "",
-		"currentProjectId": cur,
-		"workflows":        list,
-		"parameters":       defaultParams,
-		"suggestedTags":    []string{"电影感", "缓慢推进", "自然光", "细节丰富"},
-	})
+	return gin.H{"available": true, "referencePricePerSecond": price, "referenceNote": "按秒计"}
 }
 
 func (h *ClientHandler) QuoteTask(c *gin.Context) {
@@ -148,7 +99,11 @@ func (h *ClientHandler) QuoteTask(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "UNAVAILABLE_COMBINATION", err.Error())
 		return
 	}
-	response.OK(c, gin.H{
+	response.OK(c, quoteDTO(quote))
+}
+
+func quoteDTO(quote *store.TaskQuote) gin.H {
+	return gin.H{
 		"quoteId": quote.ID, "expiresAt": quote.ExpiresAt,
 		"selection": gin.H{
 			"carrier": gin.H{"id": quote.CarrierID, "name": quote.CarrierName},
@@ -158,7 +113,7 @@ func (h *ClientHandler) QuoteTask(c *gin.Context) {
 			"currency": "CNY", "pricePerSecond": quote.PricePerSecond,
 			"durationSeconds": quote.DurationSeconds, "total": quote.Total,
 		},
-	})
+	}
 }
 
 func (h *ClientHandler) CreateTask(c *gin.Context) {
@@ -188,7 +143,7 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 	response.Created(c, gin.H{
 		"task": gin.H{
 			"id": task.ID, "title": task.Title, "status": task.Status,
-			"cost": task.Cost, "workflow": task.Workflow,
+			"cost": task.Cost, "mode": task.Workflow,
 		},
 		"wallet":        gin.H{"balance": balance},
 		"ledgerEntryId": ledgerID,
@@ -203,7 +158,7 @@ func (h *ClientHandler) CreationCatalog(c *gin.Context) {
 	}
 	modes := make([]gin.H, 0, len(catalog.Modes))
 	for _, mode := range catalog.Modes {
-		modes = append(modes, gin.H{"id": mode.ID, "code": mode.Code, "name": mode.Name, "description": mode.Description, "enabled": mode.Status == "published"})
+		modes = append(modes, gin.H{"id": mode.ID, "inputType": modeInputType(mode.Code), "name": mode.Name, "description": mode.Description, "enabled": mode.Status == "published"})
 	}
 	carriers := make([]gin.H, 0, len(catalog.Carriers))
 	for _, carrier := range catalog.Carriers {
@@ -211,9 +166,29 @@ func (h *ClientHandler) CreationCatalog(c *gin.Context) {
 	}
 	models := make([]gin.H, 0, len(catalog.Models))
 	for _, model := range catalog.Models {
-		models = append(models, gin.H{"id": model.ID, "carrierId": model.CarrierID, "name": model.Name, "description": model.Description, "modes": model.Modes})
+		inputTypes := make([]string, 0, len(model.Modes))
+		for _, code := range model.Modes {
+			inputType := modeInputType(code)
+			if inputType != "unsupported" {
+				inputTypes = append(inputTypes, inputType)
+			}
+		}
+		models = append(models, gin.H{"id": model.ID, "carrierId": model.CarrierID, "name": model.Name, "description": model.Description, "inputTypes": inputTypes})
 	}
 	response.OK(c, gin.H{"modes": modes, "carriers": carriers, "models": models})
+}
+
+func modeInputType(code string) string {
+	switch code {
+	case "text_to_video":
+		return "text"
+	case "first_last_frame_to_video":
+		return "first_last"
+	case "multi_image_to_video":
+		return "multi_image"
+	default:
+		return "unsupported"
+	}
 }
 
 func (h *ClientHandler) CreationOptions(c *gin.Context) {
@@ -250,6 +225,20 @@ func (h *ClientHandler) ListTasks(c *gin.Context) {
 		pageSize = 10
 	}
 	response.OK(c, gin.H{"items": list, "total": total, "page": page, "pageSize": pageSize, "counts": counts})
+}
+
+func (h *ClientHandler) GetTask(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	task, err := h.Store.GetClientTaskDetail(c.Request.Context(), user.ID, c.Param("id"))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			response.Fail(c, http.StatusNotFound, "NOT_FOUND", "任务不存在")
+			return
+		}
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	response.OK(c, clientTaskDetailDTO(task))
 }
 
 func (h *ClientHandler) CancelTask(c *gin.Context) {
@@ -406,7 +395,7 @@ func (h *ClientHandler) CreateTicket(c *gin.Context) {
 
 func taskDTO(t *store.Task) gin.H {
 	return gin.H{
-		"id": t.ID, "title": t.Title, "workflow": t.Workflow, "status": t.Status,
+		"id": t.ID, "title": t.Title, "mode": t.Workflow, "status": t.Status,
 		"progress": t.Progress, "duration": fmt.Sprintf("%d 秒", t.DurationSec),
 		"resolution": t.Resolution, "cost": t.Cost, "thumbUrl": t.ThumbURL,
 	}
@@ -414,9 +403,21 @@ func taskDTO(t *store.Task) gin.H {
 
 func taskListDTO(t *store.Task) gin.H {
 	return gin.H{
-		"id": t.ID, "title": t.Title, "workflow": t.Workflow, "status": t.Status,
+		"id": t.ID, "title": t.Title, "mode": t.Workflow, "status": t.Status,
 		"progress": t.Progress, "duration": fmt.Sprintf("%d 秒", t.DurationSec),
 		"resolution": t.Resolution, "cost": t.Cost, "time": t.UpdatedAt.Local().Format("01-02 15:04"),
 		"thumbUrl": t.ThumbURL, "savedToProject": t.SavedToProject,
+	}
+}
+
+func clientTaskDetailDTO(task *store.ClientTaskDetail) gin.H {
+	return gin.H{
+		"id": task.ID, "title": task.Title, "mode": task.Workflow, "status": task.Status,
+		"progress": task.Progress, "duration": fmt.Sprintf("%d 秒", task.DurationSec),
+		"durationSeconds": task.DurationSec, "resolution": task.Resolution, "aspectRatio": task.AspectRatio,
+		"generateAudio": task.GenerateAudio, "cost": task.Cost, "thumbUrl": task.ThumbURL,
+		"savedToProject": task.SavedToProject, "failureReason": task.FailureReason,
+		"executionWaiting": task.ExecutionWaiting, "deliveryStatus": task.DeliveryStatus,
+		"downloadUrl": task.DownloadURL, "createdAt": task.CreatedAt, "updatedAt": task.UpdatedAt,
 	}
 }

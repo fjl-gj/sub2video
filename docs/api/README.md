@@ -9,7 +9,7 @@ API 前缀为 `/api/v1`。服务端使用 Gin + PostgreSQL；前端页面已通�
 | [首页概览](./client-overview.md) | `/app/overview` | `GET /client/overview` |
 | [创作](./client-create.md) | `/app/create` | `GET /client/create/catalog`、`GET /client/create/options`、`POST /client/tasks/quote`、`POST /client/tasks` |
 | [广场](./client-plaza.md) | `/app/garden` | 场景与预设提示词 |
-| [任务](./client-tasks.md) | `/app/works` | `GET /client/tasks` |
+| [任务](./client-tasks.md) | `/app/works`、`/app/works/:id` | `GET /client/tasks`、`GET /client/tasks/:id` |
 | [资产](./client-assets.md) | `/app/assets` | `GET /client/projects` |
 | [回收站](./client-trash.md) | `/app/trash` | `GET /client/projects?trashed=true` |
 | [钱包](./client-wallet.md) | `/app/wallet` | `GET /client/wallet` |
@@ -20,7 +20,7 @@ API 前缀为 `/api/v1`。服务端使用 Gin + PostgreSQL；前端页面已通�
 - 客户端和管理端接口都需要 JWT（登录、注册等认证接口除外）。
 - 金额使用 CNY 元的 `number`；时间使用 ISO 8601。
 - 客户端不得收到供应商名称、成本、密钥、连接地址、上游工作流 ID、供应商供给 ID 或路由理由。
-- 管理端接口位于 `/api/v1/admin/...`，可管理创作模式、承运商/模型、供应商供给/成本和平台售价。
+- 管理端接口位于 `/api/v1/admin/...`，可管理创作模式、承运商/模型、供应商供给/成本、平台售价和操作审计；不在本期范围的充值商品、订单、用户和公告不在生产导航内。
 - 列表响应含 `items`；分页接口含 `total`、`page`、`pageSize`。
 
 ## 创作主链路
@@ -33,3 +33,5 @@ GET catalog → 选择固定模式 / 模型 → GET options
 ```
 
 报价有效期 5 分钟且只能使用一次。客户端提交任务时不能带价格快照或路线信息。
+
+任务详情只提供用户安全字段和对象存储交付地址。上游临时 URL、供应商名称、成本、供给 ID、上游工作流和路由快照仅可在管理端受控查看。

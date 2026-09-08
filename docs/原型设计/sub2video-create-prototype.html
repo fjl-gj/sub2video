@@ -319,15 +319,10 @@
           <!-- 工具条 -->
           <div class="wb-bar">
             <span class="lbl">模式</span>
-            <div class="grp">
-              <button type="button" class="tbtn on">图生视频</button>
-              <button type="button" class="tbtn locked" onclick="toast('文生即将开放')">文生视频</button>
-            </div>
-            <div class="sep"></div>
-            <span class="lbl">细分</span>
-            <div class="grp" id="var-btns">
-              <button type="button" class="tbtn on" data-v="keyframes" onclick="setVar('keyframes')">首尾帧</button>
-              <button type="button" class="tbtn" data-v="multi" onclick="setVar('multi')">多图参考</button>
+            <div class="grp" id="workflow-btns">
+              <button type="button" class="tbtn" data-w="text" onclick="setWorkflow('text')">文生视频</button>
+              <button type="button" class="tbtn on" data-w="first_last" onclick="setWorkflow('first_last')">首尾帧生成视频</button>
+              <button type="button" class="tbtn" data-w="multi_image" onclick="setWorkflow('multi_image')">多图生成视频</button>
             </div>
             <select class="proj-sel"><option>赛博雨夜（当前作品）</option></select>
           </div>
@@ -368,8 +363,8 @@
 
             <!-- 右：控制面板 -->
             <div class="wb-panel">
-              <div class="wb-sec">
-                <div class="wb-sec-hd">首帧 + 尾帧 + 多图 <span class="mono" id="acnt">0 张</span></div>
+              <div class="wb-sec" id="asset-section">
+                <div class="wb-sec-hd" id="asset-heading">首帧与尾帧 <span class="mono" id="acnt">0 张</span></div>
                 <div class="assets" id="assets"></div>
               </div>
               <div class="wb-sec">
@@ -423,12 +418,13 @@
     { id:2, t:'任务列表视频2', s:'已完成 · 15s', d:'15s' },
     { id:3, t:'雨夜推进镜头', s:'排队中 · 8s', d:'8s' },
   ];
-  let variant='keyframes', S={first:null,last:null,extras:[],multi:[null]}, pickT=null, actA=null, actTask=null;
+  let workflow='first_last', variant='keyframes', S={first:null,last:null,extras:[],multi:[null]}, pickT=null, actA=null, actTask=null;
 
   function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2000);}
-  function setVar(v){
-    variant=v;
-    document.querySelectorAll('#var-btns .tbtn').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  function setWorkflow(v){
+    workflow=v;
+    variant=v==='multi_image'?'multi':'keyframes';
+    document.querySelectorAll('#workflow-btns .tbtn').forEach(b=>b.classList.toggle('on',b.dataset.w===v));
     renderA();
   }
   function showPreview(title,sub,meta){
@@ -440,6 +436,14 @@
   }
   function renderA(){
     const el=document.getElementById('assets'); el.innerHTML='';
+    const assetSection=document.getElementById('asset-section');
+    assetSection.style.display=workflow==='text'?'none':'';
+    document.getElementById('asset-heading').innerHTML=(variant==='keyframes'?'首帧与尾帧':'多图参考矩阵')+' <span class="mono" id="acnt">0 张</span>';
+    if(workflow==='text'){
+      document.getElementById('go').disabled=false;
+      lucide.createIcons();
+      return;
+    }
     const slots=variant==='keyframes'
       ? [{k:'first',l:'首帧',r:1,v:S.first},{k:'last',l:'尾帧',r:0,v:S.last},...S.extras.map((v,i)=>({k:'ex',l:`参${i+1}`,r:0,v,idx:i}))]
       : S.multi.map((v,i)=>({k:'mu',l:`参${i+1}`,r:i===0,v,idx:i}));

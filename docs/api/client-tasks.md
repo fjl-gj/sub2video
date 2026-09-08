@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | `id` | `string` | `tsk_*` |
 | `title` | `string` | 任务标题 |
-| `workflow` | `string` | 创作模式展示名；字段名为兼容旧任务保留 |
+| `mode` | `string` | 创作模式展示名 |
 | `status` | `TaskStatus` | 排队中 \| 生成中 \| 已完成 \| 失败 |
 | `progress` | `integer` | 0–100；仅生成中展示 |
 | `duration` | `string` | 展示用，如 `15 秒` |
@@ -100,15 +100,19 @@ POST /api/v1/client/tasks/{id}/cancel
 
 失败任务不能复用原任务或旧报价。客户端跳转 `/app/create`，用户重新选择参数、请求新的 `POST /api/v1/client/tasks/quote`，再通过 `POST /api/v1/client/tasks` 创建独立任务并按当时售价预扣。
 
-历史兼容接口 `POST /api/v1/client/tasks/{id}/retry` 不适用于带 `quoteId` 的新任务；服务端会要求重新配置和报价。
+失败任务必须重新配置并获得新的报价；不存在复用旧任务、旧价格或旧报价的重试接口。
 
 ### 下载
 
 ```
-GET /api/v1/client/tasks/{id}/download-url
+GET /api/v1/client/tasks/{id}
 ```
 
-返回短时签名 URL 或 `302` 重定向。
+响应仅在 `deliveryStatus = "ready"` 时携带 `downloadUrl`。该地址来自对象存储持久化交付；服务端不会把供应商临时结果 URL 返回给客户端。`pending_storage` 表示上游已完成但尚未完成对象存储交付。
+
+### 任务详情
+
+客户端路由为 `/app/works/{id}`。详情接口返回状态、进度、时长、分辨率、画幅、自动音频、已预扣金额、失败原因和交付状态，不返回供应商、采购成本、上游任务、上游工作流、路由或执行快照。
 
 ### 保存到作品
 
@@ -135,15 +139,16 @@ POST /api/v1/client/tasks/{id}/save-to-project
 
 1. 进度更新：生成中任务建议 WebSocket / SSE 推送 `progress`，或轮询 `GET /tasks/{id}`。
 2. `savedToProject`：同一 `taskId` 在同一作品内只保存一次。
-3. 详情页原型为 toast；后续可增 `GET /tasks/{id}` 详情抽屉。
+3. 成片仅在对象存储持久化交付完成后可下载或保存到作品；没有交付地址时页面展示等待状态，不伪造下载成功。
 4. 新任务失败后必须使用新的 `quoteId`；调价、供给变更和余额变化都会影响重新提交的结果。
 
-## 与当前 mock 对应
+## 当前实现映射
 
-| 操作 | store |
+| 操作 | 前端状态 / 接口 |
 | --- | --- |
-| 列表 | `tasks` |
-| 终止退款 | `cancelTask(id)` |
+| 列表 | `GET /client/tasks` |
+| 任务详情与下载 | `GET /client/tasks/{id}` |
+| 终止退款 | `POST /client/tasks/{id}/cancel` |
 | 失败重新配置 | 跳转 `/app/create`，由报价和创建任务接口完成 |
-| 保存作品 | `saveWorkToAsset(id)` |
-| 已保存判断 | `isWorkSaved(taskId)` |
+| 保存作品 | `POST /client/tasks/{id}/save-to-project` |
+| 已保存判断 | 列表和详情响应的 `savedToProject` |

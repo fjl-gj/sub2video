@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Megaphone, ReceiptText, Settings2, Sparkles, Ticket, Trash2, UsersRound, WalletCards, Workflow } from 'lucide-vue-next'
+import { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Settings2, Sparkles, Ticket, Trash2, WalletCards, Workflow } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import S2VNavItem from '@/shared/ui/S2VNavItem.vue'
 import S2VProgress from '@/shared/ui/S2VProgress.vue'
@@ -12,7 +12,7 @@ interface NavGroup { label: string; items: NavItem[] }
 const props = defineProps<{ surface: 'client' | 'admin'; overlay?: boolean }>()
 const route = useRoute()
 const app = useAppStore()
-const iconMap = { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Megaphone, ReceiptText, Settings2, Sparkles, Ticket, Trash2, UsersRound, WalletCards, Workflow }
+const iconMap = { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Settings2, Sparkles, Ticket, Trash2, WalletCards, Workflow }
 
 const clientGroups = computed<NavGroup[]>(() => [
   { label: '', items: [{ label: '首页概览', to: '/app/overview', icon: 'LayoutDashboard' }] },
@@ -32,21 +32,18 @@ const clientGroups = computed<NavGroup[]>(() => [
 const adminGroups = computed<NavGroup[]>(() => [
   { label: '', items: [{ label: '首页概览', to: '/admin/overview', icon: 'LayoutDashboard' }] },
   { label: '创作管理', items: [
-    { label: '创作模式', to: '/admin/workflows', icon: 'Workflow' },
-    { label: '模型与供应商', to: '/admin/providers', icon: 'Bot' },
+    { label: '工作流', to: '/admin/workflows', icon: 'Workflow' },
+    { label: '承运商与模型', to: '/admin/carriers-models', icon: 'Bot' },
+    { label: '供应商与模型', to: '/admin/supplier-models', icon: 'Bot' },
   ] },
   { label: '计费管理', items: [
-    { label: '定价规则', to: '/admin/pricing', icon: 'Coins' },
-    { label: '充值商品', to: '/admin/products', icon: 'Coins' },
-    { label: '订单管理', to: '/admin/orders', icon: 'ReceiptText' },
+    { label: '价格审计', to: '/admin/pricing', icon: 'Coins' },
   ] },
   { label: '任务管理', items: [
     { label: '任务中心', to: '/admin/tasks', icon: 'ListChecks' },
   ] },
   { label: '运营管理', items: [
-    { label: '用户管理', to: '/admin/users', icon: 'UsersRound' },
     { label: '工单中心', to: '/admin/tickets', icon: 'Ticket', badge: app.openTicketCount ? `${app.openTicketCount}` : undefined, badgeTone: 'danger' },
-    { label: '公告', to: '/admin/announcements', icon: 'Megaphone' },
   ] },
   { label: '系统', items: [
     { label: '运维监控', to: '/admin/monitoring', icon: 'Activity' },

@@ -48,12 +48,6 @@ func main() {
 	if err := st.SeedBasics(ctx); err != nil {
 		log.Fatalf("seed: %v", err)
 	}
-	if err := st.SeedSupplyChain(ctx, cfg.SecretKey); err != nil {
-		log.Fatalf("seed supply: %v", err)
-	}
-	if err := st.SeedPlatformCommerce(ctx); err != nil {
-		log.Fatalf("seed commerce: %v", err)
-	}
 	if err := st.SeedCreationCatalog(ctx); err != nil {
 		log.Fatalf("seed creation catalog: %v", err)
 	}
@@ -87,11 +81,11 @@ func main() {
 	go func() {
 		log.Printf("sub2video api listening on %s", cfg.Addr)
 		if cfg.AutoDLToken == "" {
-			log.Printf("autodl token empty: text tasks fall back to simulator until admin/env configures token")
+			log.Printf("autodl token empty: new tasks remain queued until an administrator configures a supplier credential")
 		}
 		obj := st.LoadObjectStore(ctx, cfg)
 		if !obj.Configured() {
-			log.Printf("object storage not configured: image workflows stay on simulator until minio/cos credentials arrive")
+			log.Printf("object storage not configured: image tasks wait before submission and completed upstream tasks wait for durable delivery")
 		} else if err := obj.EnsureBucket(ctx); err != nil {
 			log.Printf("object storage ensure bucket: %v", err)
 		} else {

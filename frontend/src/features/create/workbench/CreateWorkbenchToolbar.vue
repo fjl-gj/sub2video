@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import type { CreateMode, ImageVariant } from '@/shared/lib/create-draft'
+import type { WorkflowInputType } from '@/shared/lib/create-draft'
 import { useAppStore } from '@/stores/app'
 
-defineProps<{
-  mode: CreateMode
-  imageVariant: ImageVariant
-}>()
+withDefaults(defineProps<{
+  workflowInputType: WorkflowInputType
+  modes?: Array<{ inputType: WorkflowInputType; name: string }>
+}>(), {
+  modes: () => [],
+})
 
 const emit = defineEmits<{
-  'update:mode': [value: CreateMode]
-  'update:imageVariant': [value: ImageVariant]
+  'update:workflowInputType': [value: WorkflowInputType]
 }>()
 
 const app = useAppStore()
@@ -20,28 +21,14 @@ const app = useAppStore()
     <span class="s2v-wb-strip-label">模式</span>
     <div class="s2v-wb-segmented">
       <button
+        v-for="mode in modes"
+        :key="mode.inputType"
         type="button"
         class="s2v-wb-segment"
-        :class="{ 's2v-wb-segment-active': mode === 'text' }"
-        @click="emit('update:mode', 'text')"
+        :class="{ 's2v-wb-segment-active': workflowInputType === mode.inputType }"
+        @click="emit('update:workflowInputType', mode.inputType)"
       >
-        文生视频
-      </button>
-      <button
-        type="button"
-        class="s2v-wb-segment"
-        :class="{ 's2v-wb-segment-active': mode === 'image' && imageVariant === 'keyframes' }"
-        @click="emit('update:mode', 'image'); emit('update:imageVariant', 'keyframes')"
-      >
-        首尾帧生成视频
-      </button>
-      <button
-        type="button"
-        class="s2v-wb-segment"
-        :class="{ 's2v-wb-segment-active': mode === 'image' && imageVariant === 'multi' }"
-        @click="emit('update:mode', 'image'); emit('update:imageVariant', 'multi')"
-      >
-        多图生成视频
+        {{ mode.name }}
       </button>
     </div>
 

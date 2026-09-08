@@ -25,9 +25,9 @@ export async function redeemCode(code: string) {
 }
 
 export type CreationCatalog = {
-  modes: Array<{ id: string; code: string; name: string; description: string; enabled: boolean }>
+  modes: Array<{ id: string; inputType: 'text' | 'first_last' | 'multi_image' | 'unsupported'; name: string; description: string; enabled: boolean }>
   carriers: Array<{ id: string; name: string }>
-  models: Array<{ id: string; carrierId: string; name: string; description: string; modes: string[] }>
+  models: Array<{ id: string; carrierId: string; name: string; description: string; inputTypes: Array<'text' | 'first_last' | 'multi_image'> }>
 }
 
 export type CreationOptions = {
@@ -76,7 +76,7 @@ export async function createTask(payload: {
 }) {
   const { data } = await http.post('/client/tasks', payload)
   return data as {
-    task: { id: string; title: string; status: string; cost: number; workflow: string }
+    task: { id: string; title: string; status: string; cost: number; mode: string }
     wallet: { balance: number }
   }
 }
@@ -103,7 +103,7 @@ export async function listTasks(params?: { status?: string; page?: number; pageS
     items: Array<{
       id: string
       title: string
-      workflow: string
+      mode: string
       status: string
       progress: number
       duration: string
@@ -118,6 +118,33 @@ export async function listTasks(params?: { status?: string; page?: number; pageS
     pageSize: number
     counts: Record<string, number>
   }
+}
+
+export type ClientTaskDetail = {
+  id: string
+  title: string
+  mode: string
+  status: string
+  progress: number
+  duration: string
+  durationSeconds: number
+  resolution: string
+  aspectRatio: string
+  generateAudio: boolean
+  cost: number
+  thumbUrl: string
+  savedToProject: boolean
+  failureReason: string
+  executionWaiting: boolean
+  deliveryStatus: 'ready' | 'pending_storage' | 'not_ready'
+  downloadUrl: string
+  createdAt: string
+  updatedAt: string
+}
+
+export async function fetchTask(id: string) {
+  const { data } = await http.get<ClientTaskDetail>(`/client/tasks/${id}`)
+  return data
 }
 
 export async function cancelTask(id: string) {

@@ -609,12 +609,12 @@ func AssetStoragePath(root, projectID, assetID, fileName string) string {
 }
 
 func (s *Store) SaveTaskToProject(ctx context.Context, userID int64, taskID, projectID string) (*FsItem, []string, error) {
-	var status, title, resultURL, resultOSS, thumb string
+	var status, title, resultOSS string
 	var saved bool
 	err := s.Pool.QueryRow(ctx, `
-SELECT status, title, COALESCE(result_url,''), COALESCE(result_oss_url,''), COALESCE(thumb_url,''), saved_to_project
+SELECT status, title, COALESCE(result_oss_url,''), saved_to_project
 FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
-		&status, &title, &resultURL, &resultOSS, &thumb, &saved)
+		&status, &title, &resultOSS, &saved)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -626,6 +626,9 @@ FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
 	}
 	if saved {
 		return nil, nil, errors.New("任务已保存到作品")
+	}
+	if resultOSS == "" {
+		return nil, nil, errors.New("成片尚未完成持久化交付")
 	}
 	if projectID == "" {
 		projectID, err = s.ResolveCurrentProjectID(ctx, userID)
@@ -640,13 +643,6 @@ FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
 	if !strings.HasSuffix(strings.ToLower(name), ".mp4") {
 		name += ".mp4"
 	}
-	remote := resultOSS
-	if remote == "" {
-		remote = resultURL
-	}
-	if remote == "" {
-		remote = thumb
-	}
 	item := FsItem{
 		ID:         NewAssetID(),
 		Name:       name,
@@ -655,7 +651,7 @@ FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
 		Time:       time.Now().Format("2006-01-02 15:04"),
 		Meta:       "成片",
 		SourceTask: taskID,
-		RemoteURL:  remote,
+		RemoteURL:  resultOSS,
 	}
 	path := []string{"视频", "正片镜头"}
 	if _, _, err := s.AddProjectFile(ctx, userID, projectID, path, item); err != nil {

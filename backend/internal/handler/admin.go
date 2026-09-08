@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/mail"
+	"github.com/sbu2video/backend/internal/middleware"
 	"github.com/sbu2video/backend/internal/response"
 	"github.com/sbu2video/backend/internal/store"
 )
@@ -17,6 +18,16 @@ type AdminHandler struct {
 	Store *store.Store
 	Cfg   config.Config
 	Mail  *mail.Service
+}
+
+func (h *AdminHandler) audit(c *gin.Context, action, targetType, targetID string, details gin.H) {
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		return
+	}
+	if err := h.Store.AppendAdminAudit(c.Request.Context(), user.ID, action, targetType, targetID, map[string]any(details)); err != nil {
+		_ = c.Error(fmt.Errorf("admin audit %s %s: %w", action, targetID, err))
+	}
 }
 
 func (h *AdminHandler) ListSuppliers(c *gin.Context) {
@@ -66,6 +77,7 @@ func (h *AdminHandler) CreateSupplier(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "supplier.create", "supplier", sp.ID, gin.H{"code": sp.Code, "credentialsConfigured": req.Token != ""})
 	response.Created(c, gin.H{
 		"id": sp.ID, "code": sp.Code, "name": sp.Name, "baseUrl": sp.BaseURL,
 		"enabled": sp.Enabled, "hasToken": sp.TokenConfigured,
@@ -93,6 +105,7 @@ func (h *AdminHandler) UpdateSupplier(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "supplier.update", "supplier", sp.ID, gin.H{"credentialsUpdated": req.Token != "", "enabled": sp.Enabled})
 	response.OK(c, gin.H{
 		"id": sp.ID, "code": sp.Code, "name": sp.Name, "baseUrl": sp.BaseURL,
 		"enabled": sp.Enabled, "hasToken": sp.TokenConfigured,
@@ -157,24 +170,24 @@ func (h *AdminHandler) CreateRoute(c *gin.Context) {
 
 func (h *AdminHandler) CreateModel(c *gin.Context) {
 	var req struct {
-		CarrierID        string `json:"carrierId" binding:"required"`
-		Code             string `json:"code" binding:"required"`
-		Name             string `json:"name" binding:"required"`
-		Description      string `json:"description"`
-		ClientWorkflowID string `json:"clientWorkflowId"`
+		CarrierID   string `json:"carrierId" binding:"required"`
+		Code        string `json:"code" binding:"required"`
+		Name        string `json:"name" binding:"required"`
+		Description string `json:"description"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	m, err := h.Store.CreateModel(c.Request.Context(), req.CarrierID, req.Code, req.Name, req.Description, req.ClientWorkflowID)
+	m, err := h.Store.CreateModel(c.Request.Context(), req.CarrierID, req.Code, req.Name, req.Description, "")
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "model.create", "model", m.ID, gin.H{"carrierId": req.CarrierID, "code": m.Code})
 	response.Created(c, gin.H{
 		"id": m.ID, "code": m.Code, "name": m.Name, "carrierCode": m.CarrierCode,
-		"clientWorkflowId": m.ClientWorkflowID, "enabled": m.Enabled,
+		"enabled": m.Enabled,
 	})
 }
 
@@ -223,7 +236,7 @@ func (h *AdminHandler) ListCarriers(c *gin.Context) {
 	for _, m := range models {
 		mOut = append(mOut, gin.H{
 			"id": m.ID, "carrierId": m.CarrierID, "carrierCode": m.CarrierCode, "code": m.Code,
-			"name": m.Name, "description": m.Description, "clientWorkflowId": m.ClientWorkflowID, "enabled": m.Enabled,
+			"name": m.Name, "description": m.Description, "enabled": m.Enabled,
 		})
 	}
 	response.OK(c, gin.H{
@@ -339,6 +352,11 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "settings.update", "settings", "platform", gin.H{
+		"changedCount": len(kv), "smtpPasswordUpdated": strings.TrimSpace(stringValue(req["smtpPassword"])) != "",
+		"cosSecretUpdated":   strings.TrimSpace(stringValue(req["cosSecretKey"])) != "",
+		"minioSecretUpdated": strings.TrimSpace(stringValue(req["minioSecretKey"])) != "",
+	})
 	if v, ok := req["cosSecretKey"].(string); ok && strings.TrimSpace(v) != "" {
 		if err := h.Store.SaveCOSSecretKey(c.Request.Context(), h.Cfg.SecretKey, strings.TrimSpace(v)); err != nil {
 			response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
@@ -554,14 +572,8 @@ func (h *AdminHandler) ListCreationModes(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(items))
 	for _, item := range items {
-		policies := make([]gin.H, 0, len(item.Policies))
-		for _, policy := range item.Policies {
-			policies = append(policies, gin.H{"modelId": policy.ModelID, "modelName": policy.ModelName, "carrierName": policy.CarrierName,
-				"enabled": policy.Enabled, "recommendationRank": policy.RecommendationRank, "displayBadge": policy.DisplayBadge,
-				"defaultDuration": policy.DefaultDuration, "defaultResolution": policy.DefaultResolution})
-		}
 		out = append(out, gin.H{"id": item.ID, "code": item.Code, "name": item.Name, "description": item.Description,
-			"status": item.Status, "sortOrder": item.SortOrder, "policies": policies})
+			"status": item.Status, "sortOrder": item.SortOrder})
 	}
 	response.OK(c, gin.H{"items": out})
 }
@@ -582,12 +594,34 @@ func (h *AdminHandler) UpdateCreationMode(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "creation_mode.update", "creation_mode", item.ID, gin.H{"status": item.Status, "sortOrder": item.SortOrder})
 	response.OK(c, gin.H{"id": item.ID, "name": item.Name, "description": item.Description, "status": item.Status, "sortOrder": item.SortOrder})
 }
 
-func (h *AdminHandler) UpsertModePolicy(c *gin.Context) {
+func (h *AdminHandler) ListModelConfigurations(c *gin.Context) {
+	items, err := h.Store.ListModelConfigurations(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		out = append(out, gin.H{
+			"modelId": item.ModelID, "modelCode": item.ModelCode, "modelName": item.ModelName,
+			"carrierId": item.CarrierID, "carrierName": item.CarrierName,
+			"workflowId": item.WorkflowID, "workflowName": item.WorkflowName,
+			"enabled": item.Enabled, "recommendationRank": item.RecommendationRank,
+			"displayBadge": item.DisplayBadge, "defaultDuration": item.DefaultDuration,
+			"defaultResolution": item.DefaultResolution,
+		})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func (h *AdminHandler) UpsertModelConfiguration(c *gin.Context) {
 	var req struct {
 		ModelID            string `json:"modelId" binding:"required"`
+		WorkflowID         string `json:"workflowId" binding:"required"`
 		Enabled            bool   `json:"enabled"`
 		RecommendationRank int    `json:"recommendationRank"`
 		DisplayBadge       string `json:"displayBadge"`
@@ -598,10 +632,11 @@ func (h *AdminHandler) UpsertModePolicy(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	if err := h.Store.UpsertModeModelPolicy(c.Request.Context(), c.Param("id"), req.ModelID, req.Enabled, req.RecommendationRank, req.DisplayBadge, req.DefaultDuration, req.DefaultResolution); err != nil {
+	if err := h.Store.UpsertModeModelPolicy(c.Request.Context(), req.WorkflowID, req.ModelID, req.Enabled, req.RecommendationRank, req.DisplayBadge, req.DefaultDuration, req.DefaultResolution); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "model_configuration.upsert", "model", req.ModelID, gin.H{"workflowId": req.WorkflowID, "enabled": req.Enabled, "recommendationRank": req.RecommendationRank})
 	response.OK(c, gin.H{"ok": true})
 }
 
@@ -638,6 +673,7 @@ func (h *AdminHandler) CreateOffering(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "supplier_offering.create", "supplier_offering", item.ID, gin.H{"supplierId": item.SupplierID, "modelId": item.ModelID, "modeId": item.ModeID, "enabled": item.Enabled})
 	response.Created(c, offeringDTO(*item))
 }
 
@@ -652,6 +688,7 @@ func (h *AdminHandler) UpdateOffering(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "supplier_offering.update", "supplier_offering", item.ID, gin.H{"enabled": item.Enabled, "healthStatus": item.HealthStatus})
 	response.OK(c, offeringDTO(*item))
 }
 
@@ -681,6 +718,7 @@ func (h *AdminHandler) UpsertSupplierCost(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "supplier_cost.upsert", "supplier_cost", item.ID, gin.H{"offeringId": item.OfferingID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio, "version": item.Version})
 	response.OK(c, gin.H{"id": item.ID, "offeringId": item.OfferingID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio,
 		"peakPerSecond": item.PeakPerSecond, "offpeakPerSecond": item.OffpeakPerSecond, "version": item.Version, "status": item.Status})
 }
@@ -711,6 +749,7 @@ func (h *AdminHandler) UpsertRetailPricing(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "retail_price.upsert", "retail_price", item.ID, gin.H{"modeId": item.ModeID, "modelId": item.ModelID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio, "version": item.Version})
 	response.OK(c, gin.H{"id": item.ID, "modeId": item.ModeID, "modelId": item.ModelID, "pricePerSecond": item.PricePerSecond, "version": item.Version, "status": item.Status})
 }
 
@@ -729,6 +768,7 @@ func (h *AdminHandler) CreateCarrier(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "carrier.create", "carrier", item.ID, gin.H{"code": item.Code})
 	response.Created(c, gin.H{"id": item.ID, "code": item.Code, "name": item.Name, "description": item.Description, "enabled": item.Enabled})
 }
 
@@ -747,6 +787,7 @@ func (h *AdminHandler) UpdateCarrier(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "carrier.update", "carrier", item.ID, gin.H{"enabled": item.Enabled})
 	response.OK(c, gin.H{"id": item.ID, "name": item.Name, "description": item.Description, "enabled": item.Enabled})
 }
 
@@ -765,6 +806,7 @@ func (h *AdminHandler) UpdateModel(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "model.update", "model", item.ID, gin.H{"enabled": item.Enabled})
 	response.OK(c, gin.H{"id": item.ID, "name": item.Name, "description": item.Description, "enabled": item.Enabled})
 }
 
@@ -783,7 +825,7 @@ func (h *AdminHandler) ListTasks(c *gin.Context) {
 			provider = "-"
 		}
 		out = append(out, gin.H{
-			"id": t.ID, "title": t.Title, "workflow": t.Workflow, "workflowId": t.WorkflowPublicID,
+			"id": t.ID, "title": t.Title, "mode": t.Workflow, "modeId": t.WorkflowPublicID,
 			"status": t.Status, "progress": t.Progress, "resolution": t.Resolution,
 			"durationSec": t.DurationSec, "cost": t.Cost,
 			"user": t.UserName, "userEmail": t.UserEmail,
@@ -821,6 +863,7 @@ func (h *AdminHandler) CancelTask(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "task.cancel_refund", "task", task.ID, gin.H{"refund": refund})
 	response.OK(c, gin.H{"task": gin.H{"id": task.ID, "status": task.Status}, "refund": refund})
 }
 
@@ -830,6 +873,7 @@ func (h *AdminHandler) RetryTask(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "task.retry_legacy", "task", task.ID, gin.H{})
 	response.OK(c, gin.H{"task": gin.H{"id": task.ID, "status": task.Status}})
 }
 
@@ -864,5 +908,32 @@ func (h *AdminHandler) UpdateTicket(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	h.audit(c, "ticket.update", "ticket", c.Param("id"), gin.H{"status": req.Status})
 	response.OK(c, gin.H{"id": c.Param("id"), "status": req.Status})
+}
+
+func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	items, err := h.Store.ListAdminAuditLogs(c.Request.Context(), limit)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		actor := item.ActorName
+		if actor == "" {
+			actor = item.ActorEmail
+		}
+		out = append(out, gin.H{"id": item.ID, "time": item.CreatedAt, "operator": actor, "operatorEmail": item.ActorEmail,
+			"action": item.Action, "targetType": item.TargetType, "target": item.TargetID, "details": item.Details})
+	}
+	response.OK(c, gin.H{"items": out})
+}
+
+func stringValue(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
 }

@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { Ban, Eye, RefreshCw, RotateCcw, Search, X } from 'lucide-vue-next'
+import { Ban, Eye, RefreshCw, Search, X } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   cancelAdminTask,
   fetchAdminTask,
   fetchAdminTasks,
-  retryAdminTask,
   type AdminTaskDetail,
   type AdminTaskItem,
 } from '@/api/admin'
@@ -86,19 +85,6 @@ async function confirmCancel() {
   }
 }
 
-async function doRetry(id: string) {
-  acting.value = true
-  try {
-    await retryAdminTask(id)
-    app.notify('已重新入队')
-    await load()
-  } catch (e: unknown) {
-    app.notify(apiErrorMessage(e, '重试失败'))
-  } finally {
-    acting.value = false
-  }
-}
-
 watch(filter, () => { void load() })
 onMounted(load)
 </script>
@@ -106,7 +92,7 @@ onMounted(load)
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="任务中心">
-      <template #description>平台任务号为主；上游任务号仅作排障参考。可终止退款或失败重试。</template>
+      <template #description>平台任务号为主；上游任务号仅作排障参考。可终止未完成任务并退款，失败任务需由创作者重新报价提交。</template>
       <template #actions>
         <S2VBadge tone="primary">{{ total }} 条任务</S2VBadge>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
@@ -139,7 +125,7 @@ onMounted(load)
             <td>
               <strong class="block text-xs text-s2v-ink">{{ task.title }}</strong>
               <span class="mt-1 block font-mono text-[10px] text-s2v-muted">{{ task.id }}</span>
-              <span class="mt-0.5 block text-[10px] text-s2v-muted">{{ task.workflow }}</span>
+              <span class="mt-0.5 block text-[10px] text-s2v-muted">{{ task.mode }}</span>
             </td>
             <td>
               <span class="block text-xs">{{ task.user }}</span>
@@ -154,7 +140,6 @@ onMounted(load)
               <div class="flex items-center gap-1">
                 <S2VIconButton label="详情" @click="openDetail(task.id)"><Eye class="h-3.5 w-3.5" /></S2VIconButton>
                 <S2VIconButton v-if="task.status === '排队中' || task.status === '生成中'" label="终止退款" @click="askCancel(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
-                <S2VIconButton v-if="task.status === '失败'" label="重试" :disabled="acting" @click="doRetry(task.id)"><RotateCcw class="h-3.5 w-3.5" /></S2VIconButton>
               </div>
             </td>
           </tr>
@@ -174,7 +159,6 @@ onMounted(load)
         <template #actions>
           <S2VIconButton label="详情" @click="openDetail(task.id)"><Eye class="h-3.5 w-3.5" /></S2VIconButton>
           <S2VIconButton v-if="task.status === '排队中' || task.status === '生成中'" label="终止退款" @click="askCancel(task)"><Ban class="h-3.5 w-3.5" /></S2VIconButton>
-          <S2VIconButton v-if="task.status === '失败'" label="重试" :disabled="acting" @click="doRetry(task.id)"><RotateCcw class="h-3.5 w-3.5" /></S2VIconButton>
         </template>
       </MobileRecordCard>
       <p v-if="!list.length" class="text-xs text-s2v-muted">暂无任务。</p>

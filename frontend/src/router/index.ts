@@ -26,24 +26,23 @@ const router = createRouter({
       { path: 'create', component: () => import('@/pages/client/CreatePage.vue'), meta: { surface: 'client', title: '创作' } },
       { path: 'garden', component: () => import('@/pages/client/GardenPage.vue'), meta: { surface: 'client', title: '广场' } },
       { path: 'works', component: () => import('@/pages/client/WorksPage.vue'), meta: { surface: 'client', title: '任务' } },
+      { path: 'works/:id', component: () => import('@/pages/client/TaskDetailPage.vue'), meta: { surface: 'client', title: '任务详情' } },
       { path: 'assets', component: () => import('@/pages/client/AssetsPage.vue'), meta: { surface: 'client', title: '资产' } },
       { path: 'trash', component: () => import('@/pages/client/TrashPage.vue'), meta: { surface: 'client', title: '回收站' } },
       { path: 'wallet', component: () => import('@/pages/client/WalletPage.vue'), meta: { surface: 'client', title: '钱包' } },
       { path: 'tickets', component: () => import('@/pages/client/TicketsPage.vue'), meta: { surface: 'client', title: '帮助与工单' } },
       { path: 'profile', component: () => import('@/pages/client/ProfilePage.vue'), meta: { surface: 'client', title: '个人资料' } },
     ] },
-    { path: '/admin', component: () => import('@/layouts/AdminLayout.vue'), redirect: '/admin/overview', children: [
+    { path: '/admin', component: () => import('@/layouts/AdminLayout.vue'), redirect: '/admin/overview', meta: { requiresAuth: true, requiresAdmin: true }, children: [
       { path: 'overview', component: () => import('@/pages/admin/OverviewPage.vue'), meta: { surface: 'admin', title: '首页概览' } },
-      { path: 'workflows', component: () => import('@/pages/admin/WorkflowsPage.vue'), meta: { surface: 'admin', title: '创作模式' } },
-      { path: 'providers', component: () => import('@/pages/admin/ProvidersPage.vue'), meta: { surface: 'admin', title: '模型与供应商' } },
+      { path: 'workflows', component: () => import('@/pages/admin/WorkflowsPage.vue'), meta: { surface: 'admin', title: '工作流' } },
+      { path: 'carriers-models', component: () => import('@/pages/admin/CarrierModelsPage.vue'), meta: { surface: 'admin', title: '承运商与模型' } },
+      { path: 'supplier-models', component: () => import('@/pages/admin/SupplierModelsPage.vue'), meta: { surface: 'admin', title: '供应商与模型' } },
+      { path: 'providers', redirect: '/admin/supplier-models' },
       { path: 'tasks', component: () => import('@/pages/admin/TasksPage.vue'), meta: { surface: 'admin', title: '任务中心' } },
       { path: 'monitoring', component: () => import('@/pages/admin/MonitoringPage.vue'), meta: { surface: 'admin', title: '运维监控' } },
-      { path: 'pricing', component: () => import('@/pages/admin/PricingPage.vue'), meta: { surface: 'admin', title: '定价规则' } },
-      { path: 'products', component: () => import('@/pages/admin/ProductsPage.vue'), meta: { surface: 'admin', title: '充值商品' } },
-      { path: 'orders', component: () => import('@/pages/admin/OrdersPage.vue'), meta: { surface: 'admin', title: '订单管理' } },
-      { path: 'users', component: () => import('@/pages/admin/UsersPage.vue'), meta: { surface: 'admin', title: '用户管理' } },
+      { path: 'pricing', component: () => import('@/pages/admin/PricingPage.vue'), meta: { surface: 'admin', title: '价格审计' } },
       { path: 'tickets', component: () => import('@/pages/admin/AdminTicketsPage.vue'), meta: { surface: 'admin', title: '工单中心' } },
-      { path: 'announcements', component: () => import('@/pages/admin/AnnouncementsPage.vue'), meta: { surface: 'admin', title: '公告' } },
       { path: 'audit-log', component: () => import('@/pages/admin/AuditLogPage.vue'), meta: { surface: 'admin', title: '操作日志' } },
       { path: 'settings', component: () => import('@/pages/admin/SettingsPage.vue'), meta: { surface: 'admin', title: '系统设置' } },
     ] },
@@ -53,6 +52,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const needsAuth = to.matched.some((r) => r.meta.requiresAuth)
+  const needsAdmin = to.matched.some((r) => r.meta.requiresAdmin)
   const isGuest = to.matched.some((r) => r.meta.guest)
   const hasToken = Boolean(getAccessToken())
   const auth = useAuthStore()
@@ -63,6 +63,9 @@ router.beforeEach(async (to) => {
 
   if (needsAuth && !hasToken) {
     return { path: '/auth/login', query: { redirect: to.fullPath } }
+  }
+  if (needsAdmin && auth.user?.role !== 'admin') {
+    return '/app/overview'
   }
   if (isGuest && hasToken && auth.isAuthenticated) {
     return '/app/overview'

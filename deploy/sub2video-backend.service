@@ -15,7 +15,9 @@ Environment=SUB2VIDEO_JWT_SECRET=change-me-in-production
 Environment=SUB2VIDEO_SECRET_KEY=change-me-in-production-secret
 Environment=SUB2VIDEO_CORS_ORIGIN=*
 Environment=SUB2VIDEO_UPLOAD_DIR=/opt/sub2video/backend/data/uploads
-# Fill later — leave empty to keep simulator fallback for text; image needs COS.
+# New quote-backed tasks require an enabled supplier credential. Historical
+# development tasks alone keep the simulator path; every completed result needs
+# COS or MinIO before it can be delivered to a creator.
 # Environment=SUB2VIDEO_AUTODL_TOKEN=
 # Environment=SUB2VIDEO_AUTODL_BASE_URL=https://autodl.art
 # Environment=SUB2VIDEO_COS_SECRET_ID=
