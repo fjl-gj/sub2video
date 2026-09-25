@@ -51,40 +51,56 @@ export async function fetchCreationOptions(modeId: string, modelId?: string) {
   return data as CreationOptions
 }
 
-export async function quoteTask(payload: {
-  modeId: string
-  modelId?: string
-  durationSeconds: number
-  resolution: string
-  aspectRatio: string
-  generateAudio: boolean
+export async function estimateTask(payload: {
+	modeId: string
+	carrierId?: string
+	modelId?: string
+	durationSeconds: number
+	resolution: string
+	aspectRatio: string
+	generateAudio: boolean
 }) {
-  const { data } = await http.post('/client/tasks/quote', payload)
-  return data as {
-    quoteId: string
-    expiresAt: string
-    selection: { carrier: { id: string; name: string }; model: { id: string; name: string } }
-    price: { currency: string; pricePerSecond: number; durationSeconds: number; total: number }
-  }
+	const { data } = await http.post('/client/tasks/estimate', payload)
+	return data as {
+		available: boolean
+		selection: { carrier: { id: string; name: string }; model: { id: string; name: string } }
+		billing: { basis: string; durationSeconds: number; resolution: string; generateAudio: boolean; pricePerSecond: number; estimatedTotal: number; currency: string }
+	}
 }
 
 export async function createTask(payload: {
-  quoteId: string
-  title: string
-  prompt: string
-  sourceMeta?: Record<string, unknown>
-}) {
-  const { data } = await http.post('/client/tasks', payload)
-  return data as {
-    task: { id: string; title: string; status: string; cost: number; mode: string }
-    wallet: { balance: number }
-  }
+	modeId: string
+	carrierId?: string
+	modelId?: string
+	durationSeconds: number
+	resolution: string
+	aspectRatio: string
+	generateAudio: boolean
+	title: string
+	prompt: string
+	sourceMeta?: Record<string, unknown>
+}, idempotencyKey?: string) {
+	const { data } = await http.post('/client/tasks', payload, { headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined })
+	return data as {
+		task: { id: string; title: string; status: string; cost: number; mode: string }
+		order: { id: string; amount: number; currency: string; status: string }
+		wallet: { balance: number }
+		idempotentReplay?: boolean
+	}
 }
 
 export async function uploadImage(file: File) {
+	return uploadCreationSource('/client/uploads', file)
+}
+
+export async function uploadReferenceAudio(file: File) {
+	return uploadCreationSource('/client/uploads/reference-audio', file)
+}
+
+async function uploadCreationSource(path: string, file: File) {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await http.post('/client/uploads', form, {
+  const { data } = await http.post(path, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 60000,
   })

@@ -34,3 +34,4 @@ func NewPriceID() string    { return "pr_" + shortID() }
 func NewCarrierID() string  { return "car_" + shortID() }
 func NewModelID() string    { return "mdl_" + shortID() }
 func NewAuditID() string    { return DatedPublicID("aud") }
+func NewOrderID() string    { return DatedPublicID("ord") }

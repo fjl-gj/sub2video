@@ -92,7 +92,7 @@ onMounted(load)
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="任务中心">
-      <template #description>平台任务号为主；上游任务号仅作排障参考。可终止未完成任务并退款，失败任务需由创作者重新报价提交。</template>
+      <template #description>平台任务号为主；上游任务号仅作排障参考。可终止未完成任务并退款，失败任务需由创作者重新预估后提交。</template>
       <template #actions>
         <S2VBadge tone="primary">{{ total }} 条任务</S2VBadge>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>

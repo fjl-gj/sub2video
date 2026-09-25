@@ -55,6 +55,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				client.GET("/create/catalog", clientH.CreationCatalog)
 				client.GET("/create/options", clientH.CreationOptions)
 				client.POST("/uploads", uploadH.Create)
+				client.POST("/uploads/reference-audio", uploadH.CreateReferenceAudio)
 				client.GET("/uploads/:id", uploadH.Get)
 				client.GET("/storage/usage", projectH.StorageUsage)
 				client.GET("/projects", projectH.ListProjects)
@@ -70,6 +71,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				client.DELETE("/projects/:id", projectH.DeleteProject)
 				client.PUT("/session/current-project", projectH.SetCurrentProject)
 				client.POST("/tasks/quote", clientH.QuoteTask)
+				client.POST("/tasks/estimate", clientH.EstimateTask)
 				client.POST("/tasks", clientH.CreateTask)
 				client.GET("/tasks", clientH.ListTasks)
 				client.GET("/tasks/:id", clientH.GetTask)
@@ -124,7 +126,7 @@ func cors(origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept")
+		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept,Idempotency-Key,X-Request-ID")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return

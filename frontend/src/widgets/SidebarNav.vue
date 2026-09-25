@@ -33,8 +33,8 @@ const adminGroups = computed<NavGroup[]>(() => [
   { label: '', items: [{ label: '首页概览', to: '/admin/overview', icon: 'LayoutDashboard' }] },
   { label: '创作管理', items: [
     { label: '工作流', to: '/admin/workflows', icon: 'Workflow' },
-    { label: '承运商与模型', to: '/admin/carriers-models', icon: 'Bot' },
-    { label: '供应商与模型', to: '/admin/supplier-models', icon: 'Bot' },
+    { label: '承运商', to: '/admin/carriers-models', icon: 'Bot' },
+    { label: '供应商', to: '/admin/supplier-models', icon: 'Bot' },
   ] },
   { label: '计费管理', items: [
     { label: '价格审计', to: '/admin/pricing', icon: 'Coins' },

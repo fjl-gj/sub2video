@@ -49,7 +49,7 @@ const carrierForm = ref({ code: '', name: '', description: '', enabled: true })
 const modelForm = ref({ carrierId: '', code: '', name: '', description: '', enabled: true })
 const supplierForm = ref({ code: '', name: '', baseUrl: '', token: '', enabled: true })
 const offeringForm = ref({
-  supplierId: '', modelId: '', modeId: '', name: '', upstreamWorkflowId: '', adapterCode: 'autodl_h3_v1',
+  supplierId: '', modelId: '', modeId: '', name: '', executionType: 'workflow' as 'api' | 'workflow', apiModelCode: '', apiVersion: '', workflowCode: '', upstreamWorkflowId: '', adapterCode: 'autodl_h3_v1',
   enabled: true, healthStatus: 'healthy', priority: '10', minDurationSec: '1', maxDurationSec: '15',
   resolutions: '768P', aspectRatios: '16:9,9:16,1:1', minImages: '0', maxImages: '0',
   supportsGeneratedAudio: false, peakPerSecond: '0.03', offpeakPerSecond: '0.02',
@@ -80,7 +80,7 @@ function resetOfferingForm() {
   offeringEditingID.value = ''
   offeringForm.value = {
     supplierId: supplierOptions.value[0]?.value || '', modelId: modelOptions.value[0]?.value || '', modeId: modeOptions.value[0]?.value || '',
-    name: '', upstreamWorkflowId: '', adapterCode: 'autodl_h3_v1', enabled: true, healthStatus: 'healthy', priority: '10',
+    name: '', executionType: 'workflow', apiModelCode: '', apiVersion: '', workflowCode: '', upstreamWorkflowId: '', adapterCode: 'autodl_h3_v1', enabled: true, healthStatus: 'healthy', priority: '10',
     minDurationSec: '1', maxDurationSec: '15', resolutions: '768P', aspectRatios: '16:9,9:16,1:1', minImages: '0', maxImages: '0',
     supportsGeneratedAudio: false, peakPerSecond: '0.03', offpeakPerSecond: '0.02',
   }
@@ -94,7 +94,7 @@ function openOfferingForm(item?: AdminOffering) {
     offeringEditingID.value = item.id
     offeringForm.value = {
       supplierId: item.supplierId, modelId: item.modelId, modeId: item.modeId, name: item.name,
-      upstreamWorkflowId: item.upstreamWorkflowId, adapterCode: item.adapterCode, enabled: item.enabled,
+      executionType: item.executionType || 'workflow', apiModelCode: item.apiModelCode || '', apiVersion: item.apiVersion || '', workflowCode: item.workflowCode || item.upstreamWorkflowId, upstreamWorkflowId: item.upstreamWorkflowId, adapterCode: item.adapterCode, enabled: item.enabled,
       healthStatus: item.healthStatus, priority: String(item.priority), minDurationSec: String(item.minDurationSec),
       maxDurationSec: String(item.maxDurationSec), resolutions: item.resolutions.join(','), aspectRatios: item.aspectRatios.join(','),
       minImages: String(item.minImages), maxImages: String(item.maxImages), supportsGeneratedAudio: item.supportsGeneratedAudio,
@@ -213,6 +213,10 @@ function offeringPayload() {
     modelId: offeringForm.value.modelId,
     modeId: offeringForm.value.modeId,
     name: offeringForm.value.name.trim() || '未命名供给',
+    executionType: offeringForm.value.executionType,
+    apiModelCode: offeringForm.value.apiModelCode.trim(),
+    apiVersion: offeringForm.value.apiVersion.trim(),
+    workflowCode: offeringForm.value.workflowCode.trim(),
     upstreamWorkflowId: offeringForm.value.upstreamWorkflowId.trim(),
     adapterCode: offeringForm.value.adapterCode.trim() || 'autodl_h3_v1',
     enabled: offeringForm.value.enabled,
@@ -229,8 +233,8 @@ function offeringPayload() {
 }
 
 async function saveOffering() {
-  if (!offeringForm.value.supplierId || !offeringForm.value.modelId || !offeringForm.value.modeId || !offeringForm.value.upstreamWorkflowId.trim()) {
-    app.notify('请选择供应商、模型和创作模式，并填写上游工作流 ID')
+  if (!offeringForm.value.supplierId || !offeringForm.value.modelId || !offeringForm.value.modeId || (offeringForm.value.executionType === 'workflow' ? !offeringForm.value.workflowCode.trim() : !offeringForm.value.apiModelCode.trim())) {
+    app.notify('请选择供应商、模型和创作模式，并填写执行配置')
     return
   }
   const payload = offeringPayload()
@@ -322,7 +326,7 @@ onMounted(load)
           <S2VInput v-model="supplierForm.name" label="供应商名称" placeholder="官方 MiniMax" />
           <S2VInput v-model="supplierForm.baseUrl" label="上游服务地址" placeholder="https://api.example.com" class="sm:col-span-2" />
           <S2VInput v-model="supplierForm.token" type="password" :label="catalogEditingID ? '更新凭据（留空则不变）' : '凭据'" placeholder="仅写入，不会回显" class="sm:col-span-2" />
-          <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="supplierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许参与新报价</label>
+          <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="supplierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许参与预估和提交</label>
         </div>
         <div class="mt-4"><S2VButton variant="primary" size="sm" :loading="saving" @click="saveCatalog">保存目录配置</S2VButton></div>
       </div>
@@ -353,7 +357,12 @@ onMounted(load)
         <S2VSelect v-model="offeringForm.modelId" label="模型" :options="modelOptions" :disabled="editingOffering" />
         <S2VSelect v-model="offeringForm.modeId" label="创作模式" :options="modeOptions" :disabled="editingOffering" />
         <S2VInput v-model="offeringForm.name" label="供给名称" placeholder="H3 文生视频" />
-        <S2VInput v-model="offeringForm.upstreamWorkflowId" label="上游工作流 ID" placeholder="minimax_h3_b99_001" class="sm:col-span-2" />
+        <S2VSelect v-model="offeringForm.executionType" label="执行类型" :options="[{ label: 'API', value: 'api' }, { label: 'Workflow', value: 'workflow' }]" />
+        <S2VInput v-if="offeringForm.executionType === 'workflow'" v-model="offeringForm.workflowCode" label="工作流编码" placeholder="内部执行编码" class="sm:col-span-2" />
+        <template v-else>
+          <S2VInput v-model="offeringForm.apiModelCode" label="API 模型编码" placeholder="上游模型编码" />
+          <S2VInput v-model="offeringForm.apiVersion" label="API 版本" placeholder="可选" />
+        </template>
         <S2VInput v-model="offeringForm.adapterCode" label="适配器" />
         <S2VInput v-model="offeringForm.priority" label="同成本优先级" type="number" />
         <S2VInput v-model="offeringForm.resolutions" label="标准分辨率（逗号分隔）" />
@@ -364,7 +373,7 @@ onMounted(load)
         <S2VInput v-model="offeringForm.maxImages" label="最多参考图" type="number" />
         <S2VInput v-model="offeringForm.peakPerSecond" label="峰时采购成本（元/秒）" type="number" />
         <S2VInput v-model="offeringForm.offpeakPerSecond" label="谷时采购成本（元/秒）" type="number" />
-        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="offeringForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">参与新报价</label>
+        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="offeringForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">参与预估和提交</label>
         <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="offeringForm.supportsGeneratedAudio" type="checkbox" class="h-4 w-4 accent-s2v-primary">支持模型自动生成音频</label>
         <div class="sm:col-span-2"><S2VButton variant="primary" :loading="saving" @click="saveOffering">保存供给</S2VButton></div>
       </div>

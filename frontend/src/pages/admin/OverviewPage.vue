@@ -73,7 +73,7 @@ onMounted(() => { void load() })
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="运行大盘">
-      <template #description>看任务量与供应商供给状态；调度细节在「供应商与模型」。</template>
+      <template #description>看任务量与供应商供给状态；调度细节在「供应商」。</template>
       <template #actions>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
         <S2VButton size="sm" @click="router.push('/admin/supplier-models')">供应商链路</S2VButton>
@@ -124,7 +124,7 @@ onMounted(() => { void load() })
             关联供给 {{ offerings.filter((item) => item.supplierId === sp.id).length }} 条
           </p>
         </div>
-        <p v-if="!suppliers.length" class="s2v-inset-dashed sm:col-span-3">暂无供应商，请先在「供应商与模型」接入。</p>
+        <p v-if="!suppliers.length" class="s2v-inset-dashed sm:col-span-3">暂无供应商，请先在「供应商」接入。</p>
       </div>
     </S2VCard>
 

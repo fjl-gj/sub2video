@@ -32,7 +32,7 @@ onMounted(load)
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="价格审计">
-      <template #description>平台售价由承运商与模型中的模型配置维护。时长是每秒售价的计费数量；此页只读，用于核查当前对客规则和版本。</template>
+      <template #description>平台售价按创作模式、分辨率和自动音频维护。时长是每秒售价的计费数量；此页只读，用于核查当前对客规则和版本。</template>
       <template #actions><S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton></template>
     </S2VPageHeader>
 

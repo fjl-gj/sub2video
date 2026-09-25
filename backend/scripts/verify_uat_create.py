@@ -1,8 +1,9 @@
 import argparse
 import json
 import os
-import tempfile
+import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 base = os.environ.get("SUB2VIDEO_UAT_BASE", "http://127.0.0.1:12000/api/v1").rstrip("/")
@@ -43,12 +44,18 @@ def req(method, path, data=None, token=None, files=None):
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Verify the deployed creation catalog and quote contract."
+        description="Verify the deployed creation catalog, estimate contract, and optional task delivery."
     )
     parser.add_argument(
         "--create-tasks",
         action="store_true",
-        help="upload a test image and create text, first/last-frame, and multi-image tasks; this debits the UAT wallet and can invoke configured suppliers",
+        help="create one text-to-video task; this debits the UAT wallet and invokes the configured supplier",
+    )
+    parser.add_argument(
+        "--wait-seconds",
+        type=int,
+        default=300,
+        help="maximum time to wait for the created task to reach persisted delivery (default: 300)",
     )
     args = parser.parse_args()
 
@@ -64,7 +71,7 @@ def main() -> None:
     modes = {item["inputType"]: item for item in catalog["modes"] if item["enabled"]}
     models = catalog["models"]
 
-    def quote_for(input_type: str):
+    def estimate_for(input_type: str):
         mode = modes.get(input_type)
         if mode is None:
             raise RuntimeError(f"catalog does not expose the required {input_type} mode")
@@ -80,77 +87,57 @@ def main() -> None:
             "aspectRatio": options["aspectRatios"][0],
             "generateAudio": False,
         }
-        st, quote = req("POST", "/client/tasks/quote", payload, token)
+        st, estimate = req("POST", "/client/tasks/estimate", payload, token)
         forbidden = {"supplier", "cost", "upstream", "workflow", "adapter", "token"}
-        leaked = [key for key in forbidden if key in json.dumps(quote).lower()]
+        leaked = [key for key in forbidden if key in json.dumps(estimate).lower()]
         if leaked:
-            raise RuntimeError(f"client quote leaked internal fields: {leaked}")
-        return payload, quote
+            raise RuntimeError(f"client estimate leaked internal fields: {leaked}")
+        if not estimate.get("available") or estimate.get("billing", {}).get("estimatedTotal", 0) <= 0:
+            raise RuntimeError(f"estimate unavailable for {input_type}: {estimate}")
+        if "quoteId" in estimate:
+            raise RuntimeError("estimate response must not contain quoteId")
+        return payload, estimate
 
-    text_params, quote = quote_for("text")
-    _, keyframe_quote = quote_for("first_last")
-    _, multi_quote = quote_for("multi_image")
-    print("QUOTE_TEXT", st, quote["quoteId"], quote["price"]["total"])
-    print("QUOTE_KEYFRAMES", keyframe_quote["quoteId"], keyframe_quote["price"]["total"])
-    print("QUOTE_MULTI_IMAGE", multi_quote["quoteId"], multi_quote["price"]["total"])
+    text_params, text_estimate = estimate_for("text")
+    _, keyframe_estimate = estimate_for("first_last")
+    _, multi_estimate = estimate_for("multi_image")
+    print("ESTIMATE_TEXT", text_estimate["billing"]["estimatedTotal"])
+    print("ESTIMATE_KEYFRAMES", keyframe_estimate["billing"]["estimatedTotal"])
+    print("ESTIMATE_MULTI_IMAGE", multi_estimate["billing"]["estimatedTotal"])
 
     if not args.create_tasks:
-        print("PREFLIGHT_OK no tasks created; rerun with --create-tasks for wallet, upload, and task acceptance")
+        print("PREFLIGHT_OK no tasks created; rerun with --create-tasks for one charged task and delivery check")
         return
 
+    request_id = f"uat-{uuid.uuid4().hex}"
+    create_payload = {
+        **text_params,
+        "clientRequestId": request_id,
+        "title": "wen-sheng-verify",
+        "prompt": "a slow camera push along a quiet rainy street, natural light",
+    }
     st, created = req(
         "POST",
         "/client/tasks",
-        {
-            "quoteId": quote["quoteId"],
-            "title": "wen-sheng-verify",
-            "prompt": "rain street slow push",
-        },
+        create_payload,
         token,
     )
-    print("CREATE", st, created["task"]["id"], created["wallet"]["balance"])
+    task_id = created["task"]["id"]
+    print("CREATE", st, task_id, created["wallet"]["balance"])
 
-    with tempfile.TemporaryDirectory(prefix="sub2video-uat-") as tmp:
-        png = Path(tmp) / "test-upload.png"
-        png.write_bytes(
-            bytes.fromhex(
-                "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
-                "0000000c4944415408d763f8ffff3f0005fe02fe0c6e2f4d0000000049454e44ae426082"
-            )
-        )
-        st, up = req(
-            "POST",
-            "/client/uploads",
-            token=token,
-            files=(str(png), "file", "test-upload.png", "image/png"),
-        )
-        print("UPLOAD", st, up["id"], up["sizeBytes"])
-
-        st, created2 = req(
-            "POST",
-            "/client/tasks",
-            {
-                "quoteId": keyframe_quote["quoteId"],
-                "title": "shou-wei-verify",
-                "prompt": "camera push",
-                "sourceMeta": {"first": {"type": "upload", "id": up["id"]}, "last": {"type": "upload", "id": up["id"]}},
-            },
-            token,
-        )
-        print("CREATE_KEYFRAMES", st, created2["task"]["id"], created2["wallet"]["balance"])
-
-        st, created3 = req(
-            "POST",
-            "/client/tasks",
-            {
-                "quoteId": multi_quote["quoteId"],
-                "title": "duo-tu-verify",
-                "prompt": "consistent character walking through a rainy neon street",
-                "sourceMeta": {"refs": [{"type": "upload", "id": up["id"]}]},
-            },
-            token,
-        )
-        print("CREATE_MULTI_IMAGE", st, created3["task"]["id"], created3["wallet"]["balance"])
+    deadline = time.time() + max(args.wait_seconds, 1)
+    while time.time() < deadline:
+        st, detail = req("GET", f"/client/tasks/{task_id}", token=token)
+        status = detail.get("status")
+        delivery = detail.get("deliveryStatus")
+        print("POLL", status, delivery)
+        if status == "失败":
+            raise RuntimeError(f"task failed: {detail.get('failureReason', 'unknown')}")
+        if status == "已完成" and delivery == "ready" and detail.get("downloadUrl"):
+            print("DELIVERY_OK", task_id, detail["downloadUrl"])
+            return
+        time.sleep(10)
+    raise RuntimeError(f"task {task_id} did not reach persisted delivery within {args.wait_seconds}s")
 
 
 if __name__ == "__main__":

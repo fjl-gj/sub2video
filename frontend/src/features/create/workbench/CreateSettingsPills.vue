@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Clock, Layers, Ratio, Volume2 } from 'lucide-vue-next'
+import { Clock, Layers, Paperclip, Ratio, Volume2, X } from 'lucide-vue-next'
+import { ref } from 'vue'
 
 withDefaults(defineProps<{
   ratio: string
@@ -13,7 +14,8 @@ withDefaults(defineProps<{
   carrierId?: string
   modelId?: string
   supportsGeneratedAudio?: boolean
-  generateAudio?: boolean
+  audioMode?: 'none' | 'generate' | 'reference'
+  referenceAudioName?: string
 }>(), {
   durationOptions: () => ['5', '10', '15'],
   resolutionOptions: () => ['768P'],
@@ -23,7 +25,8 @@ withDefaults(defineProps<{
   carrierId: '',
   modelId: '',
   supportsGeneratedAudio: false,
-  generateAudio: false,
+  audioMode: 'none',
+  referenceAudioName: '',
 })
 
 const emit = defineEmits<{
@@ -32,8 +35,23 @@ const emit = defineEmits<{
   'update:resolution': [value: string]
   'update:carrierId': [value: string]
   'update:modelId': [value: string]
-  'update:generateAudio': [value: boolean]
+  'update:audioMode': [value: 'none' | 'generate' | 'reference']
+  'reference-audio-upload': [file: File]
+  'clear-reference-audio': []
 }>()
+
+const referenceAudioInput = ref<HTMLInputElement | null>(null)
+
+function chooseReferenceAudio() {
+  referenceAudioInput.value?.click()
+}
+
+function onReferenceAudioChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) emit('reference-audio-upload', file)
+  input.value = ''
+}
 </script>
 
 <template>
@@ -81,9 +99,23 @@ const emit = defineEmits<{
 
       <label v-if="supportsGeneratedAudio" class="s2v-wb-setting-pill">
         <Volume2 class="h-3.5 w-3.5 text-s2v-muted" />
-        <input :checked="generateAudio" type="checkbox" @change="emit('update:generateAudio', ($event.target as HTMLInputElement).checked)">
-        <span>自动音频</span>
+        <select aria-label="音频设置" :value="audioMode" @change="emit('update:audioMode', ($event.target as HTMLSelectElement).value as 'none' | 'generate' | 'reference')">
+          <option value="none">不使用音频</option>
+          <option value="generate">自动生成音频</option>
+          <option value="reference">上传参考音频</option>
+        </select>
       </label>
+
+      <template v-if="supportsGeneratedAudio && audioMode === 'reference'">
+        <input ref="referenceAudioInput" class="hidden" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/flac,audio/mp4,video/mp4,.mp3,.wav,.flac,.m4a,.mp4" aria-label="参考音频文件" @change="onReferenceAudioChange">
+        <button type="button" class="s2v-wb-setting-pill" title="上传参考音频" @click="chooseReferenceAudio">
+          <Paperclip class="h-3.5 w-3.5 text-s2v-muted" />
+          <span>{{ referenceAudioName || '选择音频文件' }}</span>
+        </button>
+        <button v-if="referenceAudioName" type="button" class="s2v-wb-setting-pill" title="移除参考音频" aria-label="移除参考音频" @click="emit('clear-reference-audio')">
+          <X class="h-3.5 w-3.5 text-s2v-muted" />
+        </button>
+      </template>
     </div>
   </div>
 </template>

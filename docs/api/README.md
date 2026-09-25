@@ -7,7 +7,7 @@ API 前缀为 `/api/v1`。服务端使用 Gin + PostgreSQL；前端页面已通�
 | 文档 | 前端路由 | 核心接口 |
 | --- | --- | --- |
 | [首页概览](./client-overview.md) | `/app/overview` | `GET /client/overview` |
-| [创作](./client-create.md) | `/app/create` | `GET /client/create/catalog`、`GET /client/create/options`、`POST /client/tasks/quote`、`POST /client/tasks` |
+| [创作](./client-create.md) | `/app/create` | `GET /client/create/catalog`、`GET /client/create/options`、`POST /client/tasks/estimate`、`POST /client/tasks` |
 | [广场](./client-plaza.md) | `/app/garden` | 场景与预设提示词 |
 | [任务](./client-tasks.md) | `/app/works`、`/app/works/:id` | `GET /client/tasks`、`GET /client/tasks/:id` |
 | [资产](./client-assets.md) | `/app/assets` | `GET /client/projects` |
@@ -27,11 +27,14 @@ API 前缀为 `/api/v1`。服务端使用 Gin + PostgreSQL；前端页面已通�
 
 ```text
 GET catalog → 选择固定模式 / 模型 → GET options
-  → POST quote（服务器选择锁定供给）
-  → POST tasks { quoteId, prompt, sourceMeta }
-  → 事务预扣、任务快照、异步执行
+  → POST tasks/estimate（计算当前最低成本执行方式，不锁定、不扣费）
+  → POST tasks（完整参数 + Idempotency-Key，服务端重新路由）
+  → 事务预扣、订单、任务快照、异步执行
 ```
 
-报价有效期 5 分钟且只能使用一次。客户端提交任务时不能带价格快照或路线信息。
+预估响应不创建报价、订单或任务，不返回 `quoteId`。提交时服务端重新执行能力筛选和最低成本路由；客户端不能提交价格快照、路线、供应商或 API/workflow 执行信息。
 
 任务详情只提供用户安全字段和对象存储交付地址。上游临时 URL、供应商名称、成本、供给 ID、上游工作流和路由快照仅可在管理端受控查看。
+# 客户端直链路
+
+新客户端合同与预估、提交、幂等和可见性边界见 [client-direct-routing.md](client-direct-routing.md)。

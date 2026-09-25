@@ -12,8 +12,8 @@ const cases = [
   { name: 'client-profile', path: '/app/profile', heading: '个人资料', auth: true },
   { name: 'admin-overview', path: '/admin/overview', heading: '运行大盘', auth: true, role: 'admin' },
   { name: 'admin-workflows', path: '/admin/workflows', heading: '工作流', auth: true, role: 'admin' },
-  { name: 'admin-carriers-models', path: '/admin/carriers-models', heading: '承运商与模型', auth: true, role: 'admin' },
-  { name: 'admin-supplier-models', path: '/admin/supplier-models', heading: '供应商与模型', auth: true, role: 'admin' },
+  { name: 'admin-carriers-models', path: '/admin/carriers-models', heading: '承运商', auth: true, role: 'admin' },
+  { name: 'admin-supplier-models', path: '/admin/supplier-models', heading: '供应商', auth: true, role: 'admin' },
   { name: 'admin-pricing', path: '/admin/pricing', heading: '价格审计', auth: true, role: 'admin' },
   { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心', auth: true, role: 'admin' },
   { name: 'admin-tickets', path: '/admin/tickets', heading: '工单中心', auth: true, role: 'admin' },
@@ -55,7 +55,7 @@ async function seedCreationAndSupply(page: Page) {
   await page.route('**/api/v1/client/create/options*', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       durations: [5, 10, 15], resolutions: ['768P'], aspectRatios: ['16:9', '9:16', '1:1'],
-      supportsGeneratedAudio: false, minImages: 0, maxImages: 9, defaultDuration: 5, defaultResolution: '768P',
+      supportsGeneratedAudio: true, minImages: 0, maxImages: 9, defaultDuration: 5, defaultResolution: '768P',
     }) })
   })
   await page.route('**/api/v1/admin/creation-modes', async (route) => {
@@ -77,10 +77,10 @@ async function seedCreationAndSupply(page: Page) {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'sup_autodl', code: 'autodl', name: 'AutoDL', baseUrl: 'https://autodl.art', enabled: true, hasToken: true, status: '就绪' }] }) })
   })
   await page.route('**/api/v1/admin/offerings', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'off_h3_text_b99', supplierId: 'sup_autodl', supplierName: 'AutoDL', modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', modeId: 'mode_text_to_video', modeName: '文生视频', name: 'H3 文生视频', upstreamWorkflowId: 'minimax_h3_b99_001', adapterCode: 'autodl_h3_v1', enabled: true, healthStatus: 'healthy', priority: 10, minDurationSec: 1, maxDurationSec: 15, resolutions: ['768P'], aspectRatios: ['16:9', '9:16', '1:1'], minImages: 0, maxImages: 0, supportsGeneratedAudio: false }] }) })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'off_h3_text_lightx', supplierId: 'sup_autodl', supplierName: 'AutoDL', modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', modeId: 'mode_text_to_video', modeName: '文生视频', name: 'H3 文生视频（无图）', upstreamWorkflowId: 'minimax_h3_lightx2v_no_pic', adapterCode: 'autodl_h3_v1', enabled: true, healthStatus: 'healthy', priority: 10, minDurationSec: 1, maxDurationSec: 15, resolutions: ['480P', '768P'], aspectRatios: ['16:9', '9:16', '1:1'], minImages: 0, maxImages: 0, supportsGeneratedAudio: false }] }) })
   })
   await page.route('**/api/v1/admin/supplier-costs', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'cost_h3_text', offeringId: 'off_h3_text_b99', resolution: '768P', generateAudio: false, peakPerSecond: 0.03, offpeakPerSecond: 0.02, currency: 'CNY', version: 'v1', status: 'active' }] }) })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'cost_h3_text', offeringId: 'off_h3_text_lightx', resolution: '768P', generateAudio: false, peakPerSecond: 0.03, offpeakPerSecond: 0.02, currency: 'CNY', version: 'v1', status: 'active' }] }) })
   })
   await page.route('**/api/v1/admin/retail-pricing', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'ret_h3_text', modeId: 'mode_text_to_video', modeName: '文生视频', modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', resolution: '768P', generateAudio: false, name: 'H3 文生 / 768P', pricePerSecond: 0.5, version: 'v1', status: 'active' }] }) })
@@ -93,6 +93,7 @@ for (const item of cases) {
     await seedCreationAndSupply(page)
     await page.goto(item.path, { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: item.heading, exact: true })).toBeVisible({ timeout: 15_000 })
+    if (item.name === 'client-create') await expect(page.getByRole('combobox', { name: '音频设置', exact: true })).toBeVisible()
     if (item.name === 'admin-carriers-models') await expect(page.getByText('H3', { exact: true })).toBeVisible()
     await expect(page).toHaveScreenshot(`${item.name}.png`, {
       fullPage: true,

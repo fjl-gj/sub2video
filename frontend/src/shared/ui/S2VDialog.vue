@@ -9,7 +9,9 @@ const props = withDefaults(defineProps<{
   confirmLabel?: string
   cancelLabel?: string
   tone?: 'primary' | 'danger'
-}>(), { confirmLabel: '确认', cancelLabel: '取消', tone: 'primary' })
+  hideActions?: boolean
+  size?: 'default' | 'wide'
+}>(), { confirmLabel: '确认', cancelLabel: '取消', tone: 'primary', hideActions: false, size: 'default' })
 
 const emit = defineEmits<{ confirm: [] }>()
 
@@ -23,10 +25,13 @@ function confirm() {
   <DialogRoot v-model:open="open">
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px]" />
-      <DialogContent class="fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-panel border border-s2v-line/80 bg-s2v-surface p-5 shadow-subtle">
+      <DialogContent :class="['fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-panel border border-s2v-line/80 bg-s2v-surface p-5 shadow-subtle', size === 'wide' ? 'w-[min(720px,calc(100vw-2rem))]' : 'w-[min(420px,calc(100vw-2rem))]']">
         <DialogTitle class="text-sm font-bold text-s2v-ink">{{ props.title }}</DialogTitle>
         <DialogDescription v-if="description" class="mt-2 text-xs leading-5 text-s2v-muted">{{ description }}</DialogDescription>
-        <div class="mt-5 flex justify-end gap-2">
+        <div v-if="$slots.default" class="mt-5">
+          <slot />
+        </div>
+        <div v-if="!hideActions" class="mt-5 flex justify-end gap-2">
           <DialogClose as-child>
             <S2VButton>{{ cancelLabel }}</S2VButton>
           </DialogClose>

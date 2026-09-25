@@ -830,6 +830,8 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    max-width: 100%;
     height: 32px;
     padding: 0 10px;
     border: 1px solid rgb(var(--s2v-line) / 0.8);
@@ -840,12 +842,20 @@
     color: rgb(var(--s2v-body));
   }
   .s2v-wb-setting-pill select {
+    min-width: 0;
+    max-width: 100%;
     border: none;
     background: transparent;
     font: inherit;
     color: inherit;
     outline: none;
     cursor: pointer;
+  }
+  .s2v-wb-setting-pill > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .s2v-wb-prompt-section {
     display: flex;

@@ -60,6 +60,14 @@ func TestCreationQuoteChargeAndRefundIntegration(t *testing.T) {
 	if err := s.SeedCreationCatalog(ctx); err != nil {
 		t.Fatalf("seed catalog: %v", err)
 	}
+	// Platform retail prices are mode-level and therefore have a NULL model
+	// reference. The admin listing must normalize those nullable joins instead
+	// of failing the whole management page during its initial load.
+	if retailPrices, err := s.ListRetailPriceRules(ctx); err != nil {
+		t.Fatalf("list mode-level retail prices: %v", err)
+	} else if len(retailPrices) == 0 {
+		t.Fatal("seed catalog must expose at least one retail price rule")
+	}
 	legacySuffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	legacyCarrierID := "car_legacy_" + legacySuffix
 	legacyModelID := "mdl_legacy_" + legacySuffix
@@ -78,20 +86,21 @@ FROM carriers WHERE public_id=$2`, legacyModelID, legacyCarrierID); err != nil {
 	}
 	if _, err := pool.Exec(ctx, `
 INSERT INTO supplier_routes (public_id, supplier_id, model_id, workflow_id, enabled)
-SELECT $1, supplier.id, model.id, 'legacy-upstream', TRUE
+SELECT $1, supplier.id, model.id, $3, TRUE
 FROM suppliers supplier, models model
-WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, legacyModelID); err != nil {
+WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, legacyModelID, "minimax_h3_legacy_"+legacySuffix); err != nil {
 		t.Fatalf("seed legacy supplier route: %v", err)
 	}
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatalf("legacy retirement migration: %v", err)
 	}
-	var legacyCarrierEnabled, legacyRouteEnabled bool
+	var legacyCarrierEnabled bool
 	if err := pool.QueryRow(ctx, `SELECT enabled FROM carriers WHERE public_id=$1`, legacyCarrierID).Scan(&legacyCarrierEnabled); err != nil || legacyCarrierEnabled {
 		t.Fatalf("legacy carrier must be retired: enabled=%t err=%v", legacyCarrierEnabled, err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT enabled FROM supplier_routes WHERE public_id=$1`, legacyRouteID).Scan(&legacyRouteEnabled); err != nil || legacyRouteEnabled {
-		t.Fatalf("legacy supplier route must be retired: enabled=%t err=%v", legacyRouteEnabled, err)
+	var legacyRouteCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM supplier_routes WHERE public_id=$1`, legacyRouteID).Scan(&legacyRouteCount); err != nil || legacyRouteCount != 0 {
+		t.Fatalf("legacy H3 supplier route must be deleted: count=%d err=%v", legacyRouteCount, err)
 	}
 	managedCarriers, managedModels, err := s.ListCarriersWithModels(ctx)
 	if err != nil {
@@ -115,8 +124,11 @@ WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, le
 	if _, err := pool.Exec(ctx, `UPDATE suppliers SET token_encrypted='integration-configured-token' WHERE public_id='sup_autodl'`); err != nil {
 		t.Fatalf("configure integration supplier: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE supplier_offerings SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='off_h3_text_b99'`); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE supplier_offerings SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='off_h3_text_lightx'`); err != nil {
 		t.Fatalf("reset integration offering: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE supplier_executions SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='exec_off_h3_text_lightx'`); err != nil {
+		t.Fatalf("reset integration execution: %v", err)
 	}
 
 	email := fmt.Sprintf("catalog-it-%d@sub2video.test", time.Now().UnixNano())
@@ -134,7 +146,8 @@ WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, le
 		_, _ = pool.Exec(context.Background(), `DELETE FROM workspaces WHERE user_id=$1`, user.ID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM wallets WHERE user_id=$1`, user.ID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `UPDATE supplier_offerings SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='off_h3_text_b99'`)
+		_, _ = pool.Exec(context.Background(), `UPDATE supplier_offerings SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='off_h3_text_lightx'`)
+		_, _ = pool.Exec(context.Background(), `UPDATE supplier_executions SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='exec_off_h3_text_lightx'`)
 	})
 	if err := s.AppendAdminAudit(ctx, user.ID, "integration.audit", "test", "catalog", map[string]any{"verified": true}); err != nil {
 		t.Fatalf("append admin audit: %v", err)
@@ -147,6 +160,71 @@ WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, le
 	catalog, err := s.ListClientCreationCatalog(ctx)
 	if err != nil {
 		t.Fatalf("list client catalog: %v", err)
+	}
+	rows, err := pool.Query(ctx, `
+SELECT workflow_code
+FROM supplier_executions
+WHERE enabled
+ORDER BY workflow_code`)
+	if err != nil {
+		t.Fatalf("list enabled H3 executions: %v", err)
+	}
+	var enabledWorkflows []string
+	for rows.Next() {
+		var workflowCode string
+		if err := rows.Scan(&workflowCode); err != nil {
+			rows.Close()
+			t.Fatalf("scan enabled H3 execution: %v", err)
+		}
+		enabledWorkflows = append(enabledWorkflows, workflowCode)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatalf("iterate enabled H3 executions: %v", err)
+	}
+	rows.Close()
+	wantEnabledWorkflows := []string{
+		"minimax_h3_lightx2v",
+		"minimax_h3_lightx2v_no_pic",
+		"minimax_h3_zm_u08",
+		"minimax_h3_zm_u24",
+	}
+	if len(enabledWorkflows) != len(wantEnabledWorkflows) {
+		t.Fatalf("enabled workflow count: got=%v want=%v", enabledWorkflows, wantEnabledWorkflows)
+	}
+	for i := range wantEnabledWorkflows {
+		if enabledWorkflows[i] != wantEnabledWorkflows[i] {
+			t.Fatalf("enabled workflow %d: got=%s want=%s", i, enabledWorkflows[i], wantEnabledWorkflows[i])
+		}
+	}
+	offeringRows, err := pool.Query(ctx, `
+SELECT workflow_code
+FROM supplier_offerings
+ORDER BY workflow_code`)
+	if err != nil {
+		t.Fatalf("list retained H3 offerings: %v", err)
+	}
+	var retainedOfferings []string
+	for offeringRows.Next() {
+		var workflowCode string
+		if err := offeringRows.Scan(&workflowCode); err != nil {
+			offeringRows.Close()
+			t.Fatalf("scan retained H3 offering: %v", err)
+		}
+		retainedOfferings = append(retainedOfferings, workflowCode)
+	}
+	if err := offeringRows.Err(); err != nil {
+		offeringRows.Close()
+		t.Fatalf("iterate retained H3 offerings: %v", err)
+	}
+	offeringRows.Close()
+	if len(retainedOfferings) != len(wantEnabledWorkflows) {
+		t.Fatalf("retained offering count: got=%v want=%v", retainedOfferings, wantEnabledWorkflows)
+	}
+	for i := range wantEnabledWorkflows {
+		if retainedOfferings[i] != wantEnabledWorkflows[i] {
+			t.Fatalf("retained offering %d: got=%s want=%s", i, retainedOfferings[i], wantEnabledWorkflows[i])
+		}
 	}
 	if price, available, err := s.CheapestAvailableRetailPrice(ctx); err != nil || !available || price <= 0 {
 		t.Fatalf("overview reference price must come from an executable catalog combination: price=%f available=%t err=%v", price, available, err)
@@ -161,10 +239,13 @@ WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, le
 	if _, err := pool.Exec(ctx, `UPDATE suppliers SET token_encrypted='integration-configured-token' WHERE public_id='sup_autodl'`); err != nil {
 		t.Fatalf("restore supplier token after capability filtering: %v", err)
 	}
-	var textMode, h3Model string
+	var textMode, multiImageMode, h3Model string
 	for _, mode := range catalog.Modes {
 		if mode.Code == "text_to_video" {
 			textMode = mode.ID
+		}
+		if mode.Code == "multi_image_to_video" {
+			multiImageMode = mode.ID
 		}
 	}
 	for _, model := range catalog.Models {
@@ -172,13 +253,35 @@ WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, le
 			h3Model = model.ID
 		}
 	}
-	if textMode == "" || h3Model == "" {
+	if textMode == "" || multiImageMode == "" || h3Model == "" {
 		t.Fatalf("expected configured text mode and H3 model, got modes=%d models=%d", len(catalog.Modes), len(catalog.Models))
+	}
+	// Audio pricing is independent from the no-audio row. A valid multi-image
+	// audio request must route and price without exposing its chosen execution.
+	directRoute, err := s.ResolveDirectRoute(ctx, DirectRouteRequest{
+		ModeID: multiImageMode, ModelID: h3Model, DurationSeconds: 12,
+		Resolution: "768P", AspectRatio: "16:9", GenerateAudio: true,
+	})
+	if err != nil {
+		t.Fatalf("resolve multi-image audio route: %v", err)
+	}
+	if directRoute.Retail.PricePerSecond != 0.03 || directRoute.Total != 0.36 {
+		t.Fatalf("multi-image audio retail price mismatch: rate=%f total=%f", directRoute.Retail.PricePerSecond, directRoute.Total)
+	}
+	if directRoute.Offering.WorkflowCode != "minimax_h3_zm_u08" && directRoute.Offering.WorkflowCode != "minimax_h3_zm_u24" {
+		t.Fatalf("multi-image route selected retired workflow: %s", directRoute.Offering.WorkflowCode)
 	}
 
 	options, err := s.ResolveCreationOptions(ctx, textMode, h3Model)
 	if err != nil || len(options.Durations) == 0 || len(options.Resolutions) == 0 || len(options.AspectRatios) == 0 {
 		t.Fatalf("resolve text options: options=%+v err=%v", options, err)
+	}
+	textRoute, err := s.ResolveDirectRoute(ctx, DirectRouteRequest{
+		ModeID: textMode, ModelID: h3Model, DurationSeconds: 5,
+		Resolution: "768P", AspectRatio: "16:9", GenerateAudio: false,
+	})
+	if err != nil || textRoute.Offering.WorkflowCode != "minimax_h3_lightx2v_no_pic" {
+		t.Fatalf("text route must use lightx no-pic workflow: route=%+v err=%v", textRoute, err)
 	}
 	request := QuoteInput{
 		ModeID: textMode, ModelID: h3Model, DurationSeconds: options.Durations[0],

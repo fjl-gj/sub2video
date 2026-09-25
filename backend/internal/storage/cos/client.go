@@ -112,7 +112,8 @@ func (c *Client) SignGetURL(ctx context.Context, objectKey string, ttl time.Dura
 	return u.String(), nil
 }
 
-// PullURL downloads remoteURL and stores under objectKey; returns public object URL.
+// PullURL downloads remoteURL and stores under objectKey; returns a signed URL
+// so private buckets remain downloadable by the client and upstream adapters.
 func (c *Client) PullURL(ctx context.Context, remoteURL, objectKey, contentType string) (string, error) {
 	if !c.Configured() {
 		return "", fmt.Errorf("cos not configured")
@@ -138,6 +139,10 @@ func (c *Client) PullURL(ctx context.Context, remoteURL, objectKey, contentType 
 	}
 	if err := c.PutObject(ctx, objectKey, body, contentType); err != nil {
 		return "", err
+	}
+	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
+	if err == nil && signed != "" {
+		return signed, nil
 	}
 	return c.ObjectURL(objectKey), nil
 }

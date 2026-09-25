@@ -1,11 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { fetchWallet } from '@/api/client'
 import AppHeader from '@/widgets/AppHeader.vue'
 import MobileNav from '@/widgets/MobileNav.vue'
 import SidebarNav from '@/widgets/SidebarNav.vue'
 import ToastHost from '@/widgets/ToastHost.vue'
+import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 
 const menuOpen = ref(false)
+const app = useAppStore()
+const auth = useAuthStore()
+
+async function syncWalletBalance() {
+  try {
+    const wallet = await fetchWallet()
+    app.balance = wallet.balance
+    auth.setBalance(wallet.balance)
+  } catch {
+    // The page can still render from the authenticated user or cached balance.
+  }
+}
+
+onMounted(() => {
+  void syncWalletBalance()
+})
 </script>
 
 <template>

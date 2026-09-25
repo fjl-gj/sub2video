@@ -36,8 +36,8 @@ const router = createRouter({
     { path: '/admin', component: () => import('@/layouts/AdminLayout.vue'), redirect: '/admin/overview', meta: { requiresAuth: true, requiresAdmin: true }, children: [
       { path: 'overview', component: () => import('@/pages/admin/OverviewPage.vue'), meta: { surface: 'admin', title: '首页概览' } },
       { path: 'workflows', component: () => import('@/pages/admin/WorkflowsPage.vue'), meta: { surface: 'admin', title: '工作流' } },
-      { path: 'carriers-models', component: () => import('@/pages/admin/CarrierModelsPage.vue'), meta: { surface: 'admin', title: '承运商与模型' } },
-      { path: 'supplier-models', component: () => import('@/pages/admin/SupplierModelsPage.vue'), meta: { surface: 'admin', title: '供应商与模型' } },
+      { path: 'carriers-models', component: () => import('@/pages/admin/CarrierModelsPage.vue'), meta: { surface: 'admin', title: '承运商' } },
+      { path: 'supplier-models', component: () => import('@/pages/admin/SupplierModelsPage.vue'), meta: { surface: 'admin', title: '供应商' } },
       { path: 'providers', redirect: '/admin/supplier-models' },
       { path: 'tasks', component: () => import('@/pages/admin/TasksPage.vue'), meta: { surface: 'admin', title: '任务中心' } },
       { path: 'monitoring', component: () => import('@/pages/admin/MonitoringPage.vue'), meta: { surface: 'admin', title: '运维监控' } },

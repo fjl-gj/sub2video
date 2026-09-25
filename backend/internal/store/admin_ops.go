@@ -185,6 +185,9 @@ VALUES ($1,$2,'task_refund',$3,$4,'task',$5,$6)`,
 		ledgerID, userID, cost, balance, taskPublicID, taskPublicID+" 管理端终止退款"); err != nil {
 		return nil, 0, err
 	}
+	if _, err = tx.Exec(ctx, `UPDATE consumption_orders SET status='refunded', refunded_at=NOW() WHERE task_id=$1 AND status='paid'`, id); err != nil {
+		return nil, 0, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, 0, err
 	}
@@ -224,8 +227,9 @@ func (s *Store) GetAdminTaskDetail(ctx context.Context, taskPublicID string) (ma
 		title, workflow, modeID, modelID, quoteID, status, resolution, supplier, upWF, upTask, upStatus, fail string
 		progress, duration                                                                                    int
 		cost, pricePerSec, costPerSec                                                                         float64
-		priceSnap, routeSnap, retailSnap, costSnap, offeringSnap, inputSnap                                   []byte
+		priceSnap, routeSnap, retailSnap, costSnap, offeringSnap, inputSnap, executionSnap                    []byte
 		generateAudio                                                                                         bool
+		executionType                                                                                         string
 		userEmail, userName                                                                                   string
 		created, updated                                                                                      time.Time
 		resultURL, ossURL                                                                                     string
@@ -235,7 +239,7 @@ SELECT t.title, t.workflow, t.status, t.progress, t.duration_sec, t.resolution,
        t.cost::float8, t.price_per_sec::float8, t.cost_per_sec::float8,
        t.supplier_code, t.upstream_workflow_id, t.upstream_task_id, t.upstream_status, t.fail_reason,
        t.price_snapshot, t.route_snapshot, t.mode_public_id, t.model_public_id, t.quote_public_id, t.generate_audio,
-       t.retail_snapshot, t.cost_snapshot, t.offering_snapshot, t.input_snapshot, t.result_url, t.result_oss_url,
+       t.retail_snapshot, t.cost_snapshot, t.offering_snapshot, t.input_snapshot, t.execution_type, t.execution_snapshot, t.result_url, t.result_oss_url,
        u.email, u.display_name, t.created_at, t.updated_at
 FROM generation_tasks t JOIN users u ON u.id=t.user_id
 WHERE t.public_id=$1`, taskPublicID).Scan(
@@ -243,7 +247,7 @@ WHERE t.public_id=$1`, taskPublicID).Scan(
 		&cost, &pricePerSec, &costPerSec,
 		&supplier, &upWF, &upTask, &upStatus, &fail,
 		&priceSnap, &routeSnap, &modeID, &modelID, &quoteID, &generateAudio,
-		&retailSnap, &costSnap, &offeringSnap, &inputSnap, &resultURL, &ossURL,
+		&retailSnap, &costSnap, &offeringSnap, &inputSnap, &executionType, &executionSnap, &resultURL, &ossURL,
 		&userEmail, &userName, &created, &updated,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -258,6 +262,7 @@ WHERE t.public_id=$1`, taskPublicID).Scan(
 		"status": statusCN(status), "progress": progress, "durationSec": duration, "resolution": resolution,
 		"cost": cost, "pricePerSec": pricePerSec, "costPerSec": costPerSec,
 		"supplierCode": supplier, "upstreamWorkflowId": upWF, "upstreamTaskId": upTask, "upstreamStatus": upStatus,
+		"executionType": executionType, "executionSnapshot": jsonRawOrObj(executionSnap),
 		"failReason": fail, "resultUrl": resultURL, "resultOssUrl": ossURL,
 		"priceSnapshot": jsonRawOrObj(priceSnap), "routeSnapshot": jsonRawOrObj(routeSnap),
 		"retailSnapshot": jsonRawOrObj(retailSnap), "costSnapshot": jsonRawOrObj(costSnap),

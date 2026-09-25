@@ -39,9 +39,9 @@ func (h *AuthHandler) PublicSettings(c *gin.Context) {
 		"email_verify_enabled", "password_reset_enabled", "registration_enabled",
 	})
 	response.OK(c, gin.H{
-		"emailVerifyEnabled":    m["email_verify_enabled"] == "true",
-		"passwordResetEnabled":  m["password_reset_enabled"] == "true",
-		"registrationEnabled":   m["registration_enabled"] != "false",
+		"emailVerifyEnabled":   m["email_verify_enabled"] == "true",
+		"passwordResetEnabled": m["password_reset_enabled"] == "true",
+		"registrationEnabled":  m["registration_enabled"] != "false",
 	})
 }
 

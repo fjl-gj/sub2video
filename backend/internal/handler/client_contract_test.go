@@ -47,7 +47,7 @@ func TestClientTaskDTOUsesModeWithoutLegacyOrInternalFields(t *testing.T) {
 			ID: "tsk_safe", Title: "安全任务", Workflow: "文生视频", Status: "已完成",
 			DurationSec: 5, Resolution: "1080P", Cost: 2.5,
 		},
-		AspectRatio: "16:9",
+		AspectRatio:    "16:9",
 		DeliveryStatus: "ready", DownloadURL: "https://storage.example.test/tsk_safe.mp4",
 	}
 	raw, err := json.Marshal(clientTaskDetailDTO(task))

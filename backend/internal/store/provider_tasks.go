@@ -30,9 +30,14 @@ type ProviderTask struct {
 	ModelCode          string
 	SupplierCode       string
 	SupplierRouteID    string
+	ExecutionType      string
+	APIModelCode       string
+	APIVersion         string
+	WorkflowCode       string
 	UpstreamWorkflowID string
 	QuotePublicID      string
 	GenerateAudio      bool
+	ParameterMapping   map[string]any
 	AdapterCode        string
 	UpstreamTaskID     string
 	UpstreamStatus     string
@@ -70,7 +75,7 @@ func (s *Store) ListPendingProviderTasks(ctx context.Context, limit int) ([]Prov
 SELECT id, public_id, user_id, status, progress, duration_sec, resolution, COALESCE(aspect_ratio,''),
        COALESCE(prompt,''), COALESCE(source_type,''), COALESCE(source_ref,''), COALESCE(source_meta,'{}'::jsonb), workflow,
 	       COALESCE(NULLIF(workflow_public_id,''), ''), carrier_code, model_code, supplier_code, supplier_route_id, upstream_workflow_id,
-	       quote_public_id, generate_audio, offering_snapshot,
+	       quote_public_id, generate_audio, offering_snapshot, execution_type, execution_snapshot,
        upstream_task_id, upstream_status, result_url, result_oss_url, fail_reason, created_at
 FROM generation_tasks
 WHERE status IN ('queued', 'running') AND execution_mode='provider'
@@ -84,12 +89,12 @@ LIMIT $1`, limit)
 	for rows.Next() {
 		var t ProviderTask
 		var wfPublic string
-		var metaRaw, offeringRaw []byte
+		var metaRaw, offeringRaw, executionRaw []byte
 		if err := rows.Scan(
 			&t.ID, &t.PublicID, &t.UserID, &t.Status, &t.Progress, &t.DurationSec, &t.Resolution, &t.AspectRatio,
 			&t.Prompt, &t.SourceType, &t.SourceRef, &metaRaw, &t.WorkflowLabel, &wfPublic,
 			&t.CarrierCode, &t.ModelCode, &t.SupplierCode, &t.SupplierRouteID, &t.UpstreamWorkflowID,
-			&t.QuotePublicID, &t.GenerateAudio, &offeringRaw,
+			&t.QuotePublicID, &t.GenerateAudio, &offeringRaw, &t.ExecutionType, &executionRaw,
 			&t.UpstreamTaskID, &t.UpstreamStatus, &t.ResultURL, &t.ResultOSSURL, &t.FailReason, &t.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -101,6 +106,25 @@ LIMIT $1`, limit)
 			}
 			_ = json.Unmarshal(offeringRaw, &offeringSnapshot)
 			t.AdapterCode = offeringSnapshot.AdapterCode
+		}
+		if len(executionRaw) > 0 {
+			var snapshot struct {
+				APIModelCode     string         `json:"apiModelCode"`
+				APIVersion       string         `json:"apiVersion"`
+				WorkflowCode     string         `json:"workflowCode"`
+				ExecutionType    string         `json:"executionType"`
+				AdapterCode      string         `json:"adapterCode"`
+				ParameterMapping map[string]any `json:"parameterMapping"`
+			}
+			_ = json.Unmarshal(executionRaw, &snapshot)
+			if t.ExecutionType == "" {
+				t.ExecutionType = snapshot.ExecutionType
+			}
+			t.APIModelCode, t.APIVersion, t.WorkflowCode = snapshot.APIModelCode, snapshot.APIVersion, snapshot.WorkflowCode
+			t.ParameterMapping = snapshot.ParameterMapping
+			if t.AdapterCode == "" {
+				t.AdapterCode = snapshot.AdapterCode
+			}
 		}
 		if wfPublic != "" {
 			t.ClientWorkflow = wfPublic
@@ -241,6 +265,9 @@ UPDATE supplier_offerings SET failure_count=0, last_success_at=NOW(),
 WHERE public_id=$1`, offeringID); err != nil {
 			return err
 		}
+		if _, err = tx.Exec(ctx, `UPDATE supplier_executions SET failure_count=0, last_success_at=NOW(), health_status=CASE WHEN health_status='unavailable' THEN health_status ELSE 'healthy' END, updated_at=NOW() WHERE public_id=$1`, offeringID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -282,6 +309,9 @@ func (s *Store) FailTaskUpstream(ctx context.Context, taskID int64, reason strin
 		if _, err = tx.Exec(ctx, `INSERT INTO wallet_ledger (public_id, user_id, type, amount, balance_after, ref_type, ref_id, description) VALUES ($1,$2,'task_refund',$3,$4,'task',$5,$6)`, NewLedgerID(), userID, cost, balance, publicID, publicID+" 上游失败退款"); err != nil {
 			return err
 		}
+		if _, err = tx.Exec(ctx, `UPDATE consumption_orders SET status='refunded', refunded_at=NOW() WHERE task_id=$1 AND status='paid'`, taskID); err != nil {
+			return err
+		}
 	}
 	if offeringID != "" {
 		if _, err = tx.Exec(ctx, `
@@ -291,7 +321,10 @@ UPDATE supplier_offerings SET
   health_status=CASE WHEN failure_count+1 >= 3 THEN 'unavailable' ELSE 'degraded' END,
   enabled=CASE WHEN failure_count+1 >= 3 THEN FALSE ELSE enabled END,
   updated_at=NOW()
-WHERE public_id=$1`, offeringID); err != nil {
+		WHERE public_id=$1`, offeringID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE supplier_executions SET failure_count=failure_count+1, last_failure_at=NOW(), health_status=CASE WHEN failure_count+1 >= 3 THEN 'unavailable' ELSE 'degraded' END, enabled=CASE WHEN failure_count+1 >= 3 THEN FALSE ELSE enabled END, updated_at=NOW() WHERE public_id=$1`, offeringID); err != nil {
 			return err
 		}
 	}

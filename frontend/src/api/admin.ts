@@ -192,6 +192,10 @@ export type AdminOffering = {
   modeId: string
   modeName: string
   name: string
+  executionType?: 'api' | 'workflow'
+  apiModelCode?: string
+  apiVersion?: string
+  workflowCode?: string
   upstreamWorkflowId: string
   adapterCode: string
   enabled: boolean
@@ -209,6 +213,7 @@ export type AdminOffering = {
 export type AdminSupplierCost = {
   id: string
   offeringId: string
+  executionId?: string
   resolution: string
   generateAudio: boolean
   peakPerSecond: number

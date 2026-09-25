@@ -1,69 +1,58 @@
 <script setup lang="ts">
-import { Pencil, Plus, Power, RefreshCw, SlidersHorizontal, X } from 'lucide-vue-next'
-import { computed, onMounted, ref } from 'vue'
+import { Pencil, Plus, Power, RefreshCw, Search } from 'lucide-vue-next'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   createAdminCarrier,
   createAdminModel,
   fetchAdminCarriers,
-  fetchAdminCreationModes,
-  fetchAdminModelConfigurations,
-  fetchAdminRetailPricing,
   updateAdminCarrier,
   updateAdminModel,
-  upsertAdminModelConfiguration,
-  upsertAdminRetailPricing,
   type AdminCarrier,
-  type AdminCreationMode,
   type AdminModel,
-  type AdminModelConfiguration,
-  type AdminRetailPricing,
 } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VCard from '@/shared/ui/S2VCard.vue'
+import S2VDialog from '@/shared/ui/S2VDialog.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
+import S2VPagination from '@/shared/ui/S2VPagination.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import S2VSelect from '@/shared/ui/S2VSelect.vue'
 
 const app = useAppStore()
 const carriers = ref<AdminCarrier[]>([])
 const models = ref<AdminModel[]>([])
-const workflows = ref<AdminCreationMode[]>([])
-const configurations = ref<AdminModelConfiguration[]>([])
-const prices = ref<AdminRetailPricing[]>([])
 const loading = ref(false)
 const saving = ref(false)
-const catalogEditor = ref<'carrier' | 'model' | null>(null)
+const keyword = ref('')
+const editor = ref<'carrier' | 'model' | null>(null)
+const editorOpen = ref(false)
 const editingID = ref('')
-const configModel = ref<AdminModel | null>(null)
-const configEditing = ref<AdminModelConfiguration | null>(null)
-
+const page = ref(1)
+const pageSize = 10
 const carrierForm = ref({ code: '', name: '', description: '', enabled: true })
 const modelForm = ref({ carrierId: '', code: '', name: '', description: '', enabled: true })
-const configForm = ref({ workflowId: '', enabled: true, recommendationRank: '10', defaultDuration: '5', defaultResolution: '768P', resolution: '768P', generateAudio: false, pricePerSecond: '0.50' })
 
-const carrierOptions = computed(() => carriers.value.filter((item) => item.enabled).map((item) => ({ label: item.name, value: item.id })))
-const workflowOptions = computed(() => workflows.value.filter((item) => item.status === 'published').map((item) => ({ label: item.name, value: item.id })))
+const carrierOptions = computed(() => carriers.value
+  .filter((item) => item.enabled)
+  .map((item) => ({ label: `${item.name} (${item.code})`, value: item.id })))
 const activeCarrierCount = computed(() => carriers.value.filter((item) => item.enabled).length)
 const activeModelCount = computed(() => models.value.filter((item) => item.enabled).length)
+const normalizedKeyword = computed(() => keyword.value.trim().toLowerCase())
+const visibleCarriers = computed(() => carriers.value.filter((carrier) => {
+  const value = normalizedKeyword.value
+  if (!value) return true
+  const carrierMatch = [carrier.id, carrier.code, carrier.name, carrier.description || '']
+    .some((item) => item.toLowerCase().includes(value))
+  return carrierMatch || modelsFor(carrier.id).some((model) => [model.id, model.code, model.name, model.description || '']
+    .some((item) => item.toLowerCase().includes(value)))
+}))
+const pagedCarriers = computed(() => visibleCarriers.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 
 function apiErrorMessage(error: unknown, fallback: string) {
   const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
   return err.response?.data?.message || err.response?.data?.error || err.message || fallback
-}
-
-function numberValue(value: string, fallback: number) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function configurationsFor(modelID: string) {
-  return configurations.value.filter((item) => item.modelId === modelID)
-}
-
-function pricesFor(config: AdminModelConfiguration) {
-  return prices.value.filter((item) => item.modelId === config.modelId && item.modeId === config.workflowId)
 }
 
 function modelsFor(carrierID: string) {
@@ -73,58 +62,79 @@ function modelsFor(carrierID: string) {
 async function load() {
   loading.value = true
   try {
-    const [carrierData, workflowData, configData, priceData] = await Promise.all([
-      fetchAdminCarriers(), fetchAdminCreationModes(), fetchAdminModelConfigurations(), fetchAdminRetailPricing(),
-    ])
-    carriers.value = carrierData.carriers
-    models.value = carrierData.models
-    workflows.value = workflowData.items
-    configurations.value = configData.items
-    prices.value = priceData.items
+    const data = await fetchAdminCarriers()
+    carriers.value = data.carriers
+    models.value = data.models
+    if (page.value > Math.max(1, Math.ceil(visibleCarriers.value.length / pageSize))) page.value = 1
   } catch (error) {
-    app.notify(apiErrorMessage(error, '加载承运商与模型失败'))
+    app.notify(apiErrorMessage(error, '加载承运商目录失败'))
   } finally {
     loading.value = false
   }
 }
 
-function openCatalogEditor(kind: 'carrier' | 'model', item?: AdminCarrier | AdminModel) {
-  catalogEditor.value = kind
+function openEditor(kind: 'carrier' | 'model', item?: AdminCarrier | AdminModel, carrierID = '') {
+  editor.value = kind
+  editorOpen.value = true
   editingID.value = item?.id || ''
   if (kind === 'carrier') {
     const carrier = item as AdminCarrier | undefined
-    carrierForm.value = { code: carrier?.code || '', name: carrier?.name || '', description: carrier?.description || '', enabled: carrier?.enabled ?? true }
-  } else {
-    const model = item as AdminModel | undefined
-    modelForm.value = {
-      carrierId: model?.carrierId || carrierOptions.value[0]?.value || '', code: model?.code || '',
-      name: model?.name || '', description: model?.description || '', enabled: model?.enabled ?? true,
+    carrierForm.value = {
+      code: carrier?.code || '', name: carrier?.name || '', description: carrier?.description || '', enabled: carrier?.enabled ?? true,
     }
+    return
+  }
+  const model = item as AdminModel | undefined
+  modelForm.value = {
+    carrierId: model?.carrierId || carrierID || carrierOptions.value[0]?.value || '',
+    code: model?.code || '', name: model?.name || '', description: model?.description || '', enabled: model?.enabled ?? true,
   }
 }
 
+function closeEditor() {
+  editorOpen.value = false
+  editor.value = null
+  editingID.value = ''
+}
+
 async function saveCatalog() {
-  if (!catalogEditor.value) return
+  if (!editor.value) return
+  const savingKind = editor.value
   saving.value = true
   try {
-    if (catalogEditor.value === 'carrier') {
-      if (editingID.value) await updateAdminCarrier(editingID.value, { name: carrierForm.value.name, description: carrierForm.value.description, enabled: carrierForm.value.enabled })
-      else await createAdminCarrier({ code: carrierForm.value.code, name: carrierForm.value.name, description: carrierForm.value.description })
+    if (editor.value === 'carrier') {
+      if (editingID.value) {
+        await updateAdminCarrier(editingID.value, {
+          name: carrierForm.value.name, description: carrierForm.value.description, enabled: carrierForm.value.enabled,
+        })
+      } else {
+        const created = await createAdminCarrier({
+          code: carrierForm.value.code, name: carrierForm.value.name, description: carrierForm.value.description,
+        })
+        if (!carrierForm.value.enabled) await updateAdminCarrier(created.id, { enabled: false })
+      }
     } else if (editingID.value) {
-      await updateAdminModel(editingID.value, { name: modelForm.value.name, description: modelForm.value.description, enabled: modelForm.value.enabled })
+      await updateAdminModel(editingID.value, {
+        name: modelForm.value.name, description: modelForm.value.description, enabled: modelForm.value.enabled,
+      })
     } else {
-      await createAdminModel({ carrierId: modelForm.value.carrierId, code: modelForm.value.code, name: modelForm.value.name, description: modelForm.value.description })
+      const created = await createAdminModel({
+        carrierId: modelForm.value.carrierId, code: modelForm.value.code, name: modelForm.value.name, description: modelForm.value.description,
+      })
+      if (!modelForm.value.enabled) await updateAdminModel(created.id, { enabled: false })
     }
-    catalogEditor.value = null
-    editingID.value = ''
-    app.notify('承运商目录已保存')
+    closeEditor()
+    app.notify(savingKind === 'carrier' ? '承运商已保存' : '模型已保存')
     await load()
   } catch (error) {
-    app.notify(apiErrorMessage(error, '保存承运商目录失败'))
+    app.notify(apiErrorMessage(error, '保存目录失败'))
   } finally {
     saving.value = false
   }
 }
+
+watch(keyword, () => { page.value = 1 })
+watch(editorOpen, (open) => { if (!open) { editor.value = null; editingID.value = '' } })
 
 async function toggleCarrier(item: AdminCarrier) {
   saving.value = true
@@ -150,139 +160,65 @@ async function toggleModel(item: AdminModel) {
   }
 }
 
-function openConfiguration(model: AdminModel, item?: AdminModelConfiguration) {
-  configModel.value = model
-  configEditing.value = item || null
-  const currentPrice = item ? pricesFor(item)[0] : undefined
-  configForm.value = {
-    workflowId: item?.workflowId || workflowOptions.value[0]?.value || '', enabled: item?.enabled ?? true,
-    recommendationRank: String(item?.recommendationRank || configurationsFor(model.id).length + 1),
-    defaultDuration: String(item?.defaultDuration || 5), defaultResolution: item?.defaultResolution || '768P',
-    resolution: currentPrice?.resolution || item?.defaultResolution || '768P', generateAudio: currentPrice?.generateAudio || false,
-    pricePerSecond: String(currentPrice?.pricePerSecond ?? 0.5),
-  }
-}
-
-async function saveConfiguration() {
-  if (!configModel.value || !configForm.value.workflowId) {
-    app.notify('请选择工作流')
-    return
-  }
-  const price = numberValue(configForm.value.pricePerSecond, -1)
-  if (!configForm.value.resolution.trim() || price < 0) {
-    app.notify('请填写分辨率和有效每秒售价')
-    return
-  }
-  const workflow = workflows.value.find((item) => item.id === configForm.value.workflowId)
-  saving.value = true
-  try {
-    await upsertAdminModelConfiguration({
-      modelId: configModel.value.id,
-      workflowId: configForm.value.workflowId,
-      enabled: configForm.value.enabled,
-      recommendationRank: numberValue(configForm.value.recommendationRank, 1),
-      displayBadge: '',
-      defaultDuration: numberValue(configForm.value.defaultDuration, 5),
-      defaultResolution: configForm.value.defaultResolution.trim() || '768P',
-    })
-    await upsertAdminRetailPricing({
-      modeId: configForm.value.workflowId,
-      modelId: configModel.value.id,
-      resolution: configForm.value.resolution.trim(),
-      generateAudio: configForm.value.generateAudio,
-      name: `${configModel.value.name} ${workflow?.name || '工作流'} / ${configForm.value.resolution.trim()}`,
-      pricePerSecond: price,
-      status: 'active',
-    })
-    configModel.value = null
-    configEditing.value = null
-    app.notify('模型配置与对客售价已保存')
-    await load()
-  } catch (error) {
-    app.notify(apiErrorMessage(error, '保存模型配置失败'))
-  } finally {
-    saving.value = false
-  }
-}
-
 onMounted(load)
 </script>
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader title="承运商与模型">
-      <template #description>承运商是模型原厂，模型归属承运商。模型配置由模型侧声明支持哪些固定工作流，并在同处维护对客售价。</template>
+    <S2VPageHeader title="承运商">
+      <template #description>承运商是模型原厂；模型归属承运商。此页只维护两层基础目录，不配置工作流、售价或供应商调用信息。</template>
       <template #actions>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
-        <S2VButton size="sm" @click="openCatalogEditor('carrier')"><Plus class="h-3.5 w-3.5" />新增承运商</S2VButton>
-        <S2VButton variant="primary" size="sm" @click="openCatalogEditor('model')"><Plus class="h-3.5 w-3.5" />新增模型系列</S2VButton>
+        <S2VButton variant="primary" size="sm" @click="openEditor('carrier')"><Plus class="h-3.5 w-3.5" />新增承运商</S2VButton>
       </template>
     </S2VPageHeader>
 
-    <div class="mb-5 grid gap-3 sm:grid-cols-3">
+    <div class="mb-5 grid gap-3 sm:grid-cols-2">
       <S2VCard variant="metric"><span class="text-xs text-s2v-muted">启用承运商</span><strong class="mt-3 block font-mono text-xl">{{ activeCarrierCount }}</strong></S2VCard>
       <S2VCard variant="metric"><span class="text-xs text-s2v-muted">启用模型</span><strong class="mt-3 block font-mono text-xl">{{ activeModelCount }}</strong></S2VCard>
-      <S2VCard variant="metric"><span class="text-xs text-s2v-muted">模型配置</span><strong class="mt-3 block font-mono text-xl">{{ configurations.filter((item) => item.enabled).length }}</strong></S2VCard>
     </div>
 
-    <S2VCard v-if="catalogEditor" class="mb-5" variant="padded">
-      <div class="s2v-panel-header">
-        <div><h2 class="s2v-section-title">{{ editingID ? '编辑' : '新增' }}{{ catalogEditor === 'carrier' ? '承运商' : '模型系列' }}</h2><p class="mt-1 text-xs text-s2v-muted">编码为内部稳定标识，显示名称可独立调整。</p></div>
-        <S2VButton size="sm" title="关闭编辑器" @click="catalogEditor = null"><X class="h-3.5 w-3.5" /></S2VButton>
-      </div>
-      <div v-if="catalogEditor === 'carrier'" class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-        <S2VInput v-model="carrierForm.code" label="内部编码" placeholder="volcengine" :disabled="Boolean(editingID)" />
-        <S2VInput v-model="carrierForm.name" label="承运商名称" placeholder="火山引擎" />
+    <S2VDialog v-model:open="editorOpen" :title="`${editingID ? '编辑' : '新增'}${editor === 'carrier' ? '承运商' : '模型'}`" description="内部编码是稳定标识，显示名称可独立调整。" hide-actions size="wide">
+      <div v-if="editor === 'carrier'" class="grid gap-3 sm:grid-cols-2">
+        <S2VInput v-model="carrierForm.code" label="承运商编码" placeholder="minimax" :disabled="Boolean(editingID)" />
+        <S2VInput v-model="carrierForm.name" label="承运商名称" placeholder="MiniMax" />
         <S2VInput v-model="carrierForm.description" label="说明" class="sm:col-span-2" />
-        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="carrierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许新增模型和参与客户端目录</label>
+        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="carrierForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">启用承运商</label>
       </div>
-      <div v-else class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-        <S2VSelect v-model="modelForm.carrierId" label="承运商" :options="carrierOptions" :disabled="Boolean(editingID)" />
-        <S2VInput v-model="modelForm.code" label="内部编码" placeholder="seedance_2_5" :disabled="Boolean(editingID)" />
-        <S2VInput v-model="modelForm.name" label="模型系列名称" placeholder="Seedance 2.5" />
+      <div v-else class="grid gap-3 sm:grid-cols-2">
+        <S2VSelect v-model="modelForm.carrierId" label="归属承运商" :options="carrierOptions" :disabled="Boolean(editingID)" />
+        <S2VInput v-model="modelForm.code" label="模型编码" placeholder="h3" :disabled="Boolean(editingID)" />
+        <S2VInput v-model="modelForm.name" label="模型名称" placeholder="H3" />
         <S2VInput v-model="modelForm.description" label="说明" />
-        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="modelForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">允许配置工作流和参与客户端目录</label>
+        <label class="flex items-center gap-2 text-xs sm:col-span-2"><input v-model="modelForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">启用模型</label>
       </div>
-      <div class="mt-4"><S2VButton variant="primary" size="sm" :loading="saving" @click="saveCatalog">保存</S2VButton></div>
-    </S2VCard>
+      <div class="mt-5 flex justify-end gap-2"><S2VButton size="sm" @click="closeEditor">取消</S2VButton><S2VButton variant="primary" size="sm" :loading="saving" @click="saveCatalog">保存</S2VButton></div>
+    </S2VDialog>
 
-    <S2VCard v-if="configModel" class="mb-5" variant="padded">
-      <div class="s2v-panel-header">
-        <div><h2 class="s2v-section-title">{{ configEditing ? '编辑' : '新增' }}模型配置</h2><p class="mt-1 text-xs text-s2v-muted">{{ configModel.carrierCode }} / {{ configModel.name }}：声明该模型可支持的固定工作流，并维护对应的对客售价。</p></div>
-        <S2VButton size="sm" title="关闭模型配置" @click="configModel = null"><X class="h-3.5 w-3.5" /></S2VButton>
-      </div>
-      <div class="s2v-panel-body grid gap-3 sm:grid-cols-2">
-        <S2VSelect v-model="configForm.workflowId" label="支持工作流" :options="workflowOptions" :disabled="Boolean(configEditing)" />
-        <S2VInput v-model="configForm.recommendationRank" label="智能推荐顺序" type="number" />
-        <S2VInput v-model="configForm.defaultDuration" label="默认时长（秒）" type="number" />
-        <S2VInput v-model="configForm.defaultResolution" label="默认分辨率" placeholder="768P" />
-        <S2VInput v-model="configForm.resolution" label="计价分辨率" placeholder="1080P" />
-        <S2VInput v-model="configForm.pricePerSecond" label="平台售价（元/秒）" type="number" />
-        <label class="flex items-center gap-2 text-xs"><input v-model="configForm.enabled" type="checkbox" class="h-4 w-4 accent-s2v-primary">该模型支持此工作流</label>
-        <label class="flex items-center gap-2 text-xs"><input v-model="configForm.generateAudio" type="checkbox" class="h-4 w-4 accent-s2v-primary">此售价支持自动生成音频</label>
-      </div>
-      <div class="mt-4"><S2VButton variant="primary" size="sm" :loading="saving" @click="saveConfiguration">保存模型配置</S2VButton></div>
-    </S2VCard>
+    <div class="mb-5 max-w-md">
+      <S2VInput v-model="keyword" label="查询目录" placeholder="按 ID、名称或编码搜索承运商和模型">
+        <template #prefix><Search class="h-4 w-4 text-s2v-muted" /></template>
+      </S2VInput>
+    </div>
 
     <div class="grid gap-4">
-      <S2VCard v-for="carrier in carriers" :key="carrier.id" variant="padded">
+      <S2VCard v-for="carrier in pagedCarriers" :key="carrier.id" variant="padded">
         <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0"><div class="flex items-center gap-2"><h2 class="text-sm font-bold">{{ carrier.name }}</h2><S2VBadge :tone="carrier.enabled ? 'success' : 'neutral'">{{ carrier.enabled ? '启用' : '停用' }}</S2VBadge></div><p class="mt-1 text-xs text-s2v-muted">{{ carrier.description || '暂无说明' }}</p></div>
-          <div class="flex shrink-0 gap-1"><S2VButton size="sm" variant="ghost" title="编辑承运商" @click="openCatalogEditor('carrier', carrier)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="carrier.enabled ? '停用承运商' : '启用承运商'" :loading="saving" @click="toggleCarrier(carrier)"><Power class="h-3.5 w-3.5" /></S2VButton></div>
+          <div class="min-w-0"><div class="flex items-center gap-2"><h2 class="text-sm font-bold">{{ carrier.name }}</h2><S2VBadge :tone="carrier.enabled ? 'success' : 'neutral'">{{ carrier.enabled ? '启用' : '停用' }}</S2VBadge></div><p class="s2v-mono mt-1 text-[10px] text-s2v-muted">{{ carrier.id }} · {{ carrier.code }}</p><p class="mt-1 text-xs text-s2v-muted">{{ carrier.description || '暂无说明' }}</p></div>
+          <div class="flex shrink-0 gap-1"><S2VButton size="sm" title="新增模型" @click="openEditor('model', undefined, carrier.id)"><Plus class="h-3.5 w-3.5" />模型</S2VButton><S2VButton size="sm" variant="ghost" title="编辑承运商" @click="openEditor('carrier', carrier)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="carrier.enabled ? '停用承运商' : '启用承运商'" :loading="saving" @click="toggleCarrier(carrier)"><Power class="h-3.5 w-3.5" /></S2VButton></div>
         </div>
-        <div class="mt-4 grid gap-3 border-t border-s2v-line pt-4 lg:grid-cols-2">
-          <div v-for="model in modelsFor(carrier.id)" :key="model.id" class="s2v-inset">
-            <div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="flex items-center gap-2"><strong class="truncate text-xs">{{ model.name }}</strong><S2VBadge :tone="model.enabled ? 'success' : 'neutral'">{{ model.enabled ? '启用' : '停用' }}</S2VBadge></div><p class="mt-1 text-[11px] text-s2v-muted">{{ model.description || '暂无说明' }}</p></div><div class="flex shrink-0 gap-1"><S2VButton size="sm" variant="ghost" title="编辑模型" @click="openCatalogEditor('model', model)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="model.enabled ? '停用模型' : '启用模型'" :loading="saving" @click="toggleModel(model)"><Power class="h-3.5 w-3.5" /></S2VButton></div></div>
-            <div class="mt-3 grid gap-2 border-t border-s2v-line pt-3">
-              <div v-for="config in configurationsFor(model.id)" :key="`${config.modelId}:${config.workflowId}`" class="flex items-center justify-between gap-3 text-xs"><div class="min-w-0"><span class="font-medium text-s2v-ink">{{ config.workflowName }}</span><span class="ml-2 text-s2v-muted">默认 {{ config.defaultDuration }} 秒 · {{ config.defaultResolution }}</span><span v-for="price in pricesFor(config)" :key="price.id" class="ml-2 font-mono text-s2v-muted">¥{{ price.pricePerSecond }}/秒 {{ price.resolution }}{{ price.generateAudio ? ' 音频' : '' }}</span></div><S2VButton size="sm" variant="ghost" title="编辑模型配置" @click="openConfiguration(model, config)"><SlidersHorizontal class="h-3.5 w-3.5" /></S2VButton></div>
-              <p v-if="!configurationsFor(model.id).length" class="text-xs text-s2v-muted">尚未声明支持的工作流。</p>
-            </div>
-            <div class="mt-3"><S2VButton size="sm" @click="openConfiguration(model)"><Plus class="h-3.5 w-3.5" />模型配置</S2VButton></div>
-          </div>
-          <p v-if="!modelsFor(carrier.id).length" class="s2v-inset-dashed text-xs text-s2v-muted lg:col-span-2">该承运商尚未建立模型系列。</p>
+        <div class="mt-4 overflow-x-auto border-t border-s2v-line pt-4">
+          <table class="w-full text-left text-xs">
+            <thead class="text-s2v-muted"><tr><th class="pb-2 pr-3 font-medium">模型 ID</th><th class="pb-2 pr-3 font-medium">模型名称</th><th class="pb-2 pr-3 font-medium">模型编码</th><th class="pb-2 pr-3 font-medium">承运商 ID</th><th class="pb-2 pr-3 font-medium">承运商编码</th><th class="pb-2 pr-3 font-medium">状态</th><th class="pb-2 text-right font-medium">操作</th></tr></thead>
+            <tbody>
+              <tr v-for="model in modelsFor(carrier.id)" :key="model.id" class="border-t border-s2v-line/80"><td class="s2v-mono py-3 pr-3 text-[10px] text-s2v-muted">{{ model.id }}</td><td class="py-3 pr-3 font-medium text-s2v-ink">{{ model.name }}</td><td class="s2v-mono py-3 pr-3 text-[10px] text-s2v-muted">{{ model.code }}</td><td class="s2v-mono py-3 pr-3 text-[10px] text-s2v-muted">{{ carrier.id }}</td><td class="s2v-mono py-3 pr-3 text-[10px] text-s2v-muted">{{ carrier.code }}</td><td class="py-3 pr-3"><S2VBadge :tone="model.enabled ? 'success' : 'neutral'">{{ model.enabled ? '启用' : '停用' }}</S2VBadge></td><td class="py-3 text-right"><div class="flex justify-end gap-1"><S2VButton size="sm" variant="ghost" title="编辑模型" @click="openEditor('model', model)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="model.enabled ? '停用模型' : '启用模型'" :loading="saving" @click="toggleModel(model)"><Power class="h-3.5 w-3.5" /></S2VButton></div></td></tr>
+              <tr v-if="!modelsFor(carrier.id).length"><td colspan="7" class="py-4 text-s2v-muted">该承运商尚未建立模型。</td></tr>
+            </tbody>
+          </table>
         </div>
       </S2VCard>
-      <p v-if="!carriers.length" class="s2v-inset-dashed">暂无承运商，请先新增承运商和模型系列。</p>
+      <p v-if="!visibleCarriers.length" class="s2v-inset-dashed">未找到承运商或模型。</p>
+      <S2VPagination v-if="visibleCarriers.length" v-model="page" :total="visibleCarriers.length" :page-size="pageSize" />
     </div>
   </section>
 </template>

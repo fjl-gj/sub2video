@@ -61,15 +61,22 @@ type SourceRefItem struct {
 	ID   string `json:"id"`
 }
 
-// SourceMeta carries multi-slot image inputs for keyframes / multi-ref workflows.
+// SourceMeta carries image inputs and an optional creator-provided reference
+// audio upload. The audio source is retained in the task snapshot, never sent
+// back through the client task API.
 type SourceMeta struct {
 	First  *SourceRefItem  `json:"first,omitempty"`
 	Last   *SourceRefItem  `json:"last,omitempty"`
 	Extras []SourceRefItem `json:"extras,omitempty"`
 	Refs   []SourceRefItem `json:"refs,omitempty"`
+	Audio  *SourceRefItem  `json:"audio,omitempty"`
 }
 
 func (m SourceMeta) Empty() bool {
+	return m.VisualEmpty() && m.Audio == nil
+}
+
+func (m SourceMeta) VisualEmpty() bool {
 	return m.First == nil && m.Last == nil && len(m.Extras) == 0 && len(m.Refs) == 0
 }
 
@@ -411,6 +418,9 @@ VALUES ($1, $2, 'task_refund', $3, $4, 'task', $5, $6)`,
 		ledgerID, userID, cost, balance, taskPublicID, taskPublicID+" 终止退款"); err != nil {
 		return nil, 0, 0, err
 	}
+	if _, err = tx.Exec(ctx, `UPDATE consumption_orders SET status='refunded', refunded_at=NOW() WHERE task_id=$1 AND status='paid'`, id); err != nil {
+		return nil, 0, 0, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, 0, 0, err
 	}
@@ -515,12 +525,38 @@ func (s *Store) validateSourceRefItem(ctx context.Context, userID int64, item *S
 	return nil
 }
 
+func isReferenceAudioMIME(mime string) bool {
+	switch strings.ToLower(strings.TrimSpace(mime)) {
+	case "audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac", "audio/mp4", "video/mp4":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Store) validateReferenceAudioSource(ctx context.Context, userID int64, item *SourceRefItem) error {
+	if item == nil || strings.TrimSpace(item.ID) == "" {
+		return errors.New("请选择参考音频")
+	}
+	if item.Type != "upload" {
+		return errors.New("参考音频仅支持本地上传")
+	}
+	upload, err := s.GetUpload(ctx, userID, item.ID)
+	if err != nil {
+		return errors.New("上传参考音频不存在")
+	}
+	if !isReferenceAudioMIME(upload.MimeType) {
+		return errors.New("参考音频格式不受支持")
+	}
+	return nil
+}
+
 func (s *Store) validateImageSources(ctx context.Context, userID int64, workflowCode string, sourceType, sourceRef *string, meta *SourceMeta) error {
 	if meta == nil {
 		meta = &SourceMeta{}
 	}
 	// Back-compat: single source → first / refs[0]
-	if meta.Empty() && strings.TrimSpace(*sourceRef) != "" {
+	if meta.VisualEmpty() && strings.TrimSpace(*sourceRef) != "" {
 		item := SourceRefItem{Type: *sourceType, ID: strings.TrimSpace(*sourceRef)}
 		if item.Type == "" {
 			item.Type = "upload"

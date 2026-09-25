@@ -643,8 +643,9 @@ func (h *AdminHandler) UpsertModelConfiguration(c *gin.Context) {
 func offeringDTO(item store.SupplierOffering) gin.H {
 	return gin.H{"id": item.ID, "supplierId": item.SupplierID, "supplierName": item.SupplierName, "modelId": item.ModelID,
 		"modelName": item.ModelName, "carrierName": item.CarrierName, "modeId": item.ModeID, "modeName": item.ModeName,
-		"name": item.Name, "upstreamWorkflowId": item.UpstreamWorkflowID, "adapterCode": item.AdapterCode, "enabled": item.Enabled,
-		"healthStatus": item.HealthStatus, "priority": item.Priority, "minDurationSec": item.MinDurationSec, "maxDurationSec": item.MaxDurationSec,
+		"name": item.Name, "executionType": item.ExecutionType, "apiModelCode": item.APIModelCode, "apiVersion": item.APIVersion,
+		"workflowCode": item.WorkflowCode, "upstreamWorkflowId": item.UpstreamWorkflowID, "adapterCode": item.AdapterCode, "enabled": item.Enabled,
+		"healthStatus": item.HealthStatus, "quotaStatus": item.QuotaStatus, "priority": item.Priority, "minDurationSec": item.MinDurationSec, "maxDurationSec": item.MaxDurationSec,
 		"resolutions": item.Resolutions, "aspectRatios": item.AspectRatios, "minImages": item.MinImages, "maxImages": item.MaxImages,
 		"supportsGeneratedAudio": item.SupportsGeneratedAudio}
 }
@@ -700,7 +701,7 @@ func (h *AdminHandler) ListSupplierCosts(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(items))
 	for _, item := range items {
-		out = append(out, gin.H{"id": item.ID, "offeringId": item.OfferingID, "resolution": item.Resolution,
+		out = append(out, gin.H{"id": item.ID, "offeringId": item.OfferingID, "executionId": item.ExecutionID, "resolution": item.Resolution,
 			"generateAudio": item.GenerateAudio, "peakPerSecond": item.PeakPerSecond, "offpeakPerSecond": item.OffpeakPerSecond,
 			"currency": item.Currency, "version": item.Version, "status": item.Status})
 	}

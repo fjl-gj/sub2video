@@ -19,7 +19,16 @@
 | `first_last_frame_to_video` | 首尾帧生成视频 | `prompt`、`sourceMeta.first`、`sourceMeta.last` |
 | `multi_image_to_video` | 多图生成视频 | `prompt`、`sourceMeta.refs[]` |
 
-图片引用均为 `{ "type": "upload" | "asset", "id": "..." }`。自动音频表示模型自动生成音频，不是参考音频上传。
+图片引用均为 `{ "type": "upload" | "asset", "id": "..." }`。音频设置由客户端选择：不使用音频、自动生成音频或上传参考音频。后两种都提交 `generateAudio: true` 并按音频售价预估；参考音频额外写入 `sourceMeta.audio`，仅支持上传引用。
+
+## 上传参考音频
+
+```http
+POST /api/v1/client/uploads/reference-audio
+Content-Type: multipart/form-data
+```
+
+表单字段为 `file`，支持 MP3、WAV、FLAC、M4A、MP4，最大 50MB。上传只在用户确认提交参考音频任务时发生；响应的 `id` 写入任务素材快照。客户端响应始终不返回供应商、工作流编码或上游地址。
 
 ## 获取目录
 
@@ -60,14 +69,15 @@ GET /api/v1/client/create/options?modeId=mode_text_to_video&modelId=mdl_h3
 
 页面不得把 10 秒、1080P 或音频开关硬编码为全模型可用。
 
-## 报价
+## 预估
 
 ```http
-POST /api/v1/client/tasks/quote
+POST /api/v1/client/tasks/estimate
 Content-Type: application/json
 
 {
   "modeId": "mode_text_to_video",
+  "carrierId": "car_minimax",
   "modelId": "mdl_h3",
   "durationSeconds": 10,
   "resolution": "768P",
@@ -78,26 +88,38 @@ Content-Type: application/json
 
 ```json
 {
-  "quoteId": "qt_a1b2c3d4",
-  "expiresAt": "2026-09-04T08:05:00Z",
+  "available": true,
   "selection": {
     "carrier": { "id": "car_minimax", "name": "MINMAX" },
     "model": { "id": "mdl_h3", "name": "H3" }
   },
-  "price": { "currency": "CNY", "pricePerSecond": 0.5, "durationSeconds": 10, "total": 5.0 }
+  "billing": {
+    "basis": "按秒预估",
+    "currency": "CNY",
+    "pricePerSecond": 0.03,
+    "durationSeconds": 10,
+    "estimatedTotal": 0.30
+  }
 }
 ```
 
-用户选择明确模型时，服务端只会在该模型的可用供应商供给中选路；只有智能推荐才按模式模型策略选模型。报价有效期为 5 分钟。
+预估只计算当前可用能力和平台售价，不创建报价、订单或任务，不扣费，也不锁定执行配置。响应不包含供应商、执行类型、工作流编码、成本、Token 或上游地址。
 
 ## 创建任务
 
 ```http
 POST /api/v1/client/tasks
 Content-Type: application/json
+Idempotency-Key: create_20260911_001
 
 {
-  "quoteId": "qt_a1b2c3d4",
+  "modeId": "mode_first_last",
+  "carrierId": "car_minimax",
+  "modelId": "mdl_h3",
+  "durationSeconds": 10,
+  "resolution": "768P",
+  "aspectRatio": "9:16",
+  "generateAudio": false,
   "title": "雨夜街道",
   "prompt": "镜头缓慢向前推进……",
   "sourceMeta": {
@@ -107,12 +129,22 @@ Content-Type: application/json
 }
 ```
 
-服务端在同一事务中校验报价未过期且供给/价格规则仍可用，锁定钱包，创建不可变任务快照，扣款写流水，并将报价标记为已使用。不得提交 `workflowId`、供应商、路由、成本、价格快照、时长或分辨率。
+提交时服务端重新选择可用执行配置并计算最终价格；它不会使用或校验预估结果。在同一事务中校验素材归属、锁定钱包、创建消费订单、写入扣费流水及不可变任务快照。同一用户重复使用同一幂等键时，返回原订单与原任务，不会重复扣费。参考音频按如下方式随任务保存：
+
+```json
+{
+  "sourceMeta": {
+    "audio": { "type": "upload", "id": "upl_audio_1" }
+  }
+}
+```
+
+不得提交 `workflowId`、供应商、路由、成本、价格快照或上游参数。
 
 | 状态码 | 代码 | 场景 |
 | --- | --- | --- |
 | `400` | `INVALID_TASK_INPUT` | 模式输入或素材归属不合法 |
 | `402` | `INSUFFICIENT_BALANCE` | 余额不足 |
-| `409` | `QUOTE_EXPIRED_OR_UNAVAILABLE` | 报价已使用、过期、调价或供给下线 |
+| `400` | `INVALID_TASK_INPUT` | 模式输入、素材归属或执行能力不满足要求 |
 
-上游任务失败后服务端写退款流水。用户重试需要重新配置并取得新的报价。
+上游任务失败后服务端写退款流水。用户重试需要重新配置并提交新的请求。

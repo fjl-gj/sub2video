@@ -163,6 +163,13 @@ func (c *Client) PullURL(ctx context.Context, remoteURL, objectKey, contentType 
 	if err := c.PutObject(ctx, objectKey, body, contentType); err != nil {
 		return "", err
 	}
+	// Result and source buckets are private by default. Return a presigned URL
+	// after persisting the object so callers never expose an unsigned URL that
+	// MinIO will reject with 403.
+	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
+	if err == nil && signed != "" {
+		return signed, nil
+	}
 	return c.ObjectURL(objectKey), nil
 }
 

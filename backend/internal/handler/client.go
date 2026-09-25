@@ -102,6 +102,34 @@ func (h *ClientHandler) QuoteTask(c *gin.Context) {
 	response.OK(c, quoteDTO(quote))
 }
 
+func directRouteRequestFromJSON(modeID, carrierID, modelID string, duration int, resolution, aspect string, audio bool) store.DirectRouteRequest {
+	return store.DirectRouteRequest{ModeID: modeID, CarrierID: carrierID, ModelID: modelID, DurationSeconds: duration, Resolution: resolution, AspectRatio: aspect, GenerateAudio: audio}
+}
+
+// EstimateTask calculates the current user price without creating a quote,
+// order, wallet entry, or task. API and workflow executions are internal.
+func (h *ClientHandler) EstimateTask(c *gin.Context) {
+	var req struct {
+		ModeID          string `json:"modeId" binding:"required"`
+		CarrierID       string `json:"carrierId"`
+		ModelID         string `json:"modelId"`
+		DurationSeconds int    `json:"durationSeconds"`
+		Resolution      string `json:"resolution"`
+		AspectRatio     string `json:"aspectRatio"`
+		GenerateAudio   bool   `json:"generateAudio"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	route, err := h.Store.ResolveDirectRoute(c.Request.Context(), directRouteRequestFromJSON(req.ModeID, req.CarrierID, req.ModelID, req.DurationSeconds, req.Resolution, req.AspectRatio, req.GenerateAudio))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "UNAVAILABLE_COMBINATION", err.Error())
+		return
+	}
+	response.OK(c, gin.H{"available": true, "selection": gin.H{"carrier": gin.H{"id": route.Model.CarrierID, "name": route.Model.CarrierName}, "model": gin.H{"id": route.Model.ID, "name": route.Model.Name}}, "billing": gin.H{"basis": "requested_duration", "durationSeconds": req.DurationSeconds, "resolution": req.Resolution, "generateAudio": req.GenerateAudio, "pricePerSecond": route.Retail.PricePerSecond, "estimatedTotal": route.Total, "currency": "CNY"}})
+}
+
 func quoteDTO(quote *store.TaskQuote) gin.H {
 	return gin.H{
 		"quoteId": quote.ID, "expiresAt": quote.ExpiresAt,
@@ -118,23 +146,32 @@ func quoteDTO(quote *store.TaskQuote) gin.H {
 
 func (h *ClientHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		QuoteID    string           `json:"quoteId" binding:"required"`
-		Title      string           `json:"title"`
-		Prompt     string           `json:"prompt"`
-		SourceMeta store.SourceMeta `json:"sourceMeta"`
+		ModeID          string           `json:"modeId" binding:"required"`
+		CarrierID       string           `json:"carrierId"`
+		ModelID         string           `json:"modelId"`
+		DurationSeconds int              `json:"durationSeconds" binding:"required"`
+		Resolution      string           `json:"resolution" binding:"required"`
+		AspectRatio     string           `json:"aspectRatio" binding:"required"`
+		GenerateAudio   bool             `json:"generateAudio"`
+		Title           string           `json:"title"`
+		Prompt          string           `json:"prompt"`
+		SourceMeta      store.SourceMeta `json:"sourceMeta"`
+		ClientRequestID string           `json:"clientRequestId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 	user := middleware.CurrentUser(c)
-	task, ledgerID, balance, err := h.Store.CreateTaskFromQuote(c.Request.Context(), user.ID, req.QuoteID, req.Title, req.Prompt, req.SourceMeta)
+	requestID := req.ClientRequestID
+	if requestID == "" {
+		requestID = c.GetHeader("Idempotency-Key")
+	}
+	result, err := h.Store.CreateTaskDirect(c.Request.Context(), user.ID, store.DirectTaskInput{DirectRouteRequest: directRouteRequestFromJSON(req.ModeID, req.CarrierID, req.ModelID, req.DurationSeconds, req.Resolution, req.AspectRatio, req.GenerateAudio), ClientRequestID: requestID, Title: req.Title, Prompt: req.Prompt, SourceMeta: req.SourceMeta})
 	if err != nil {
 		switch err.Error() {
 		case "insufficient balance":
 			response.Fail(c, http.StatusPaymentRequired, "INSUFFICIENT_BALANCE", "余额不足")
-		case "报价已过期", "报价已使用", "报价已过期或不可用":
-			response.Fail(c, http.StatusConflict, "QUOTE_EXPIRED_OR_UNAVAILABLE", err.Error())
 		default:
 			response.Fail(c, http.StatusBadRequest, "INVALID_TASK_INPUT", err.Error())
 		}
@@ -142,11 +179,13 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 	}
 	response.Created(c, gin.H{
 		"task": gin.H{
-			"id": task.ID, "title": task.Title, "status": task.Status,
-			"cost": task.Cost, "mode": task.Workflow,
+			"id": result.Task.ID, "title": result.Task.Title, "status": result.Task.Status,
+			"cost": result.Task.Cost, "mode": result.Task.Workflow,
 		},
-		"wallet":        gin.H{"balance": balance},
-		"ledgerEntryId": ledgerID,
+		"order":            gin.H{"id": result.OrderID, "amount": result.Task.Cost, "currency": "CNY", "status": "paid"},
+		"wallet":           gin.H{"balance": result.Balance},
+		"ledgerEntryId":    result.LedgerID,
+		"idempotentReplay": result.AlreadyDone,
 	})
 }
 

@@ -11,11 +11,11 @@ import (
 )
 
 type LedgerEntry struct {
-	ID      string
-	Type    string
-	Amount  float64
-	Desc    string
-	Time    time.Time
+	ID     string
+	Type   string
+	Amount float64
+	Desc   string
+	Time   time.Time
 }
 
 func ledgerTypeCN(t string) string {

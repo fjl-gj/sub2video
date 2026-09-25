@@ -23,11 +23,12 @@ import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import {
   createTask,
+  estimateTask,
   fetchCreationCatalog,
   fetchCreationOptions,
   listTasks,
-  quoteTask,
   uploadImage,
+  uploadReferenceAudio,
   type CreationCatalog,
   type CreationOptions,
 } from '@/api/client'
@@ -36,6 +37,14 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 
 interface FrameSlot extends CreateFrameSlot {}
+
+type AudioMode = 'none' | 'generate' | 'reference'
+
+interface ReferenceAudio {
+  file?: File
+  uploadId?: string
+  fileName: string
+}
 
 const router = useRouter()
 const app = useAppStore()
@@ -49,7 +58,9 @@ const durationSec = ref('15')
 const resolution = ref('768P')
 const selectedCarrierId = ref('')
 const selectedModelId = ref('')
-const generateAudio = ref(false)
+const audioMode = ref<AudioMode>('none')
+const generateAudio = computed(() => audioMode.value !== 'none')
+const referenceAudio = ref<ReferenceAudio | null>(null)
 const catalog = ref<CreationCatalog>({ modes: [], carriers: [], models: [] })
 const catalogLoaded = ref(false)
 const creationOptions = ref<CreationOptions>({
@@ -98,9 +109,13 @@ const generationUnavailable = computed(() => catalogLoaded.value && (!activeMode
 const quotedCost = ref<number | null>(null)
 const cost = computed(() => quotedCost.value ?? 0)
 const recentTasks = ref<Task[]>([])
+const estimateLoading = ref(false)
+const submissionRequestID = ref('')
 
 const canSubmit = computed(() => {
-  return !generationUnavailable.value && durationValid.value && prompt.value.trim().length > 0 && (workflowInputType.value === 'text' || hasRequiredImageInput.value)
+  return !generationUnavailable.value && durationValid.value && prompt.value.trim().length > 0
+    && (workflowInputType.value === 'text' || hasRequiredImageInput.value)
+    && (audioMode.value !== 'reference' || referenceAudio.value !== null)
 })
 
 const hasRequiredImageInput = computed(() => {
@@ -247,22 +262,45 @@ async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: st
   throw new Error('请先上传或选择图片')
 }
 
+function selectReferenceAudio(file: File) {
+  referenceAudio.value = { file, fileName: file.name }
+}
+
+function clearReferenceAudio() {
+  referenceAudio.value = null
+}
+
+async function ensureReferenceAudioUpload(): Promise<{ type: 'upload'; id: string }> {
+  const selected = referenceAudio.value
+  if (!selected) throw new Error('请先上传参考音频')
+  if (selected.uploadId) return { type: 'upload', id: selected.uploadId }
+  if (!selected.file) throw new Error('参考音频文件不可用，请重新上传')
+  const uploaded = await uploadReferenceAudio(selected.file)
+  selected.uploadId = uploaded.id
+  selected.file = undefined
+  return { type: 'upload', id: uploaded.id }
+}
+
 async function resolveSourcePayload(): Promise<Record<string, unknown> | undefined> {
-  if (workflowInputType.value === 'text') return undefined
+  const sourceMeta: Record<string, unknown> = {}
 
   if (imageVariant.value === 'keyframes') {
-    if (!frameReady(firstFrame.value) || !frameReady(lastFrame.value)) throw new Error('请先上传或选择首帧和尾帧图片')
-    const first = await ensureSlotUpload(firstFrame.value)
-    const last = await ensureSlotUpload(lastFrame.value)
-    return { first, last }
+    if (workflowInputType.value !== 'text') {
+      if (!frameReady(firstFrame.value) || !frameReady(lastFrame.value)) throw new Error('请先上传或选择首帧和尾帧图片')
+      sourceMeta.first = await ensureSlotUpload(firstFrame.value)
+      sourceMeta.last = await ensureSlotUpload(lastFrame.value)
+    }
   }
-
-  const refs = []
-  for (const slot of multiFrames.value) {
-    if (frameReady(slot)) refs.push(await ensureSlotUpload(slot))
+  else if (workflowInputType.value === 'multi_image') {
+    const refs = []
+    for (const slot of multiFrames.value) {
+      if (frameReady(slot)) refs.push(await ensureSlotUpload(slot))
+    }
+    if (refs.length < Math.max(creationOptions.value.minImages, 1)) throw new Error(`请至少选择 ${Math.max(creationOptions.value.minImages, 1)} 张参考图`)
+    sourceMeta.refs = refs
   }
-  if (refs.length < Math.max(creationOptions.value.minImages, 1)) throw new Error(`请至少选择 ${Math.max(creationOptions.value.minImages, 1)} 张参考图`)
-  return { refs }
+  if (audioMode.value === 'reference') sourceMeta.audio = await ensureReferenceAudioUpload()
+  return Object.keys(sourceMeta).length ? sourceMeta : undefined
 }
 
 function syncBalance(balance: number) {
@@ -279,6 +317,7 @@ async function submit() {
   if (!canSubmit.value) {
     if (!prompt.value.trim()) app.notify('请先填写画面描述')
     else if (workflowInputType.value === 'first_last') app.notify('请先上传或选择首帧和尾帧图片')
+    else if (audioMode.value === 'reference') app.notify('请先上传参考音频')
     else app.notify('请至少选择一张参考图')
     return
   }
@@ -286,26 +325,25 @@ async function submit() {
   loading.value = true
   try {
     const sourceMeta = await resolveSourcePayload()
-    const quote = await quoteTask({
+    if (!submissionRequestID.value) submissionRequestID.value = `create_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const result = await createTask({
       modeId: activeModeId.value,
+      carrierId: selectedCarrierId.value || undefined,
       modelId: selectedModelId.value || undefined,
       durationSeconds: parsedDuration.value,
       resolution: resolution.value,
       aspectRatio: ratio.value,
       generateAudio: generateAudio.value,
-    })
-    quotedCost.value = quote.price.total
-    const result = await createTask({
-      quoteId: quote.quoteId,
       title: buildTaskTitle(),
       prompt: prompt.value.trim(),
       sourceMeta,
-    })
+    }, submissionRequestID.value)
     syncBalance(result.wallet.balance)
-    app.notify(`任务已提交，预扣 ¥${result.task.cost.toFixed(2)}`)
+    app.notify(`任务已提交，消费 ¥${result.order.amount.toFixed(2)}`)
     app.draftPrompt = ''
     prompt.value = ''
     clearCreateDraft()
+    submissionRequestID.value = ''
     router.push('/app/works')
   }
   catch (error) {
@@ -313,6 +351,22 @@ async function submit() {
   }
   finally {
     loading.value = false
+  }
+}
+
+async function refreshEstimate() {
+  if (!activeModeId.value || !durationValid.value || !resolution.value || !ratio.value) {
+    quotedCost.value = null
+    return
+  }
+  estimateLoading.value = true
+  try {
+    const result = await estimateTask({ modeId: activeModeId.value, carrierId: selectedCarrierId.value || undefined, modelId: selectedModelId.value || undefined, durationSeconds: parsedDuration.value, resolution: resolution.value, aspectRatio: ratio.value, generateAudio: generateAudio.value })
+    quotedCost.value = result.available ? result.billing.estimatedTotal : null
+  } catch {
+    quotedCost.value = null
+  } finally {
+    estimateLoading.value = false
   }
 }
 
@@ -327,7 +381,10 @@ async function loadCreationOptions() {
     if (!next.durations.includes(parsedDuration.value)) durationSec.value = String(next.defaultDuration || next.durations[0] || 5)
     if (!next.resolutions.includes(resolution.value)) resolution.value = next.defaultResolution || next.resolutions[0] || '768P'
     if (!next.aspectRatios.includes(ratio.value)) ratio.value = next.aspectRatios[0] || '16:9'
-    if (!next.supportsGeneratedAudio) generateAudio.value = false
+    if (!next.supportsGeneratedAudio) {
+      audioMode.value = 'none'
+      clearReferenceAudio()
+    }
   } catch {
     creationOptions.value = { durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false, minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P' }
   }
@@ -435,6 +492,14 @@ watch([activeModeId, selectedModelId], () => {
   void loadCreationOptions()
 })
 
+watch([activeModeId, selectedCarrierId, selectedModelId, durationSec, resolution, ratio, generateAudio], () => {
+  void refreshEstimate()
+})
+
+watch(audioMode, (next) => {
+  if (next !== 'reference') clearReferenceAudio()
+})
+
 watch(selectedCarrierId, () => {
   if (selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
 })
@@ -459,7 +524,7 @@ watch(prompt, () => {
   <section class="s2v-page s2v-page-fill">
     <S2VPageHeader title="创作">
       <template #actions>
-        <S2VBadge tone="success">钱包余额: ¥ {{ app.balance.toFixed(2) }}</S2VBadge>
+        <S2VBadge tone="success">钱包余额: ¥ {{ auth.balance.toFixed(2) }}</S2VBadge>
       </template>
     </S2VPageHeader>
 
@@ -515,13 +580,16 @@ watch(prompt, () => {
             :carrier-id="selectedCarrierId"
             :model-id="selectedModelId"
             :supports-generated-audio="creationOptions.supportsGeneratedAudio"
-            :generate-audio="generateAudio"
+            :audio-mode="audioMode"
+            :reference-audio-name="referenceAudio?.fileName"
             @update:ratio="ratio = $event"
             @update:duration-sec="durationSec = $event"
             @update:resolution="resolution = $event"
             @update:carrier-id="selectedCarrierId = $event"
             @update:model-id="selectedModelId = $event"
-            @update:generate-audio="generateAudio = $event"
+            @update:audio-mode="audioMode = $event"
+            @reference-audio-upload="selectReferenceAudio"
+            @clear-reference-audio="clearReferenceAudio"
           />
           <CreatePromptSubmit
             v-model:prompt="prompt"

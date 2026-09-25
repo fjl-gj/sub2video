@@ -39,11 +39,17 @@ async function seedAuthenticatedClient(page: Page, balance = 100) {
   await page.route('**/api/v1/client/create/options**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(options) })
   })
+  await page.route('**/api/v1/client/tasks/estimate', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: true, selection: { carrier: { id: 'carrier_minimax', name: 'MINMAX' }, model: { id: 'model_h3', name: 'H3' } }, billing: { currency: 'CNY', pricePerSecond: 0.5, estimatedTotal: 2.5, durationSeconds: 5, resolution: '1080P', generateAudio: false } }) })
+  })
   await page.route(/\/api\/v1\/client\/projects(?:\?.*)?$/, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], currentProjectId: '' }) })
   })
   await page.route('**/api/v1/client/storage/usage', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ usedGb: 0, quotaGb: 5, fileCount: 0, projectCount: 0, trashCount: 0 }) })
+  })
+  await page.route('**/api/v1/client/wallet', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ balance, products: [] }) })
   })
   await page.route(/\/api\/v1\/client\/tasks(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
@@ -124,20 +130,26 @@ test.describe('client creation contracts (mocked frontend only)', () => {
     await expect(page.getByRole('button', { name: '首尾帧生成视频', exact: true })).toHaveCount(0)
   })
 
-  test('quotes a selected model and creates a task only from quoteId', async ({ page }) => {
+  test('synchronizes the creation-page balance from the wallet API', async ({ page }) => {
+    await seedAuthenticatedClient(page, 42.5)
+
+    await page.goto('/app/create', { waitUntil: 'networkidle' })
+    await expect(page.getByText('钱包余额: ¥ 42.50', { exact: true })).toBeVisible()
+  })
+
+  test('estimates a selected model and submits the complete creation contract', async ({ page }) => {
     await seedAuthenticatedClient(page)
-    let quotePayload: Record<string, unknown> | undefined
+    let estimatePayload: Record<string, unknown> | undefined
     let taskPayload: Record<string, unknown> | undefined
-    await page.route('**/api/v1/client/tasks/quote', async (route) => {
-      quotePayload = route.request().postDataJSON() as Record<string, unknown>
+    await page.route('**/api/v1/client/tasks/estimate', async (route) => {
+      estimatePayload = route.request().postDataJSON() as Record<string, unknown>
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          quoteId: 'quote_contract_1',
-          expiresAt: '2030-01-01T00:00:00Z',
+          available: true,
           selection: { carrier: { id: 'carrier_minimax', name: 'MINMAX' }, model: { id: 'model_h3', name: 'H3' } },
-          price: { currency: 'CNY', pricePerSecond: 0.5, durationSeconds: 5, total: 2.5 },
+          billing: { currency: 'CNY', pricePerSecond: 0.5, durationSeconds: 5, estimatedTotal: 2.5 },
         }),
       })
     })
@@ -146,7 +158,7 @@ test.describe('client creation contracts (mocked frontend only)', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ task: { id: 'task_contract_1', title: '文生合同任务', status: '排队中', cost: 2.5, mode: '文生视频' }, wallet: { balance: 97.5 } }),
+      body: JSON.stringify({ task: { id: 'task_contract_1', title: '文生合同任务', status: '排队中', cost: 2.5, mode: '文生视频' }, order: { id: 'ord_contract_1', amount: 2.5, status: 'paid' }, wallet: { balance: 97.5 } }),
       })
     })
 
@@ -154,7 +166,7 @@ test.describe('client creation contracts (mocked frontend only)', () => {
     await submit.click()
     await expect(page).toHaveURL(/\/app\/works$/)
 
-    expect(quotePayload).toEqual({
+    expect(estimatePayload).toEqual({
       modeId: 'mode_text',
       modelId: 'model_h3',
       durationSeconds: 5,
@@ -162,43 +174,95 @@ test.describe('client creation contracts (mocked frontend only)', () => {
       aspectRatio: '16:9',
       generateAudio: false,
     })
-    expect(taskPayload).toMatchObject({ quoteId: 'quote_contract_1', prompt: '雨夜的霓虹街头，镜头缓慢推进' })
-    expect(Object.keys(taskPayload ?? {}).sort()).toEqual(['prompt', 'quoteId', 'title'])
-    expect(JSON.stringify({ quotePayload, taskPayload })).not.toMatch(/supplier|workflow|costSnapshot|upstream/i)
+    expect(taskPayload).toMatchObject({ modeId: 'mode_text', modelId: 'model_h3', prompt: '雨夜的霓虹街头，镜头缓慢推进', durationSeconds: 5, resolution: '1080P', aspectRatio: '16:9', generateAudio: false })
+    expect(taskPayload).not.toHaveProperty('quoteId')
+    expect(JSON.stringify({ estimatePayload, taskPayload })).not.toMatch(/supplier|workflow|costSnapshot|upstream/i)
   })
 
-  test('does not create a task after an expired quote', async ({ page }) => {
+  test('uploads optional reference audio only when the creator selects it', async ({ page }) => {
     await seedAuthenticatedClient(page)
+    let audioUploadCalls = 0
+    let taskPayload: Record<string, unknown> | undefined
+    await page.route('**/api/v1/client/uploads/reference-audio', async (route) => {
+      audioUploadCalls += 1
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'upl_audio_1', fileName: 'voice.mp3', mimeType: 'audio/mpeg', sizeBytes: 12, url: '/api/v1/client/uploads/upl_audio_1' }),
+      })
+    })
+    await page.route('**/api/v1/client/tasks', async (route) => {
+      taskPayload = route.request().postDataJSON() as Record<string, unknown>
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ task: { id: 'task_audio_1', title: '音频合同任务', status: '排队中', cost: 2.5, mode: '文生视频' }, order: { id: 'ord_audio_1', amount: 2.5, status: 'paid' }, wallet: { balance: 97.5 } }),
+      })
+    })
+
+    const submit = await prepareTextCreation(page)
+    await page.getByRole('combobox', { name: '音频设置', exact: true }).selectOption('reference')
+    await page.getByLabel('参考音频文件', { exact: true }).setInputFiles({
+      name: 'voice.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('audio-contract'),
+    })
+    await expect(page.getByText('voice.mp3', { exact: true })).toBeVisible()
+    await submit.click()
+
+    await expect(page).toHaveURL(/\/app\/works$/)
+    expect(audioUploadCalls).toBe(1)
+    expect(taskPayload).toMatchObject({
+      generateAudio: true,
+      sourceMeta: { audio: { type: 'upload', id: 'upl_audio_1' } },
+    })
+  })
+
+  test('generates audio without requiring or uploading a reference audio file', async ({ page }) => {
+    await seedAuthenticatedClient(page)
+    let audioUploadCalls = 0
+    let taskPayload: Record<string, unknown> | undefined
+    await page.route('**/api/v1/client/uploads/reference-audio', async (route) => {
+      audioUploadCalls += 1
+      await route.fulfill({ status: 500 })
+    })
+    await page.route('**/api/v1/client/tasks', async (route) => {
+      taskPayload = route.request().postDataJSON() as Record<string, unknown>
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ task: { id: 'task_generated_audio_1', title: '自动音频合同任务', status: '排队中', cost: 2.5, mode: '文生视频' }, order: { id: 'ord_generated_audio_1', amount: 2.5, status: 'paid' }, wallet: { balance: 97.5 } }),
+      })
+    })
+
+    const submit = await prepareTextCreation(page)
+    await page.getByRole('combobox', { name: '音频设置', exact: true }).selectOption('generate')
+    await submit.click()
+
+    await expect(page).toHaveURL(/\/app\/works$/)
+    expect(audioUploadCalls).toBe(0)
+    expect(taskPayload).toMatchObject({ generateAudio: true })
+    expect(taskPayload).not.toHaveProperty('sourceMeta')
+  })
+
+  test('submits with a fresh server route when estimate is unavailable', async ({ page }) => {
+    await seedAuthenticatedClient(page)
+    await page.unroute('**/api/v1/client/tasks/estimate')
     let createCalls = 0
-    await page.route('**/api/v1/client/tasks/quote', async (route) => {
-      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: '报价已过期，请重新获取报价' }) })
+    await page.route('**/api/v1/client/tasks/estimate', async (route) => {
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: '当前参数暂无可用执行配置' }) })
     })
     await page.route('**/api/v1/client/tasks', async (route) => {
       createCalls += 1
-      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '不应创建任务' }) })
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ task: { id: 'task_reroute', title: '重路由任务', status: '排队中', cost: 2.5, mode: '文生视频' }, order: { id: 'ord_reroute', amount: 2.5, currency: 'CNY', status: 'paid' }, wallet: { balance: 97.5 } }) })
     })
 
     const submit = await prepareTextCreation(page)
     await submit.click()
-    await expect(page.getByText('报价已过期，请重新获取报价', { exact: true })).toBeVisible()
-    expect(createCalls).toBe(0)
-    await expect(page).toHaveURL(/\/app\/create$/)
+    expect(createCalls).toBe(1)
+    await expect(page).toHaveURL(/\/app\/works$/)
   })
 
   test('keeps the creator on the form when precharge reports insufficient balance', async ({ page }) => {
     await seedAuthenticatedClient(page, 2)
-    await page.route('**/api/v1/client/tasks/quote', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          quoteId: 'quote_balance_1',
-          expiresAt: '2030-01-01T00:00:00Z',
-          selection: { carrier: { id: 'carrier_minimax', name: 'MINMAX' }, model: { id: 'model_h3', name: 'H3' } },
-          price: { currency: 'CNY', pricePerSecond: 0.5, durationSeconds: 5, total: 2.5 },
-        }),
-      })
-    })
     await page.route('**/api/v1/client/tasks', async (route) => {
       await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: '余额不足，无法预扣' }) })
     })

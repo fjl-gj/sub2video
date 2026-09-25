@@ -12,11 +12,11 @@ import (
 )
 
 type WorkflowParams struct {
-	AspectRatios    []string `json:"aspectRatios,omitempty"`
-	Durations       []int    `json:"durations,omitempty"`
-	DefaultDuration int      `json:"defaultDuration,omitempty"`
-	Resolutions     []string `json:"resolutions,omitempty"`
-	DefaultResolution string `json:"defaultResolution,omitempty"`
+	AspectRatios      []string `json:"aspectRatios,omitempty"`
+	Durations         []int    `json:"durations,omitempty"`
+	DefaultDuration   int      `json:"defaultDuration,omitempty"`
+	Resolutions       []string `json:"resolutions,omitempty"`
+	DefaultResolution string   `json:"defaultResolution,omitempty"`
 }
 
 type PlatformWorkflow struct {
@@ -36,17 +36,17 @@ type PlatformWorkflow struct {
 }
 
 type PricingRule struct {
-	ID              string
-	WorkflowID      string
-	WorkflowCode    string
-	WorkflowName    string
-	Name            string
-	Resolution      string
-	PricePerSec     float64
-	CostHintPerSec  float64
-	Version         string
-	Status          string
-	UpdatedAt       time.Time
+	ID             string
+	WorkflowID     string
+	WorkflowCode   string
+	WorkflowName   string
+	Name           string
+	Resolution     string
+	PricePerSec    float64
+	CostHintPerSec float64
+	Version        string
+	Status         string
+	UpdatedAt      time.Time
 }
 
 func (s *Store) SeedPlatformCommerce(ctx context.Context) error {

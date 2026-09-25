@@ -104,7 +104,7 @@ async function loadTasks() {
 }
 
 function reconfigureCreation() {
-  app.notify('请重新配置并获取新报价后再提交')
+  app.notify('请重新配置并重新预估费用后再提交')
   router.push('/app/create')
 }
 

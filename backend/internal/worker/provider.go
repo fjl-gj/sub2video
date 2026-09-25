@@ -76,7 +76,7 @@ func (r *Runner) objectStore(ctx context.Context) blob.Store {
 }
 
 func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTask) error {
-	if t.SupplierRouteID == "" || t.UpstreamWorkflowID == "" {
+	if t.SupplierRouteID == "" || (t.ExecutionType == "workflow" && t.UpstreamWorkflowID == "") || (t.ExecutionType == "api" && t.APIModelCode == "") {
 		return fmt.Errorf("任务缺少锁定供给")
 	}
 	if t.AdapterCode != "autodl_h3_v1" {
@@ -100,14 +100,7 @@ func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTa
 		baseURL = r.Cfg.AutoDLBaseURL
 	}
 	client := autodl.New(baseURL, token, authHeader)
-	body := map[string]any{
-		"prompt":     t.Prompt,
-		"duration":   t.DurationSec,
-		"resolution": routing.MapResolutionToUpstream(t.Resolution, t.AspectRatio),
-	}
-	if t.GenerateAudio {
-		body["generate_audio"] = true
-	}
+	body := buildProviderRequestBody(t)
 	if !isTextCreation(t.ClientWorkflow) {
 		storeClient := r.objectStore(ctx)
 		if !storeClient.Configured() {
@@ -123,7 +116,19 @@ func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTa
 			return err
 		}
 	}
-	res, err := client.Submit(ctx, t.UpstreamWorkflowID, body)
+	if err := r.attachReferenceAudio(ctx, t, body); err != nil {
+		return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err))
+	}
+	var res *autodl.SubmitResult
+	if t.ExecutionType == "api" {
+		res, err = client.SubmitAPI(ctx, t.APIModelCode, t.APIVersion, body)
+	} else {
+		workflowCode := t.UpstreamWorkflowID
+		if t.WorkflowCode != "" {
+			workflowCode = t.WorkflowCode
+		}
+		res, err = client.Submit(ctx, workflowCode, body)
+	}
 	if err != nil {
 		return err
 	}
@@ -131,6 +136,66 @@ func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTa
 		return err
 	}
 	log.Printf("submitted %s via locked offering %s", t.PublicID, t.SupplierRouteID)
+	return nil
+}
+
+func buildProviderRequestBody(t *store.ProviderTask) map[string]any {
+	body := map[string]any{
+		"prompt":     t.Prompt,
+		"duration":   t.DurationSec,
+		"resolution": routing.MapResolutionToUpstream(t.Resolution, t.AspectRatio),
+	}
+	// Workflow contracts express audio through their own accepted fields. Only
+	// API executions receive a generic generated-audio switch.
+	if t.GenerateAudio && t.ExecutionType == "api" {
+		body["generate_audio"] = true
+	}
+	if omitted, ok := t.ParameterMapping["omit"].([]any); ok {
+		for _, value := range omitted {
+			if key, ok := value.(string); ok {
+				delete(body, key)
+			}
+		}
+	}
+	return body
+}
+
+func (r *Runner) attachReferenceAudio(ctx context.Context, t *store.ProviderTask, body map[string]any) error {
+	if t.SourceMeta.Audio == nil {
+		return nil
+	}
+	storeClient := r.objectStore(ctx)
+	if !storeClient.Configured() {
+		return fmt.Errorf("对象存储尚未配置，无法提交参考音频")
+	}
+	if err := storeClient.EnsureBucket(ctx); err != nil {
+		return err
+	}
+	path, mime, remote, err := r.Store.ResolveLocalImage(ctx, t.UserID, *t.SourceMeta.Audio)
+	if err != nil {
+		return err
+	}
+	var url string
+	if remote != "" && (path == "" || strings.HasPrefix(remote, "http")) {
+		url = remote
+	} else {
+		if path == "" {
+			return fmt.Errorf("参考音频文件不可用")
+		}
+		key := fmt.Sprintf("sources/%s/%s/reference_audio%s", time.Now().UTC().Format("20060102"), t.PublicID, extOf(path, mime))
+		url, err = storeClient.PutFile(ctx, key, path, mime)
+		if err != nil {
+			return err
+		}
+	}
+	field := "ref_audio_0"
+	if configured, ok := t.ParameterMapping["audioField"].(string); ok && configured != "" {
+		field = configured
+	}
+	body[field] = url
+	if configured, ok := t.ParameterMapping["audioDurationField"].(string); ok && configured != "" {
+		body[configured] = t.DurationSec
+	}
 	return nil
 }
 
@@ -222,7 +287,7 @@ func (r *Runner) attachImageURLs(ctx context.Context, storeClient blob.Store, t 
 
 func extOf(path, mime string) string {
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" || ext == ".gif" {
+	if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" || ext == ".gif" || ext == ".mp3" || ext == ".wav" || ext == ".flac" || ext == ".m4a" || ext == ".mp4" {
 		return ext
 	}
 	switch mime {
@@ -234,6 +299,14 @@ func extOf(path, mime string) string {
 		return ".webp"
 	case "image/gif":
 		return ".gif"
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	case "audio/flac":
+		return ".flac"
+	case "audio/mp4", "video/mp4":
+		return ".m4a"
 	default:
 		return ".jpg"
 	}

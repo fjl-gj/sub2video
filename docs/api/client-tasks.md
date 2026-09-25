@@ -98,9 +98,9 @@ POST /api/v1/client/tasks/{id}/cancel
 
 ### 重新配置创作
 
-失败任务不能复用原任务或旧报价。客户端跳转 `/app/create`，用户重新选择参数、请求新的 `POST /api/v1/client/tasks/quote`，再通过 `POST /api/v1/client/tasks` 创建独立任务并按当时售价预扣。
+失败任务不能复用原任务或旧执行快照。客户端跳转 `/app/create`，用户重新选择参数，先请求新的 `POST /api/v1/client/tasks/estimate` 获取预估，再通过 `POST /api/v1/client/tasks` 创建独立任务并按提交时售价预扣。
 
-失败任务必须重新配置并获得新的报价；不存在复用旧任务、旧价格或旧报价的重试接口。
+失败任务必须重新配置并重新提交完整参数；不存在复用旧任务、旧价格或旧执行配置的重试接口。
 
 ### 下载
 
@@ -140,7 +140,7 @@ POST /api/v1/client/tasks/{id}/save-to-project
 1. 进度更新：生成中任务建议 WebSocket / SSE 推送 `progress`，或轮询 `GET /tasks/{id}`。
 2. `savedToProject`：同一 `taskId` 在同一作品内只保存一次。
 3. 成片仅在对象存储持久化交付完成后可下载或保存到作品；没有交付地址时页面展示等待状态，不伪造下载成功。
-4. 新任务失败后必须使用新的 `quoteId`；调价、供给变更和余额变化都会影响重新提交的结果。
+4. 新任务失败后必须重新提交完整创作参数；调价、供给变更和余额变化都会影响重新提交的结果。
 
 ## 当前实现映射
 
@@ -152,3 +152,6 @@ POST /api/v1/client/tasks/{id}/save-to-project
 | 失败重新配置 | 跳转 `/app/create`，由报价和创建任务接口完成 |
 | 保存作品 | `POST /client/tasks/{id}/save-to-project` |
 | 已保存判断 | 列表和详情响应的 `savedToProject` |
+# 当前提交合同
+
+客户端提交完整创作参数，使用 `Idempotency-Key` 保证幂等；服务端在事务中完成最低成本路由、消费订单、钱包扣费和任务创建。历史 quote 接口仅用于已部署数据兼容，不属于当前客户端流程。
