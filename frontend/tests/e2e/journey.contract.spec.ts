@@ -114,7 +114,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     await prompt.fill(submittedPrompt)
     await page.getByRole('button', { name: '提交生成任务', exact: true }).click()
     await expect(page).toHaveURL(/\/app\/works\/task_journey$/)
-    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft'))).toBeNull()
+    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft.u_journey'))).toBeNull()
     expect(submissionKey).not.toBe('')
     expect(submitted).toMatchObject({ modeId: 'mode_text', durationSec: 5, resolution: '768P', aspectRatio: '16:9', generateAudio: false, prompt: submittedPrompt })
     expect(submitted).not.toHaveProperty('durationSeconds')
@@ -138,7 +138,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     await expect(page.getByText('海岸来信-远景.mp4', { exact: true })).toBeVisible()
     await page.reload({ waitUntil: 'networkidle' })
     await expect(page.getByText('海岸来信-远景.mp4', { exact: true })).toBeVisible()
-    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft'))).toBeNull()
+    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft.u_journey'))).toBeNull()
     expect(unmatchedRequests).toEqual([])
   })
 
@@ -177,7 +177,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     await seedJourney(page)
     await page.addInitScript(() => {
       const slot = { uploaded: false, assetId: '', picking: false }
-      localStorage.setItem('sub2video.create-draft', JSON.stringify({ version: 3, workflowInputType: 'multi_image', prompt: '这是尚未完成的商品镜头，请保留', ratio: '9:16', durationSec: '10', resolution: '1080P', firstFrame: slot, lastFrame: slot, extraFrames: [], multiFrames: [slot] }))
+      localStorage.setItem('sub2video.create-draft.u_journey', JSON.stringify({ version: 3, workflowInputType: 'multi_image', prompt: '这是尚未完成的商品镜头，请保留', ratio: '9:16', durationSec: '10', resolution: '1080P', firstFrame: slot, lastFrame: slot, extraFrames: [], multiFrames: [slot] }))
     })
     await page.goto(createPath, { waitUntil: 'networkidle' })
     const prompt = page.getByRole('textbox', { name: '画面描述', exact: true })
@@ -238,7 +238,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     await page.getByRole('textbox', { name: '画面描述', exact: true }).fill(editedPrompt)
     await page.getByRole('link', { name: '查看教程', exact: true }).click()
     await expect(page).toHaveURL((url) => url.pathname === '/guides/coast-letter')
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft') || '{}').prompt)).toBe(editedPrompt)
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_journey') || '{}').prompt)).toBe(editedPrompt)
     await page.getByRole('link', { name: '制作这个镜头', exact: true }).first().click()
     await expect(page).toHaveURL((url) => url.pathname === '/app/create')
     await expect(page.getByRole('textbox', { name: '画面描述', exact: true })).toHaveValue(editedPrompt)

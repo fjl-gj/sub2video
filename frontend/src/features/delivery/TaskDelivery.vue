@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { AlertCircle, ArrowLeft, ArrowUpRight, BookmarkPlus, Check, Download, Film, LoaderCircle, RefreshCw } from 'lucide-vue-next'
 import { fetchProjects, saveTaskToProject, type ProjectSummary } from '@/api/client'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import S2VBadge from '@/shared/ui/S2VBadge.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VDialog from '@/shared/ui/S2VDialog.vue'
@@ -17,6 +18,7 @@ import './delivery.css'
 const route = useRoute()
 const router = useRouter()
 const app = useAppStore()
+const auth = useAuthStore()
 const taskId = computed(() => String(route.params.id || ''))
 const { task, loading, refreshing, loadError, pollingPaused, pending, downloadUrl, refresh } = useTaskDelivery(taskId)
 const mediaFailed = ref(false)
@@ -130,12 +132,12 @@ function draftSlot(source?: { type: 'upload' | 'asset'; id: string }): CreateFra
 
 function retryTask() {
   const current = task.value
-  if (!current || current.reviewRequired) return
+  if (!current || current.reviewRequired || !auth.user?.id) return
   if (!window.confirm('将使用这次任务的模式、素材和参数覆盖当前创作草稿，是否继续？')) return
   const source = current.sourceMeta || {}
   const inputType = retryInputType(current.mode)
   const refs = source.refs || []
-  saveCreateDraft({
+  saveCreateDraft(auth.user.id, {
     workflowInputType: inputType,
     prompt: current.prompt || '',
     ratio: current.aspectRatio || '16:9',

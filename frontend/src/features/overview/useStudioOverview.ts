@@ -2,6 +2,7 @@ import { computed, onMounted, ref } from 'vue'
 import { fetchCreationCatalog, fetchOverview, type CreationCatalog } from '@/api/client'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { getAuthSession } from '@/shared/lib/auth-session'
 import type { OverviewData, StudioMode } from './types'
 
 const modeDefinitions = [
@@ -37,12 +38,14 @@ export function useStudioOverview() {
     loading.value = true
     error.value = ''
     catalogFailed.value = false
+    const sessionId = getAuthSession().id
+    const balanceRead = auth.beginBalanceRead()
     const [overviewResult, catalogResult] = await Promise.allSettled([fetchOverview(), fetchCreationCatalog()])
+    if (getAuthSession().id !== sessionId) return
     if (overviewResult.status === 'fulfilled') {
       const overview = overviewResult.value as OverviewData
       data.value = overview
-      app.balance = overview.wallet.balance
-      auth.setBalance(overview.wallet.balance)
+      auth.acceptBalanceRead(overview.wallet.balance, balanceRead)
       app.storageUsed = overview.storage.usedGb
       app.storageQuota = overview.storage.quotaGb
     } else {

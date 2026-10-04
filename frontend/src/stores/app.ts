@@ -1,5 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
+import { CanceledError, isCancel } from 'axios'
 import { defineStore } from 'pinia'
+import { getAuthSession, onAuthSessionChange } from '@/shared/lib/auth-session'
+import { useAuthStore } from '@/stores/auth'
 import type {
   AdminTask,
   AdminTicket,
@@ -58,7 +61,8 @@ function summaryToProject(item: ProjectSummary): WorkProject {
 }
 
 export const useAppStore = defineStore('app', () => {
-  const balance = ref(0)
+  const auth = useAuthStore()
+  const balance = computed(() => auth.balance)
   const draftPrompt = ref('')
   const tasks = ref<Task[]>([])
   const adminTasks = ref<AdminTask[]>([])
@@ -96,6 +100,31 @@ export const useAppStore = defineStore('app', () => {
   const toast = ref('')
 
   let toastTimer: ReturnType<typeof setTimeout> | undefined
+
+  function resetPrivateState() {
+    draftPrompt.value = ''
+    tasks.value = []; adminTasks.value = []; adminTickets.value = []; tickets.value = []
+    projects.value = []; currentProjectId.value = ''; projectsLoaded.value = false
+    storageUsed.value = 0; storageQuota.value = 5; storageFileCount.value = 0
+    transactions.value = []; users.value = []; usedCodes.value = []
+    profile.value = { name: '', email: '', notifyTask: true, notifyBalance: true, notifyTicket: false }
+    devices.value = []; workflows.value = []; providers.value = []; products.value = []
+    pricingRules.value = []; announcements.value = []; auditLogs.value = []
+    settings.value = { inputRetention: '7', resultRetention: '30', notify: true, audit: true }
+    toast.value = ''
+    if (toastTimer) clearTimeout(toastTimer)
+  }
+  const unsubscribeSession = onAuthSessionChange((next, previous) => {
+    if (next.id !== previous.id || !next.accessToken) resetPrivateState()
+  })
+  onScopeDispose(() => { unsubscribeSession(); if (toastTimer) clearTimeout(toastTimer) })
+
+  function sessionGuard() {
+    const expected = getAuthSession().id
+    return () => {
+      if (getAuthSession().id !== expected) throw new CanceledError('登录会话已变化，请重试')
+    }
+  }
 
   const openTicketCount = computed(() => adminTickets.value.filter((item) => item.status !== '已解决').length)
   const openClientTicketCount = computed(() => tickets.value.filter((item) => item.status !== '已解决').length)
@@ -137,8 +166,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function refreshStorage() {
+    const assertSession = sessionGuard()
     try {
       const usage = await fetchStorageUsage()
+      assertSession()
       storageUsed.value = usage.usedGb
       storageQuota.value = usage.quotaGb
       storageFileCount.value = usage.fileCount
@@ -148,22 +179,28 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function loadProjects(options?: { includeTrash?: boolean }) {
+    const assertSession = sessionGuard()
     const includeTrash = options?.includeTrash ?? true
     const active = await fetchProjects(false)
+    assertSession()
     const mapped = active.items.map(summaryToProject)
     if (includeTrash) {
       const trash = await fetchProjects(true)
+      assertSession()
       mapped.push(...trash.items.map(summaryToProject))
     }
     projects.value = mapped
     currentProjectId.value = active.currentProjectId || mapped.find((item) => !item.trashed)?.id || ''
     projectsLoaded.value = true
     await refreshStorage()
+    assertSession()
     return mapped
   }
 
   async function loadProjectTree(id: string) {
+    const assertSession = sessionGuard()
     const tree = await fetchProjectTree(id)
+    assertSession()
     const project: WorkProject = {
       id: tree.id,
       name: tree.name,
@@ -180,14 +217,17 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function selectProject(id: string) {
+    const assertSession = sessionGuard()
     const project = activeProjects.value.find((item) => item.id === id)
     if (!project) return false
     currentProjectId.value = id
     try {
       await setCurrentProjectApi(id)
+      assertSession()
       await loadProjectTree(id)
+      assertSession()
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '切换作品失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '切换作品失败'))
       return false
     }
     return true
@@ -203,24 +243,30 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function createProject(name: string) {
+    const assertSession = sessionGuard()
     try {
       const { project } = await createProjectApi(name)
+      assertSession()
       const next = summaryToProject(project)
       upsertProject(next)
       currentProjectId.value = next.id
       await loadProjectTree(next.id)
+      assertSession()
       await refreshStorage()
+      assertSession()
       notify(`已创建空白作品「${next.name}」`)
       return next.id
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '创建作品失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '创建作品失败'))
       return ''
     }
   }
 
   async function trashProject(id: string) {
+    const assertSession = sessionGuard()
     try {
       const { project } = await trashProjectApi(id)
+      assertSession()
       const existing = projects.value.find((item) => item.id === id)
       upsertProject({
         ...(existing || summaryToProject(project)),
@@ -229,17 +275,20 @@ export const useAppStore = defineStore('app', () => {
       })
       if (currentProjectId.value === id) ensureCurrentProject()
       await refreshStorage()
+      assertSession()
       notify(`「${project.name}」已移入回收站`)
       return true
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '移入回收站失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '移入回收站失败'))
       return false
     }
   }
 
   async function restoreProject(id: string) {
+    const assertSession = sessionGuard()
     try {
       const { project } = await restoreProjectApi(id)
+      assertSession()
       const existing = projects.value.find((item) => item.id === id)
       upsertProject({
         ...(existing || summaryToProject(project)),
@@ -248,24 +297,28 @@ export const useAppStore = defineStore('app', () => {
       })
       if (!currentProjectId.value) currentProjectId.value = project.id
       await refreshStorage()
+      assertSession()
       notify(`已恢复「${project.name}」`)
       return true
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '恢复失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '恢复失败'))
       return false
     }
   }
 
   async function purgeProject(id: string) {
+    const assertSession = sessionGuard()
     try {
       await purgeProjectApi(id)
+      assertSession()
       projects.value = projects.value.filter((item) => item.id !== id)
       if (currentProjectId.value === id) ensureCurrentProject()
       await refreshStorage()
+      assertSession()
       notify('已彻底删除作品')
       return true
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '彻底删除失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '彻底删除失败'))
       return false
     }
   }
@@ -292,14 +345,18 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function saveWorkToAsset(id: string) {
+    const assertSession = sessionGuard()
     try {
       await saveTaskToProject(id, currentProjectId.value || undefined)
+      assertSession()
       if (currentProjectId.value) await loadProjectTree(currentProjectId.value)
+      assertSession()
       await refreshStorage()
+      assertSession()
       notify('已保存到当前作品')
       return true
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '保存到作品失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '保存到作品失败'))
       return false
     }
   }
@@ -309,6 +366,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function uploadAsset(projectId?: string, path: string[] = [], file?: File) {
+    const assertSession = sessionGuard()
     const id = projectId || currentProjectId.value
     if (!id || !file) {
       notify('请选择要上传的文件')
@@ -316,35 +374,44 @@ export const useAppStore = defineStore('app', () => {
     }
     try {
       await uploadProjectFile(id, path.length ? path : ['资产', '素材'], file)
+      assertSession()
       await loadProjectTree(id)
+      assertSession()
       await refreshStorage()
+      assertSession()
       notify('素材已上传')
       return true
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '上传失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '上传失败'))
       return false
     }
   }
 
   async function removeAsset(id: string) {
+    const assertSession = sessionGuard()
     const projectId = currentProjectId.value
     if (!projectId) return false
     try {
       await deleteProjectFile(projectId, id)
+      assertSession()
       await loadProjectTree(projectId)
+      assertSession()
       await refreshStorage()
+      assertSession()
       notify('已删除文件')
       return true
     } catch (e: unknown) {
-      notify(apiErrorMessage(e, '删除失败'))
+      if (!isCancel(e)) notify(apiErrorMessage(e, '删除失败'))
       return false
     }
   }
 
   async function loadCurrentAssets(type?: string) {
+    const assertSession = sessionGuard()
     const id = currentProjectId.value
     if (!id) return []
     const { items } = await fetchProjectAssets(id, type)
+    assertSession()
     return items
   }
 

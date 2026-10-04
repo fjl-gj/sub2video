@@ -106,6 +106,8 @@ test.describe('client creation contracts (mocked frontend only)', () => {
     await page.reload({ waitUntil: 'networkidle' })
     const recover = page.getByRole('button', { name: '确认原提交结果', exact: true })
     await expect(recover).toBeVisible()
+    await expect(page.getByLabel('画面描述', { exact: true })).toHaveValue('雨夜的霓虹街头，镜头缓慢推进')
+    await expect(page.getByRole('combobox', { name: '模型', exact: true })).toHaveValue('model_h3')
     await expect(page.locator('.s2v-studio-form')).toHaveScreenshot('pending-creation.png', { animations: 'disabled', caret: 'hide' })
     await page.getByLabel('画面描述', { exact: true }).fill('刷新后改写的内容不能替换未确认订单')
     await page.getByRole('combobox', { name: '视频时长', exact: true }).selectOption('10')
@@ -134,6 +136,18 @@ test.describe('client creation contracts (mocked frontend only)', () => {
     await (await prepareTextCreation(page)).click()
     await expect(page.getByRole('alert')).toContainText('暂未提交任务')
     expect(posts).toBe(0)
+  })
+
+  test('a definitive prompt rejection clears the pending request instead of requiring reconciliation', async ({ page }) => {
+    await seedAuthenticatedClient(page)
+    await page.route('**/api/v1/client/tasks', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      await route.fulfill({ status: 400, json: { code: 'PROMPT_REQUIRED', message: '请先填写画面描述' } })
+    })
+    await (await prepareTextCreation(page)).click()
+    await expect(page.getByRole('alert')).toContainText('请先填写画面描述，再提交任务。')
+    await expect(page.getByRole('button', { name: '确认原提交结果', exact: true })).toHaveCount(0)
+    expect(await page.evaluate(() => localStorage.getItem('sub2video.pending-creation.u_contract'))).toBeNull()
   })
 
   test('keeps the request identity when a success response is incomplete', async ({ page }) => {
@@ -166,7 +180,7 @@ test.describe('client creation contracts (mocked frontend only)', () => {
   test('does not restore a local-only image as uploaded after refresh', async ({ page }) => {
     await seedAuthenticatedClient(page)
     await page.addInitScript(() => {
-      localStorage.setItem('sub2video.create-draft', JSON.stringify({ version: 4, workflowInputType: 'first_last', prompt: '测试', firstFrame: { uploaded: true, assetId: '', previewUrl: 'blob:expired', fileName: 'local.png' }, lastFrame: { uploaded: true, assetId: '', fileName: 'last.png' } }))
+      localStorage.setItem('sub2video.create-draft.u_contract', JSON.stringify({ version: 4, workflowInputType: 'first_last', prompt: '测试', firstFrame: { uploaded: true, assetId: '', previewUrl: 'blob:expired', fileName: 'local.png' }, lastFrame: { uploaded: true, assetId: '', fileName: 'last.png' } }))
     })
     await page.goto('/app/create?mode=first_last', { waitUntil: 'networkidle' })
     await expect(page.getByLabel('费用预估', { exact: true })).toContainText('等待素材')

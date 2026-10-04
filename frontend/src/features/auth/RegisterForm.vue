@@ -4,7 +4,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authReturnPath } from '@/shared/lib/auth-redirect'
 import { useAuthStore } from '@/stores/auth'
-import { useAppStore } from '@/stores/app'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import { authErrorMessage } from './errors'
@@ -12,7 +11,6 @@ import { authErrorMessage } from './errors'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const app = useAppStore()
 const name = ref('')
 const email = ref('')
 const password = ref('')
@@ -85,8 +83,7 @@ async function register() {
   error.value = ''
   loading.value = true
   try {
-    const user = await auth.register(email.value.trim(), password.value, name.value.trim(), verificationRequired.value ? verifyCode.value.trim() : '')
-    app.balance = user.balance
+    await auth.register(email.value.trim(), password.value, name.value.trim(), verificationRequired.value ? verifyCode.value.trim() : '')
     await router.replace(authReturnPath(route.query.redirect))
   } catch (e: unknown) {
     error.value = authErrorMessage(e, '注册失败，请稍后重试。')

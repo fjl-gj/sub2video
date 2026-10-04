@@ -4,7 +4,6 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authReturnPath } from '@/shared/lib/auth-redirect'
 import { useAuthStore } from '@/stores/auth'
-import { useAppStore } from '@/stores/app'
 import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VInput from '@/shared/ui/S2VInput.vue'
 import { authErrorMessage } from './errors'
@@ -12,7 +11,6 @@ import { authErrorMessage } from './errors'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const app = useAppStore()
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
@@ -28,8 +26,7 @@ async function login() {
   error.value = ''
   loading.value = true
   try {
-    const user = await auth.login(email.value.trim(), password.value)
-    app.balance = user.balance
+    await auth.login(email.value.trim(), password.value)
     await router.replace(authReturnPath(route.query.redirect))
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } })?.response?.status

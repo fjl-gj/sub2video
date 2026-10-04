@@ -13,6 +13,7 @@ import {
   type PublicSettings,
 } from '@/api/auth'
 import { getAuthSession, onAuthSessionChange } from '@/shared/lib/auth-session'
+import { fetchWallet } from '@/api/client'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
@@ -20,10 +21,17 @@ export const useAuthStore = defineStore('auth', () => {
   const bootstrapError = ref('')
   const publicSettings = ref<PublicSettings | null>(null)
   const session = shallowRef(getAuthSession())
+  const balanceSyncError = ref('')
+  let balanceReadVersion = 0
+  type BalanceMutation = { sessionId: string; reconcile: boolean }
+  const balanceMutations = new Set<BalanceMutation>()
 
   const unsubscribe = onAuthSessionChange((next, previous) => {
     session.value = next
     if (next.id !== previous.id || !next.accessToken) {
+      balanceReadVersion++
+      balanceMutations.clear()
+      balanceSyncError.value = ''
       user.value = null
       bootstrapError.value = ''
       bootstrapped.value = !next.accessToken
@@ -51,13 +59,16 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
     bootstrapError.value = ''
+    const balanceRead = beginBalanceRead()
     const promise = (async () => {
       try {
         const nextUser = await meApi()
         const current = getAuthSession()
         if (current.id !== expected.id) return
         session.value = current
-        user.value = nextUser
+        const currentBalance = user.value?.balance
+        user.value = { ...nextUser, balance: currentBalance ?? nextUser.balance }
+        acceptBalanceRead(nextUser.balance, balanceRead)
       } catch {
         if (getAuthSession().id === expected.id) {
           // The HTTP layer alone invalidates proven-expired sessions. A
@@ -122,8 +133,58 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function beginBalanceRead() {
+    return { sessionId: getAuthSession().id, version: ++balanceReadVersion }
+  }
+
+  function acceptBalanceRead(value: number, request: ReturnType<typeof beginBalanceRead>) {
+    if (request.sessionId !== getAuthSession().id || request.version !== balanceReadVersion || !user.value || !Number.isFinite(value)) return false
+    user.value = { ...user.value, balance: value }
+    return true
+  }
+
   function setBalance(value: number) {
-    if (user.value) user.value = { ...user.value, balance: value }
+    // A successful deduction/refund/redeem invalidates every earlier read.
+    balanceReadVersion++
+    if (user.value && Number.isFinite(value)) user.value = { ...user.value, balance: value }
+  }
+
+  async function refreshBalance() {
+    const request = beginBalanceRead()
+    try {
+      const wallet = await fetchWallet()
+      if (!Number.isFinite(wallet.balance)) throw new Error('余额响应不完整')
+      if (acceptBalanceRead(wallet.balance, request)) balanceSyncError.value = ''
+    } catch (error) {
+      if (request.sessionId === getAuthSession().id && request.version === balanceReadVersion) {
+        balanceSyncError.value = '余额同步失败，当前显示上次确认的余额，请重新加载。'
+      }
+      throw error
+    }
+  }
+
+  function beginBalanceMutation(): BalanceMutation {
+    balanceReadVersion++
+    const request = { sessionId: getAuthSession().id, reconcile: balanceMutations.size > 0 }
+    for (const pending of balanceMutations) pending.reconcile = true
+    balanceMutations.add(request)
+    return request
+  }
+
+  function acceptBalanceMutation(request: BalanceMutation, value: number) {
+    if (request.sessionId !== getAuthSession().id || !balanceMutations.has(request)) return
+    // Concurrent server transactions can finish in a different order from
+    // their responses. Do not guess the final balance from either response.
+    if (!request.reconcile) setBalance(value)
+  }
+
+  function finishBalanceMutation(request: BalanceMutation) {
+    balanceMutations.delete(request)
+    if (!balanceMutations.size && request.sessionId === getAuthSession().id) {
+      // Always reconcile at the end of a mutation wave, including a rejected
+      // request that invalidated an earlier in-flight wallet read.
+      void refreshBalance().catch(() => { /* refreshBalance exposes a retryable wallet error. */ })
+    }
   }
 
   return {
@@ -134,6 +195,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     displayName,
     balance,
+    balanceSyncError,
     bootstrap,
     login,
     fetchPublicSettings,
@@ -143,5 +205,11 @@ export const useAuthStore = defineStore('auth', () => {
     resetPassword,
     logout,
     setBalance,
+    beginBalanceRead,
+    acceptBalanceRead,
+    refreshBalance,
+    beginBalanceMutation,
+    acceptBalanceMutation,
+    finishBalanceMutation,
   }
 })

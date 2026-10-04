@@ -79,7 +79,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     await expect(page.locator('.s2v-home-film').getByRole('link', { name: 'CC BY 3.0', exact: true })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by/3.0/')
     expect(privateRequests).toEqual([])
     expect(mutations).toEqual([])
-    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft'))).toBeNull()
+    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft.u_public_home'))).toBeNull()
     expect(await page.evaluate(() => localStorage.getItem('s2v_access_token'))).toBeNull()
     expect(unmatchedRequests).toEqual([])
   })
@@ -101,14 +101,14 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
   for (const mode of modes) {
     test(`${mode.inputType} entry survives login and changes only the selected mode of an existing draft`, async ({ page }) => {
       const { unmatchedRequests, privateRequests, mutations } = await seedPublicHome(page)
-      await page.addInitScript((saved) => { localStorage.setItem('sub2video.create-draft', JSON.stringify(saved)) }, draft)
+      await page.addInitScript((saved) => { localStorage.setItem('sub2video.create-draft.u_public_home', JSON.stringify(saved)) }, draft)
       await page.goto('/', { waitUntil: 'networkidle' })
-      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft') || '{}'))).toEqual(draft)
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_public_home') || '{}'))).toEqual(draft)
       await page.getByRole('link', { name: `尝试${mode.name}`, exact: true }).click()
       const destination = `/app/create?mode=${mode.inputType}`
       await expect(page).toHaveURL((url) => url.pathname === '/auth/login' && url.searchParams.get('redirect') === destination)
       expect(privateRequests).toEqual([])
-      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft') || '{}'))).toEqual(draft)
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_public_home') || '{}'))).toEqual(draft)
       await login(page)
       await expect(page).toHaveURL((url) => `${url.pathname}${url.search}` === destination)
       await expect(page.getByRole('button', { name: mode.name, exact: true })).toHaveAttribute('aria-pressed', 'true')

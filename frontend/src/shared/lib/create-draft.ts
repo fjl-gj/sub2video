@@ -33,7 +33,9 @@ export interface CreateDraft {
   multiFrames: CreateFrameSlot[]
 }
 
-const STORAGE_KEY = 'sub2video.create-draft'
+// The unowned legacy key is deliberately not imported: its author cannot be
+// established when several people have used the same browser.
+const storageKey = (userId: string) => `sub2video.create-draft.${encodeURIComponent(userId)}`
 
 export function emptySlot(): CreateFrameSlot {
   return { uploaded: false, assetId: '', picking: false }
@@ -140,10 +142,10 @@ function migrateDraft(parsed: LegacyCreateDraft): CreateDraft | null {
   }
 }
 
-export function loadCreateDraft(): CreateDraft | null {
-  if (typeof window === 'undefined') return null
+export function loadCreateDraft(userId: string): CreateDraft | null {
+  if (!userId || typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.localStorage.getItem(storageKey(userId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as LegacyCreateDraft
     if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) return null
@@ -157,8 +159,8 @@ export function loadCreateDraft(): CreateDraft | null {
   }
 }
 
-export function saveCreateDraft(draft: Omit<CreateDraft, 'version'>) {
-  if (typeof window === 'undefined') return
+export function saveCreateDraft(userId: string, draft: Omit<CreateDraft, 'version'>) {
+  if (!userId || typeof window === 'undefined') return
   const payload: CreateDraft = {
     version: 4,
     workflowInputType: draft.workflowInputType,
@@ -176,10 +178,10 @@ export function saveCreateDraft(draft: Omit<CreateDraft, 'version'>) {
     extraFrames: draft.extraFrames.map(sanitizeSlot),
     multiFrames: draft.multiFrames.map(sanitizeSlot),
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  window.localStorage.setItem(storageKey(userId), JSON.stringify(payload))
 }
 
-export function clearCreateDraft() {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(STORAGE_KEY)
+export function clearCreateDraft(userId: string) {
+  if (!userId || typeof window === 'undefined') return
+  window.localStorage.removeItem(storageKey(userId))
 }

@@ -84,11 +84,6 @@ function apiErrorMessage(error: unknown, fallback: string) {
   return err.response?.data?.message || err.response?.data?.error || err.message || fallback
 }
 
-function syncBalance(balance: number) {
-  app.balance = balance
-  auth.setBalance(balance)
-}
-
 async function loadTasks() {
   const request = ++loadVersion
   loading.value = true
@@ -152,9 +147,10 @@ async function confirmRefund() {
   if (!refundTask.value || refundBusy.value) return
   refundBusy.value = true
   refundError.value = ''
+  const balanceMutation = auth.beginBalanceMutation()
   try {
     const result = await cancelTaskApi(refundTask.value.id)
-    syncBalance(result.wallet.balance)
+    auth.acceptBalanceMutation(balanceMutation, result.wallet.balance)
     app.notify(`已终止 ${result.task.id}，预扣费用已退回钱包`)
     refundOpen.value = false
     refundTask.value = null
@@ -165,6 +161,7 @@ async function confirmRefund() {
     await loadTasks()
   }
   finally {
+    auth.finishBalanceMutation(balanceMutation)
     refundBusy.value = false
   }
 }

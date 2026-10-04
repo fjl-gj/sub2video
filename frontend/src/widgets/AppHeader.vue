@@ -14,7 +14,7 @@ const route = useRoute()
 const app = useAppStore()
 const auth = useAuthStore()
 const isClient = computed(() => props.surface === 'client')
-const balance = computed(() => (auth.user ? auth.balance : app.balance))
+const balance = computed(() => auth.balance)
 const label = computed(() => auth.displayName || (isClient.value ? '创作空间' : '管理员'))
 const avatar = computed(() => (label.value ? label.value.slice(0, 1) : isClient.value ? '李' : '管'))
 

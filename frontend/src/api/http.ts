@@ -84,6 +84,7 @@ http.interceptors.response.use(
   async (error: unknown) => {
     if (!axios.isAxiosError(error)) return Promise.reject(error)
     const original = error.config as SessionRequest | undefined
+    if (original?._authSession && original._authSession.id !== getAuthSession().id) return Promise.reject(sessionChanged())
     if (error.response?.status !== 401 || !original?._authSession || !usesSession(original)) return Promise.reject(error)
     const requested = original._authSession
     const current = getAuthSession()

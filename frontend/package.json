@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "typecheck": "vue-tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
     "lint:check": "eslint .",
     "test:visual": "playwright test",
     "test:integration": "playwright test -c playwright.integration.config.ts",

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowDownLeft, ArrowUpRight, Gift, History } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
-import { fetchWallet, fetchWalletTransactions, redeemCode } from '@/api/client'
+import { fetchWalletTransactions, redeemCode } from '@/api/client'
 import type { LedgerEntry } from '@/entities/types'
 import { PAGE_SIZE } from '@/shared/lib/paginate'
 import { useAppStore } from '@/stores/app'
@@ -15,10 +15,11 @@ import S2VPagination from '@/shared/ui/S2VPagination.vue'
 const app = useAppStore()
 const auth = useAuthStore()
 
-const balance = ref(auth.balance ?? app.balance)
+const balance = computed(() => auth.balance)
 const walletLoading = ref(false)
 const walletLoaded = ref(false)
 const walletError = ref('')
+const displayWalletError = computed(() => walletError.value || auth.balanceSyncError)
 const transactionsLoading = ref(false)
 const transactionsError = ref('')
 const redeemError = ref('')
@@ -36,18 +37,11 @@ function apiErrorMessage(error: unknown, fallback: string) {
   return err.response?.data?.message || err.response?.data?.error || err.message || fallback
 }
 
-function syncBalance(value: number) {
-  balance.value = value
-  app.balance = value
-  auth.setBalance(value)
-}
-
 async function loadWallet() {
   if (walletLoading.value) return
   walletLoading.value = true
   try {
-    const data = await fetchWallet()
-    syncBalance(data.balance)
+    await auth.refreshBalance()
     walletLoaded.value = true
     walletError.value = ''
   }
@@ -73,9 +67,10 @@ async function redeem() {
   if (!code.value.trim() || redeeming.value) return
   redeeming.value = true
   redeemError.value = ''
+  const balanceMutation = auth.beginBalanceMutation()
   try {
     const result = await redeemCode(code.value.trim())
-    syncBalance(result.wallet.balance)
+    auth.acceptBalanceMutation(balanceMutation, result.wallet.balance)
     walletLoaded.value = true
     walletError.value = ''
     app.notify(`兑换成功，余额增加 ¥${result.credited.toFixed(2)}`)
@@ -87,6 +82,7 @@ async function redeem() {
     redeemError.value = apiErrorMessage(error, '兑换失败，请检查兑换码后重试。')
   }
   finally {
+    auth.finishBalanceMutation(balanceMutation)
     redeeming.value = false
   }
 }
@@ -107,13 +103,13 @@ onMounted(() => {
       <template #description>查看创作余额、兑换码与消费退款记录。在线充值暂未开放。</template>
       <template #actions>
         <div class="text-right">
-          <span class="text-xs text-s2v-muted">{{ walletError && walletLoaded ? '上次读取余额:' : '可用余额:' }}</span>
+          <span class="text-xs text-s2v-muted">{{ displayWalletError && walletLoaded ? '上次读取余额:' : '可用余额:' }}</span>
           <div class="s2v-mono text-2xl font-bold text-s2v-success">{{ walletLoaded ? `¥ ${balance.toFixed(2)}` : walletLoading ? '读取中…' : '暂不可用' }}</div>
         </div>
       </template>
     </S2VPageHeader>
 
-    <S2VCard v-if="walletError" variant="padded" class="mb-5" role="alert"><p>{{ walletError }}</p><S2VButton class="mt-3" :loading="walletLoading" @click="loadWallet">重新加载余额</S2VButton></S2VCard>
+    <S2VCard v-if="displayWalletError" variant="padded" class="mb-5" role="alert"><p>{{ displayWalletError }}</p><S2VButton class="mt-3" :loading="walletLoading" @click="loadWallet">重新加载余额</S2VButton></S2VCard>
 
     <div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,.8fr)]">
         <S2VCard>

@@ -66,6 +66,189 @@ async function login(page: Page, email = user.email) {
 }
 
 test.describe('authentication session contracts (mocked frontend only)', () => {
+  test('isolates drafts across A to B to A without discarding the original draft', async ({ page }) => {
+    await seedSession(page)
+    const promptA = '账号 A 的未完成镜头，仅应由 A 恢复'
+    const promptB = '账号 B 的独立镜头'
+    await page.goto('/app/create?mode=text', { waitUntil: 'networkidle' })
+    await page.getByLabel('画面描述', { exact: true }).fill(promptA)
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+    await page.getByRole('button', { name: '退出登录', exact: true }).click()
+    await expect(page).toHaveURL(/\/auth\/login/)
+    await login(page, otherUser.email)
+    await page.locator('a[href="/app/create"]:visible').first().click()
+    await expect(page.getByLabel('画面描述', { exact: true })).toHaveValue('')
+    await page.getByLabel('画面描述', { exact: true }).fill(promptB)
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+    await page.getByRole('button', { name: '退出登录', exact: true }).click()
+    await expect(page).toHaveURL(/\/auth\/login/)
+    await login(page)
+    await page.locator('a[href="/app/create"]:visible').first().click()
+    await expect(page.getByLabel('画面描述', { exact: true })).toHaveValue(promptA)
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_other_session') || '{}').prompt)).toBe(promptB)
+  })
+
+  test('never assigns an unowned legacy draft to the current account', async ({ page }) => {
+    await seedSession(page)
+    await page.addInitScript(() => localStorage.setItem('sub2video.create-draft', JSON.stringify({ version: 4, workflowInputType: 'text', prompt: '无法确认归属的旧草稿' })))
+    await page.goto('/app/create?mode=text', { waitUntil: 'networkidle' })
+    await expect(page.getByLabel('画面描述', { exact: true })).toHaveValue('')
+    expect(await page.evaluate(() => localStorage.getItem('sub2video.create-draft'))).toContain('无法确认归属的旧草稿')
+  })
+
+  test('clears private project cache on account change and ignores a late previous-account response', async ({ page }) => {
+    await seedSession(page)
+    const lateRead = barrier()
+    let holdOldReads = false
+    let delayed = 0
+    const projectsPath = /\/api\/v1\/client\/projects(?:\?.*)?$/
+    await page.route(projectsPath, async (route) => {
+      if (bearer(route) === `Bearer ${replacement.accessToken}`) return route.fulfill({ status: 503, json: { message: '新账号资产暂不可读取' } })
+      if (holdOldReads) { delayed++; await lateRead.promise }
+      return route.fallback()
+    })
+    try {
+      await page.goto('/app/create?mode=text', { waitUntil: 'networkidle' })
+      holdOldReads = true
+      if (await page.getByRole('button', { name: '打开菜单', exact: true }).isVisible()) await page.getByRole('button', { name: '打开菜单', exact: true }).click()
+      await page.locator('a[href="/app/assets"]:visible').first().click()
+      await expect.poll(() => delayed).toBe(1)
+      await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+      await page.getByRole('button', { name: '退出登录', exact: true }).click()
+      await expect(page).toHaveURL(/\/auth\/login/)
+      await login(page, otherUser.email)
+      await expect(page).toHaveURL(/\/app\/overview/)
+      if (await page.getByRole('button', { name: '打开菜单', exact: true }).isVisible()) await page.getByRole('button', { name: '打开菜单', exact: true }).click()
+      await page.locator('a[href="/app/assets"]:visible').first().click()
+      await expect(page.getByText('资产暂时无法读取，请重新加载。', { exact: true })).toBeVisible()
+      const response = page.waitForResponse((res) => /\/client\/projects/.test(res.url()) && res.request().headers().authorization === `Bearer ${initial.accessToken}`)
+      lateRead.release()
+      await response
+      await expect(page.getByText('海岸清晨', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('秋日香氛', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('资产暂时无法读取，请重新加载。', { exact: true })).toBeVisible()
+      await page.locator('a[href="/app/create"]:visible').first().click()
+      await expect(page.getByLabel('画面描述', { exact: true })).toBeVisible()
+      // This toolbar reads the shared cache even when the new user's API
+      // failed; hiding asset-page errors alone would not satisfy isolation.
+      await expect(page.getByLabel('当前作品', { exact: true })).toHaveCount(0)
+    } finally { lateRead.release() }
+  })
+
+  test('an earlier wallet read cannot overwrite a confirmed redemption in any balance surface', async ({ page }) => {
+    await seedSession(page)
+    const staleRead = barrier()
+    let reads = 0
+    await page.route('**/api/v1/client/wallet', async (route) => {
+      reads++
+      if (reads > 2) return route.fulfill({ json: { balance: 300, products: [] } })
+      await staleRead.promise
+      await route.fulfill({ json: { balance: 1, products: [] } })
+    })
+    await page.route('**/api/v1/client/wallet/redeem', (route) => route.fulfill({ json: { credited: 44, wallet: { balance: 300 } } }))
+    try {
+      await page.goto('/app/wallet', { waitUntil: 'domcontentloaded' })
+      await expect.poll(() => reads).toBe(2)
+      await page.getByLabel('兑换码', { exact: true }).fill('FIXTURE-CODE')
+      await page.getByRole('button', { name: '确认兑换', exact: true }).click()
+      await expect(page.locator('.s2v-header').getByText('¥ 300.00', { exact: true })).toBeVisible()
+      staleRead.release()
+      await page.waitForLoadState('networkidle')
+      await expect(page.locator('.s2v-header').getByText('¥ 300.00', { exact: true })).toBeVisible()
+      await expect(page.getByText('¥ 1.00', { exact: true })).toHaveCount(0)
+      await page.locator('a[href="/app/create"]:visible').first().click()
+      await expect(page.getByText('钱包余额: ¥ 300.00', { exact: true })).toBeVisible()
+    } finally { staleRead.release() }
+  })
+
+  test('profile is truthful about readonly and unavailable account features', async ({ page }) => {
+    await seedSession(page)
+    await page.goto('/app/profile', { waitUntil: 'networkidle' })
+    await expect(page.getByLabel('昵称', { exact: true })).toHaveValue(user.displayName)
+    await expect(page.getByLabel('昵称', { exact: true })).toHaveAttribute('readonly', '')
+    await expect(page.getByText('专业创作者', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('邮箱已验证', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '保存资料', exact: true })).toHaveCount(0)
+    await expect(page.getByText('通知偏好设置暂未开放。', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '重置密码', exact: true }).click()
+    await expect(page).toHaveURL(/\/auth\/forgot-password$/)
+  })
+
+  for (const scenario of ['reordered replies', 'rejected third mutation', 'wallet failure and retry'] as const) {
+  test(`reconciles overlapping refund and redemption: ${scenario}`, async ({ page }) => {
+    await seedSession(page)
+    const refundReply = barrier()
+    const staleReconciliation = barrier()
+    let refunds = 0
+    let redemptions = 0
+    let walletBalance = 256
+    let walletReadsAfterRedeem = 0
+    let walletUnavailable = scenario === 'wallet failure and retry'
+    await page.route('**/api/v1/client/wallet', async (route) => {
+      if (walletBalance === 300) {
+        walletReadsAfterRedeem++
+        if (scenario === 'rejected third mutation' && walletReadsAfterRedeem === 1) {
+          await staleReconciliation.promise
+          return route.fulfill({ json: { balance: 280, products: [] } })
+        }
+        if (walletUnavailable) return route.fulfill({ status: 503, json: { message: '测试钱包暂不可用' } })
+      }
+      await route.fulfill({ json: { balance: walletBalance, products: [] } })
+    })
+    await page.route(/\/api\/v1\/client\/tasks(?:\?.*)?$/, async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      await route.fulfill({ json: { items: [{ id: 'task_refund_order', title: '退款顺序测试', mode: '文生视频', status: '排队中', canCancel: true, progress: 0, duration: '5 秒', resolution: '768P', cost: 2.5, time: '刚刚', thumbUrl: '' }], total: 1, page: 1, pageSize: 20, counts: { 全部: 1, 排队中: 1 } } })
+    })
+    await page.route('**/api/v1/client/tasks/task_refund_order/cancel', async (route) => {
+      refunds++
+      await refundReply.promise
+      await route.fulfill({ json: { task: { id: 'task_refund_order', status: '已取消' }, refundAmount: 2.5, wallet: { balance: 258.5 } } })
+    })
+    await page.route('**/api/v1/client/wallet/redeem', async (route) => {
+      redemptions++
+      if (redemptions > 1) return route.fulfill({ status: 400, json: { code: 'BAD_REQUEST', message: '测试兑换码无效' } })
+      walletBalance = 300
+      await route.fulfill({ json: { credited: 41.5, wallet: { balance: 300 } } })
+    })
+    try {
+      await page.goto('/app/overview', { waitUntil: 'networkidle' })
+      await page.locator('a[href="/app/works"]:visible').first().click()
+      await page.getByRole('button', { name: '终止任务并退款', exact: true }).click()
+      await page.getByRole('button', { name: '终止并退款', exact: true }).click()
+      await expect.poll(() => refunds).toBe(1)
+      await page.goBack()
+      await expect(page).toHaveURL(/\/app\/overview$/)
+      await page.locator('a[href="/app/wallet"]:visible').first().click()
+      await page.getByLabel('兑换码', { exact: true }).fill('OVERLAP-FIXTURE')
+      await page.getByRole('button', { name: '确认兑换', exact: true }).click()
+      await expect(page.getByText('兑换成功，余额增加 ¥41.50', { exact: true })).toBeVisible()
+      refundReply.release()
+      await expect.poll(() => walletReadsAfterRedeem).toBe(1)
+      if (scenario === 'rejected third mutation') {
+        // A and B are finished, but their authoritative wallet read is still
+        // pending. C fails explicitly and must still trigger a fresh read.
+        await page.getByLabel('兑换码', { exact: true }).fill('REJECTED-FIXTURE')
+        await page.getByRole('button', { name: '确认兑换', exact: true }).click()
+        await expect(page.getByText('测试兑换码无效', { exact: true })).toBeVisible()
+        await expect.poll(() => walletReadsAfterRedeem).toBe(2)
+        await expect(page.locator('.s2v-header').getByText('¥ 300.00', { exact: true })).toBeVisible()
+        const lateResponse = page.waitForResponse((response) => response.url().endsWith('/client/wallet'))
+        staleReconciliation.release()
+        await lateResponse
+        await expect(page.getByText('¥ 280.00', { exact: true })).toHaveCount(0)
+      } else if (scenario === 'wallet failure and retry') {
+        await expect(page.getByText('余额同步失败，当前显示上次确认的余额，请重新加载。', { exact: true })).toBeVisible()
+        await expect(page.getByText('上次读取余额:', { exact: true })).toBeVisible()
+        walletUnavailable = false
+        await page.getByRole('button', { name: '重新加载余额', exact: true }).click()
+        await expect(page.getByText('余额同步失败，当前显示上次确认的余额，请重新加载。', { exact: true })).toHaveCount(0)
+      }
+      await expect(page.locator('.s2v-header').getByText('¥ 300.00', { exact: true })).toBeVisible()
+      await expect(page.getByText('¥ 258.50', { exact: true })).toHaveCount(0)
+    } finally { refundReply.release(); staleReconciliation.release() }
+  })
+  }
+
   test('renews an expired token during bootstrap before loading private page data', async ({ page }) => {
     const { unmatchedRequests } = await seedSession(page)
     const meTokens: string[] = []
@@ -168,7 +351,7 @@ test.describe('authentication session contracts (mocked frontend only)', () => {
     await expect(page.getByRole('heading', { name: '登录 Sub2Video', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '用户菜单', exact: true })).toHaveCount(0)
     expect(await storedTokens(page)).toEqual({ accessToken: null, refreshToken: null })
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft') || '{}').prompt)).toBe(prompt)
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_session') || '{}').prompt)).toBe(prompt)
     await page.unroute('**/api/v1/client/tasks/estimate', expired)
     await login(page)
     await expect(page).toHaveURL((url) => `${url.pathname}${url.search}` === destination)
@@ -446,7 +629,7 @@ test.describe('authentication session contracts (mocked frontend only)', () => {
     await expect(second).toHaveURL((url) => url.pathname === '/auth/login' && url.searchParams.get('redirect') === destination)
     await expect(second.getByRole('button', { name: '用户菜单', exact: true })).toHaveCount(0)
     expect(await storedTokens(second)).toEqual({ accessToken: null, refreshToken: null })
-    expect(await second.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft') || '{}').prompt)).toBe(prompt)
+    expect(await second.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_session') || '{}').prompt)).toBe(prompt)
     expect(firstFixture.unmatchedRequests).toEqual([])
     expect(secondFixture.unmatchedRequests).toEqual([])
   })

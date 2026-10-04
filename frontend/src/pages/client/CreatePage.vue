@@ -57,6 +57,8 @@ const router = useRouter()
 const route = useRoute()
 const app = useAppStore()
 const auth = useAuthStore()
+// Keep the mounted draft's owner even while logout clears the auth store.
+const draftOwnerId = auth.user?.id || ''
 
 const workflowInputType = ref<WorkflowInputType>('text')
 const imageVariant = computed<ImageVariant>(() => workflowInputType.value === 'multi_image' ? 'multi' : 'keyframes')
@@ -399,11 +401,6 @@ function estimateSourceMeta(): Record<string, unknown> | undefined {
   return refs.length ? { refs } : undefined
 }
 
-function syncBalance(balance: number) {
-  app.balance = balance
-  auth.setBalance(balance)
-}
-
 function apiErrorMessage(error: unknown, fallback: string) {
   const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
   return err.response?.data?.message || err.response?.data?.error || err.message || fallback
@@ -438,6 +435,7 @@ async function submit() {
       sourceMeta,
       },
     }
+    persistDraft()
     try { savePendingCreation(userId, pending) }
     catch { throw new Error('浏览器无法保存提交记录，暂未提交任务。请允许本地存储后重试。') }
     pendingCreation.value = pending
@@ -466,6 +464,7 @@ async function recoverSubmission() {
 
 async function sendPendingCreation(userId: string, pending: PendingCreation) {
   let accepted = false
+  const balanceMutation = auth.beginBalanceMutation()
   try {
     const result = await createTask(pending.payload, pending.requestId)
     if (!result.task?.id || !result.order?.id || !Number.isFinite(result.order.amount) || !Number.isFinite(result.wallet?.balance)) {
@@ -473,13 +472,13 @@ async function sendPendingCreation(userId: string, pending: PendingCreation) {
     }
     accepted = true
     if (auth.user?.id !== userId) return
-    syncBalance(result.wallet.balance)
+    auth.acceptBalanceMutation(balanceMutation, result.wallet.balance)
     app.notify(`任务已提交，消费 ¥${result.order.amount.toFixed(2)}`)
     draftReady.value = false
     if (saveTimer) clearTimeout(saveTimer)
     app.draftPrompt = ''
     prompt.value = ''
-    clearCreateDraft()
+    clearCreateDraft(userId)
     await router.push(`/app/works/${result.task.id}`)
     clearPendingCreation(userId, pending.requestId)
     pendingCreation.value = null
@@ -489,7 +488,7 @@ async function sendPendingCreation(userId: string, pending: PendingCreation) {
     const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code
     // Only explicit application rejections prove no task was committed. A
     // timeout, proxy error or unknown response keeps the original request.
-    const rejected = !accepted && code && ['BAD_REQUEST', 'UNAVAILABLE_COMBINATION', 'INSUFFICIENT_BALANCE', 'SUPPLY_UNAVAILABLE', 'STORAGE_UNAVAILABLE'].includes(code)
+    const rejected = !accepted && code && ['BAD_REQUEST', 'PROMPT_REQUIRED', 'UNAVAILABLE_COMBINATION', 'INSUFFICIENT_BALANCE', 'SUPPLY_UNAVAILABLE', 'STORAGE_UNAVAILABLE'].includes(code)
     if (rejected) {
       clearPendingCreation(userId, pending.requestId)
       pendingCreation.value = null
@@ -498,10 +497,12 @@ async function sendPendingCreation(userId: string, pending: PendingCreation) {
       submissionError.value = '尚未确认提交结果，请核对原提交，不要另建相同任务。重试将使用原请求编号。'
     }
   }
+  finally { auth.finishBalanceMutation(balanceMutation) }
 }
 
 function creationErrorMessage(error: unknown, fallback: string) {
   const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code
+  if (code === 'PROMPT_REQUIRED') return '请先填写画面描述，再提交任务。'
   if (code === 'INSUFFICIENT_BALANCE') return '余额不足，无法预扣。请前往钱包查看余额或使用兑换码。'
   if (code === 'STORAGE_UNAVAILABLE') return '素材与成片存储暂不可用，请稍后重试。本次未提交任务。'
   if (code === 'SUPPLY_UNAVAILABLE' || code === 'UNAVAILABLE_COMBINATION') return '当前模型或参数组合暂不可用，请调整参数或稍后重试。'
@@ -600,7 +601,7 @@ function syncTextStage() {
 
 function applyDraftFromStorage() {
   const plazaPrompt = app.draftPrompt.trim()
-  const saved = loadCreateDraft()
+  const saved = loadCreateDraft(draftOwnerId)
   if (saved) {
     workflowInputType.value = saved.workflowInputType
     ratio.value = saved.ratio
@@ -634,7 +635,7 @@ function applyModeFromRoute() {
 
 function persistDraft() {
   if (!draftReady.value) return
-  saveCreateDraft({
+  saveCreateDraft(draftOwnerId, {
     workflowInputType: workflowInputType.value,
     prompt: prompt.value,
     ratio: ratio.value,
@@ -678,6 +679,7 @@ async function loadRecentTasks() {
 }
 
 onMounted(() => {
+  window.addEventListener('pagehide', persistDraft)
   restorePendingCreation()
   applyDraftFromStorage()
   tutorial.initialize()
@@ -690,12 +692,13 @@ onMounted(() => {
       await app.loadProjects()
       if (app.currentProjectId) await app.loadProjectTree(app.currentProjectId)
     } catch {
-      app.notify('暂时无法加载作品素材，你仍可上传本地文件')
+      if (auth.user?.id === draftOwnerId) app.notify('暂时无法加载作品素材，你仍可上传本地文件')
     }
   })()
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', persistDraft)
   if (saveTimer) clearTimeout(saveTimer)
   persistDraft()
   estimateRequest += 1
