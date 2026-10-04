@@ -10,13 +10,14 @@ Before changing UI, read `docs/ui/design-system.md`. That file is the single
 source of truth for visual tokens, component ownership, responsive behavior, and
 AI-assisted changes.
 
-Visual chrome follows `docs/原型设计/sub2video-client.html` and
-`docs/原型设计/sub2video-admin.html`. Menus, routes, and the works/assets model
-follow `docs/产品方案总览.md`. Do not copy HTML-only sidebar names (创作台 /
-作品集) into Vue.
+Visual chrome follows the current baseline linked from `docs/ui/design-system.md`.
+Files under `docs/原型设计/` are historical references, not the current visual
+contract. Menus, routes, and the works/assets model follow `docs/产品方案总览.md`.
+Do not copy HTML-only sidebar names (创作台 / 作品集) into Vue.
 
-Recipe-level visual alignment with those HTML files must update Playwright
-snapshots in the same change. Do not update snapshots only to hide drift.
+Intentional recipe-level visual changes must update the relevant Playwright
+snapshots in the same change after visual review. Do not update snapshots only
+to hide drift.
 
 ## Frontend Stack
 

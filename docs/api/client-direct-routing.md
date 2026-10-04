@@ -13,7 +13,7 @@
 | 多图生成视频 | `minimax_h3_zm_u24` | 1-15 秒，480P / 768P，最多 9 张图，可选音频 |
 | 多图生成视频 | `minimax_h3_zm_u08` | 1-15 秒，480P / 768P，最多 9 张图，可选音频 |
 
-这是内部运维目录，工作流编码不会通过客户端目录、预估、提交或任务详情 API 返回。其他执行配置、成本规则和临时报价会被移除；已创建的生成任务、消费订单和钱包流水保留其不可变快照，便于退款与审计。
+这是当前代码种子/历史迁移定义的验收范围，不代表任一运行环境的实时启用状态。工作流编码不会通过客户端目录、预估、提交或任务详情 API 返回。019 的历史目录收敛已记录在迁移中，不能把本文当作再次删除运行环境配置的指令；历史任务、消费订单和钱包流水保留不可变快照，便于退款与审计。
 
 当前 AutoDL 适配器只验证了上述 ComfyUI workflow 的提交与轮询协议。`api` 执行类型已经纳入数据库合同和管理端，但由于没有权威的独立 API submit/poll 协议，`api + autodl_h3_v1` 会被正式目录、估价和提交路由排除；不会把不可验证的 API 配置当作可用能力或收取费用。接入新的 API 适配器前，必须先提供独立的 submit/poll/result 映射、契约测试和真实 UAT。
 
@@ -21,7 +21,7 @@
 
 `POST /api/v1/client/tasks/estimate`
 
-请求字段：`modeId`、`carrierId`、`modelId`、`durationSec`、`resolution`、`aspectRatio`、`generateAudio`。
+请求字段：`modeId`、`carrierId`、`modelId`、`durationSec`、`resolution`、`aspectRatio`、`generateAudio`，以及用于素材数量能力校验的 `sourceMeta`；具体输入见 [客户端创作](./client-create.md)。
 
 预估只读取当前可用执行配置和平台售价，不创建报价、订单、任务，也不扣费；响应不包含 `quoteId`、供应商、成本、Token、上游编码或执行类型。
 
@@ -29,9 +29,9 @@
 
 `POST /api/v1/client/tasks`
 
-提交同一组完整创作参数，并通过 `Idempotency-Key` 请求头或 `clientRequestId` 提供幂等键。服务端在事务内重新路由，按 `lowest_cost` 选择满足能力的 API/workflow 执行配置，计算最终售价，锁定余额，创建消费订单、钱包流水和任务快照。预估结果不会被锁定或比较。
+提交完整创作参数、画面描述与素材引用，并通过 `Idempotency-Key` 请求头或 `clientRequestId` 提供幂等键。服务端在事务内先查原订单；首次请求才重新路由，按 `lowest_cost` 选择满足能力的 API/workflow 执行配置，计算最终售价，锁定余额，创建消费订单、钱包流水和任务快照。预估结果不会被锁定或比较。
 
-重复幂等键返回原订单和原任务，不会重复扣费。
+同一用户重复幂等键返回原订单和原任务，不会重新路由或重复扣费，即使原供给后来下线。
 
 ## 客户端可见结果
 

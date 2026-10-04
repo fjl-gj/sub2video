@@ -3,10 +3,18 @@ set -euo pipefail
 
 # File-operation and failure-path tests only. No real service/network commands.
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-test_root=${1:-"$repo_root/.tmp_release_20260929_01/deploy"}
+test_root=${1:-"$repo_root/.tmp_deploy_tests_$(date -u +%Y%m%d_%H%M%S)_$$/deploy"}
+relative_root=${test_root#"$repo_root"/}
+if [[ "$relative_root" == "$test_root" || ! "$relative_root" =~ ^\.tmp_[[:alnum:]_-]+/deploy$ ]]; then
+  printf 'Test root must be an independent .tmp_* deploy directory inside this repository.\n' >&2
+  exit 2
+fi
 mkdir -p "$test_root"
 test_root=$(cd -- "$test_root" && pwd)
-case "$test_root" in "$repo_root"/.tmp_release_*/deploy) ;; *) printf 'Test root must be a release temporary deploy directory inside this repository.\n' >&2; exit 2 ;; esac
+if [[ "$test_root" != "$repo_root/$relative_root" ]]; then
+  printf 'Test root must not escape through a symlink.\n' >&2
+  exit 2
+fi
 run_dir=$(mktemp -d "$test_root/mock-run.XXXXXX")
 mock_bin="$run_dir/bin"
 mkdir -p "$mock_bin"
@@ -55,6 +63,12 @@ frontend_fixture() {
   tar -czf "$SUB2VIDEO_FRONTEND_ARCHIVE" -C "$case_dir/new" .
   frontend_sha=$(sha256sum "$SUB2VIDEO_FRONTEND_ARCHIVE" | cut -d ' ' -f 1)
 }
+
+begin_case retired-script-rejected
+expect_status 2 bash "$repo_root/deploy/finish-107-backend.sh"
+grep -q 'retired and performs no operations' "$case_dir/output.log"
+test ! -e "$case_dir/actions.log"
+pass
 
 begin_case api-success
 api_fixture
