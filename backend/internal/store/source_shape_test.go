@@ -1,6 +1,37 @@
 package store
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+func TestCreationMaterialConstraintsDoNotRequireAQuote(t *testing.T) {
+	image := SourceRefItem{Type: "pending", ID: "local-image"}
+	for _, scenario := range []struct {
+		name        string
+		constraints creationSourceConstraints
+		meta        SourceMeta
+		want        string
+	}{
+		{"text", creationSourceConstraints{ModeCode: "text_to_video"}, SourceMeta{}, ""},
+		{"text_shape", creationSourceConstraints{ModeCode: "text_to_video"}, SourceMeta{Refs: []SourceRefItem{image}}, "文生视频不支持图片素材"},
+		{"minimum", creationSourceConstraints{ModeCode: "multi_image_to_video", MinImages: 2, MaxImages: 4}, SourceMeta{Refs: []SourceRefItem{image}}, "多图生成视频至少需要 2 张参考图"},
+		{"maximum", creationSourceConstraints{ModeCode: "multi_image_to_video", MinImages: 1, MaxImages: 1}, SourceMeta{Refs: []SourceRefItem{image, image}}, "参考图最多 1 张"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// No quote ID, price, expiry, or database is needed to reject an
+			// invalid material shape or enforce execution image limits.
+			err := validateModeInput(context.Background(), nil, 1, scenario.constraints, "镜头描述", &scenario.meta)
+			if scenario.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || err.Error() != scenario.want {
+				t.Fatalf("want %q, got %v", scenario.want, err)
+			}
+		})
+	}
+}
 
 func TestCreationSourceShapeAndSlotCount(t *testing.T) {
 	image := SourceRefItem{Type: "pending", ID: "local-image"}

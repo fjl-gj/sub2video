@@ -139,6 +139,9 @@ func clientCreationError(err error) (int, string, string) {
 	if err == nil {
 		return http.StatusInternalServerError, "INTERNAL", "创作暂时不可用，请稍后重试"
 	}
+	if errors.Is(err, store.ErrPromptRequired) {
+		return http.StatusBadRequest, "PROMPT_REQUIRED", store.ErrPromptRequired.Error()
+	}
 	message := strings.TrimSpace(err.Error())
 	switch message {
 	case "insufficient balance":

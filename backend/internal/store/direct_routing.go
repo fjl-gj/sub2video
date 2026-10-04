@@ -23,7 +23,13 @@ func (s *Store) ResolveDirectRoute(ctx context.Context, in DirectRouteRequest) (
 		return nil, errors.New("请完整选择生成设置")
 	}
 	mode, err := s.getCreationMode(ctx, in.ModeID)
-	if err != nil || mode.Status != "published" {
+	if errors.Is(err, ErrNotFound) {
+		return nil, errors.New("创作模式未开放")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if mode.Status != "published" {
 		return nil, errors.New("创作模式未开放")
 	}
 	if err := validateModeImageCount(mode.Code, in.ImageCount); err != nil {
@@ -43,7 +49,11 @@ func (s *Store) ResolveDirectRoute(ctx context.Context, in DirectRouteRequest) (
 	if in.CarrierID != "" && model.CarrierID != in.CarrierID {
 		return nil, errors.New("模型不属于所选承运商")
 	}
-	if !s.modelSupportsMode(ctx, mode.ID, model.ID) {
+	supported, err := s.modelSupportsMode(ctx, mode.ID, model.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !supported {
 		return nil, errors.New("该模型不支持当前创作模式")
 	}
 	retail, err := s.findDirectRetailPrice(ctx, mode.ID, in.Resolution, in.GenerateAudio)
@@ -59,12 +69,15 @@ func (s *Store) ResolveDirectRoute(ctx context.Context, in DirectRouteRequest) (
 	var costID, costVersion string
 	for i := range offerings {
 		o := &offerings[i]
-		if !offeringMatches(*o, QuoteInput{DurationSeconds: in.DurationSeconds, Resolution: in.Resolution, AspectRatio: in.AspectRatio, GenerateAudio: in.GenerateAudio, ImageCount: in.ImageCount}) {
+		if !offeringMatches(*o, in) {
 			continue
 		}
 		cost, id, version, costErr := s.findSupplierCost(ctx, o.ID, in.Resolution, in.GenerateAudio)
-		if costErr != nil {
+		if errors.Is(costErr, errSupplierCostUnavailable) {
 			continue
+		}
+		if costErr != nil {
+			return nil, costErr
 		}
 		if o.QuotaStatus == "unavailable" || o.QuotaStatus == "exhausted" {
 			continue
@@ -268,8 +281,8 @@ WHERE o.user_id=$1 AND o.client_request_id=$2`, userID, requestID).Scan(
 	if err != nil {
 		return nil, err
 	}
-	tmpQuote := &TaskQuote{ModeCode: route.Mode.Code, ModeName: route.Mode.Name, MinImages: route.Offering.MinImages, MaxImages: route.Offering.MaxImages}
-	if err := validateModeInput(ctx, &routingStore, userID, tmpQuote, in.Prompt, &in.SourceMeta); err != nil {
+	constraints := creationSourceConstraints{ModeCode: route.Mode.Code, MinImages: route.Offering.MinImages, MaxImages: route.Offering.MaxImages}
+	if err := validateModeInput(ctx, &routingStore, userID, constraints, in.Prompt, &in.SourceMeta); err != nil {
 		return nil, err
 	}
 	if in.SourceMeta.Audio != nil && !in.GenerateAudio {

@@ -146,8 +146,11 @@ Idempotency-Key: create_20260911_001
 
 | 状态码 | 代码 | 场景 |
 | --- | --- | --- |
-| `400` | `INVALID_TASK_INPUT` | 模式输入或素材归属不合法 |
+| `400` | `PROMPT_REQUIRED` | 缺少画面描述 |
 | `402` | `INSUFFICIENT_BALANCE` | 余额不足 |
-| `400` | `INVALID_TASK_INPUT` | 模式输入、素材归属或执行能力不满足要求 |
+| `400` | `UNAVAILABLE_COMBINATION` | 模式输入、素材归属或执行能力不满足要求 |
+| `503` | `STORAGE_UNAVAILABLE` | 对象存储配置或访问不可用 |
+| `503` | `SUPPLY_UNAVAILABLE` | 执行凭据或执行配置暂不可用 |
+| `410` | `LEGACY_QUOTE_DISABLED` | 调用了已废弃的 `/client/tasks/quote` |
 
 上游任务失败后服务端写退款流水。用户重试需要重新配置并提交新的请求。

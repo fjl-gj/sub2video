@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -9,6 +10,19 @@ import (
 
 	"github.com/sbu2video/backend/internal/store"
 )
+
+func TestCreationPromptRequiredUsesStableClientError(t *testing.T) {
+	for _, err := range []error{store.ErrPromptRequired, fmt.Errorf("validate creation input: %w", store.ErrPromptRequired)} {
+		status, code, message := clientCreationError(err)
+		if status != http.StatusBadRequest || code != "PROMPT_REQUIRED" || message != "请先填写画面描述" {
+			t.Fatalf("unexpected prompt error: status=%d code=%s message=%q", status, code, message)
+		}
+	}
+	status, code, message := clientCreationError(errors.New("connection lost while loading private supplier configuration"))
+	if status != http.StatusInternalServerError || code != "INTERNAL" || message != "创作暂时不可用，请稍后重试" {
+		t.Fatalf("unexpected infrastructure error: status=%d code=%s message=%q", status, code, message)
+	}
+}
 
 func TestClientSafeFailureReasonDoesNotClaimRefundBeforeTerminalFailure(t *testing.T) {
 	if got := clientSafeFailureReason("生成中", "对象存储暂不可用", false); got != "成片交付暂不可用，任务等待重试" {
