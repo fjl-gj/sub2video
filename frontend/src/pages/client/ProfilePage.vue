@@ -19,7 +19,6 @@ const profileEmail = computed(() => auth.user?.email || app.profile.email)
 
 async function logout() {
   await auth.logout()
-  await router.push('/auth/login')
 }
 </script>
 

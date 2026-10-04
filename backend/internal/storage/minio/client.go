@@ -17,12 +17,12 @@ import (
 )
 
 type Config struct {
-	Endpoint     string // host:port or full URL
-	AccessKey    string
-	SecretKey    string
-	Bucket       string
-	UseSSL       bool
-	PublicBase   string // optional override, e.g. http://192.168.0.103:9000/sub2video
+	Endpoint   string // host:port or full URL
+	AccessKey  string
+	SecretKey  string
+	Bucket     string
+	UseSSL     bool
+	PublicBase string // optional override, e.g. http://192.168.0.103:9000/sub2video
 }
 
 type Client struct {
@@ -115,26 +115,52 @@ func (c *Client) PutFile(ctx context.Context, objectKey, filePath, contentType s
 	if err := c.PutObject(ctx, objectKey, body, contentType); err != nil {
 		return "", err
 	}
-	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
-	if err == nil && signed != "" {
-		return signed, nil
-	}
-	return c.ObjectURL(objectKey), nil
+	return c.SignGetURL(ctx, objectKey, 24*time.Hour)
 }
 
 func (c *Client) SignGetURL(ctx context.Context, objectKey string, ttl time.Duration) (string, error) {
-	_ = ctx
+	return c.signGetURL(ctx, objectKey, ttl, url.Values{})
+}
+
+func (c *Client) signGetURL(ctx context.Context, objectKey string, ttl time.Duration, params url.Values) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if !c.Configured() || c.cli == nil {
 		return "", fmt.Errorf("minio not configured")
 	}
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	u, err := c.cli.PresignedGetObject(ctx, c.Cfg.Bucket, strings.TrimLeft(objectKey, "/"), ttl, url.Values{})
+	u, err := c.cli.PresignedGetObject(ctx, c.Cfg.Bucket, strings.TrimLeft(objectKey, "/"), ttl, params)
 	if err != nil {
 		return "", err
 	}
 	return u.String(), nil
+}
+
+func (c *Client) RefreshGetURL(ctx context.Context, storedURL string, ttl time.Duration) (string, error) {
+	return c.refreshGetURL(ctx, storedURL, ttl, url.Values{})
+}
+
+func (c *Client) RefreshDownloadURL(ctx context.Context, storedURL, filename string, ttl time.Duration) (string, error) {
+	return c.refreshGetURL(ctx, storedURL, ttl, url.Values{"response-content-disposition": {blob.AttachmentDisposition(filename)}})
+}
+
+func (c *Client) refreshGetURL(ctx context.Context, storedURL string, ttl time.Duration, params url.Values) (string, error) {
+	if !c.Configured() || c.cli == nil {
+		return "", fmt.Errorf("minio not configured")
+	}
+	scheme := "http"
+	if c.Cfg.UseSSL {
+		scheme = "https"
+	}
+	endpointBase := (&url.URL{Scheme: scheme, Host: c.Cfg.Endpoint, Path: "/" + c.Cfg.Bucket}).String()
+	key, err := blob.TrustedObjectKey(storedURL, endpointBase, c.Cfg.PublicBase)
+	if err != nil {
+		return "", err
+	}
+	return c.signGetURL(ctx, key, ttl, params)
 }
 
 func (c *Client) PullURL(ctx context.Context, remoteURL, objectKey, contentType string) (string, error) {
@@ -166,11 +192,7 @@ func (c *Client) PullURL(ctx context.Context, remoteURL, objectKey, contentType 
 	// Result and source buckets are private by default. Return a presigned URL
 	// after persisting the object so callers never expose an unsigned URL that
 	// MinIO will reject with 403.
-	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
-	if err == nil && signed != "" {
-		return signed, nil
-	}
-	return c.ObjectURL(objectKey), nil
+	return c.SignGetURL(ctx, objectKey, 24*time.Hour)
 }
 
 var _ blob.Store = (*Client)(nil)

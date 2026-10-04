@@ -1,190 +1,45 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Pause, Play, RotateCcw } from 'lucide-vue-next'
+import { ArrowUpRight, Film, ImageOff, LoaderCircle } from 'lucide-vue-next'
+import { ref, watch } from 'vue'
+import S2VButton from '@/shared/ui/S2VButton.vue'
 
 const props = defineProps<{
-  ratio: string
-  durationSec: number
-  resolution: string
   title: string
   subtitle: string
   previewUrl?: string
+  videoUrl?: string
+  loading?: boolean
+  error?: string
+  taskId?: string | null
 }>()
 
-const emit = defineEmits<{
-  reset: []
-}>()
-
-const canvasRef = ref<HTMLCanvasElement | null>(null)
-const isPlaying = ref(false)
-const playhead = ref(0)
-let animId = 0
-let rainDrops: Array<{ x: number; y: number; len: number; speed: number; opacity: number }> = []
-
-const monitorClass = computed(() => {
-  if (props.ratio === '16:9') return 's2v-wb-monitor-r169'
-  if (props.ratio === '1:1') return 's2v-wb-monitor-r11'
-  return 's2v-wb-monitor-r916'
-})
-
-const timecode = computed(() => {
-  const curSec = Math.floor(playhead.value * props.durationSec)
-  const curPad = String(curSec).padStart(2, '0')
-  const durPad = String(props.durationSec).padStart(2, '0')
-  return `00:${curPad} / 00:${durPad}`
-})
-
-function canvasSize() {
-  if (props.ratio === '16:9') return { width: 1280, height: 720 }
-  if (props.ratio === '1:1') return { width: 1080, height: 1080 }
-  return { width: 720, height: 1280 }
-}
-
-function initRain() {
-  const { width, height } = canvasSize()
-  rainDrops = Array.from({ length: 70 }, () => ({
-    x: Math.random() * width,
-    y: Math.random() * height,
-    len: 12 + Math.random() * 20,
-    speed: 4 + Math.random() * 7,
-    opacity: 0.15 + Math.random() * 0.35,
-  }))
-}
-
-function renderCanvas() {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const { width, height } = canvasSize()
-
-  const grad = ctx.createLinearGradient(0, 0, 0, height)
-  grad.addColorStop(0, '#0f172a')
-  grad.addColorStop(0.5, '#1e1b4b')
-  grad.addColorStop(1, '#09090b')
-  ctx.fillStyle = grad
-  ctx.fillRect(0, 0, width, height)
-
-  const cx = width / 2
-  const cy = height * 0.45
-  const radial = ctx.createRadialGradient(cx, cy, 30, cx, cy, 360)
-  radial.addColorStop(0, 'rgba(99, 102, 241, 0.35)')
-  radial.addColorStop(0.6, 'rgba(79, 70, 229, 0.08)')
-  radial.addColorStop(1, 'rgba(0,0,0,0)')
-  ctx.fillStyle = radial
-  ctx.beginPath()
-  ctx.arc(cx, cy, 380, 0, Math.PI * 2)
-  ctx.fill()
-
-  ctx.strokeStyle = '#93c5fd'
-  rainDrops.forEach((drop) => {
-    ctx.lineWidth = 1
-    ctx.globalAlpha = drop.opacity
-    ctx.beginPath()
-    ctx.moveTo(drop.x, drop.y)
-    ctx.lineTo(drop.x, drop.y + drop.len)
-    ctx.stroke()
-    if (isPlaying.value) {
-      drop.y += drop.speed
-      if (drop.y > height) {
-        drop.y = -drop.len
-        drop.x = Math.random() * width
-      }
-    }
-  })
-  ctx.globalAlpha = 1
-
-  const vig = ctx.createRadialGradient(width / 2, height / 2, width * 0.35, width / 2, height / 2, width * 0.75)
-  vig.addColorStop(0, 'rgba(0,0,0,0)')
-  vig.addColorStop(1, 'rgba(0,0,0,0.65)')
-  ctx.fillStyle = vig
-  ctx.fillRect(0, 0, width, height)
-
-  if (isPlaying.value) {
-    playhead.value += 0.003
-    if (playhead.value > 1) playhead.value = 0
-    animId = requestAnimationFrame(renderCanvas)
-  }
-}
-
-function resizeCanvas() {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const { width, height } = canvasSize()
-  canvas.width = width
-  canvas.height = height
-  initRain()
-  renderCanvas()
-}
-
-function togglePlayback() {
-  isPlaying.value = !isPlaying.value
-  if (isPlaying.value) renderCanvas()
-  else cancelAnimationFrame(animId)
-}
-
-function resetPlayback() {
-  isPlaying.value = false
-  cancelAnimationFrame(animId)
-  playhead.value = 0
-  renderCanvas()
-  emit('reset')
-}
-
-watch(() => props.ratio, () => {
-  resizeCanvas()
-})
-
-onMounted(() => {
-  resizeCanvas()
-})
-
-onBeforeUnmount(() => {
-  cancelAnimationFrame(animId)
-})
+defineEmits<{ viewDetail: [] }>()
+const mediaFailed = ref(false)
+watch(() => [props.previewUrl, props.videoUrl], () => { mediaFailed.value = false })
 </script>
 
 <template>
-  <div class="s2v-wb-stage-box">
-    <div class="s2v-wb-stage-topbar">
-      <strong>播放台</strong>
-      <span class="s2v-mono">{{ timecode }}</span>
+  <section class="s2v-studio-preview" aria-label="预览与结果">
+    <div class="s2v-studio-section-heading">
+      <h2>预览与结果</h2>
+      <span v-if="taskId" class="s2v-studio-caption">{{ videoUrl ? '成片已交付' : '任务结果' }}</span>
+      <span v-else-if="previewUrl" class="s2v-studio-caption">参考素材</span>
     </div>
-
-    <div class="s2v-wb-viewport">
-      <div class="s2v-wb-monitor" :class="monitorClass">
-        <img v-if="previewUrl" :src="previewUrl" alt="">
-        <canvas v-else ref="canvasRef" />
-
-        <button
-          v-if="!previewUrl"
-          type="button"
-          class="s2v-wb-play-overlay"
-          :aria-label="isPlaying ? '暂停' : '播放'"
-          @click="togglePlayback"
-        >
-          <span class="s2v-wb-play-puck">
-            <Pause v-if="isPlaying" class="h-4 w-4" />
-            <Play v-else class="h-4 w-4 fill-current" />
-          </span>
-        </button>
+    <div class="s2v-studio-screen" :aria-busy="loading">
+      <video v-if="videoUrl && !mediaFailed" :key="videoUrl" :src="videoUrl" :poster="previewUrl" controls playsinline preload="metadata" aria-label="生成视频预览" @error="mediaFailed = true" />
+      <img v-else-if="previewUrl && !mediaFailed" :src="previewUrl" :alt="title" @error="mediaFailed = true">
+      <div v-else class="s2v-studio-empty">
+        <LoaderCircle v-if="loading" class="h-8 w-8 animate-spin" />
+        <ImageOff v-else-if="mediaFailed" class="h-8 w-8" />
+        <Film v-else class="h-8 w-8" />
+        <h3>{{ loading ? '正在读取任务结果' : mediaFailed ? '暂时无法预览此素材' : taskId ? title : '你的下一段影片，从这里开始' }}</h3>
+        <p>{{ mediaFailed ? '请重新选取素材，或在任务详情获取最新成片。' : taskId ? subtitle : '填写画面描述或添加参考图片。真实素材和生成结果将在这里呈现。' }}</p>
       </div>
+      <span v-if="loading && previewUrl" class="s2v-studio-preview-loading"><LoaderCircle class="h-4 w-4 animate-spin" />正在读取成片</span>
     </div>
-
-    <div class="s2v-wb-stage-foot">
-      <button v-if="!previewUrl" type="button" class="s2v-wb-stage-btn" @click="togglePlayback">
-        <Pause v-if="isPlaying" class="h-3 w-3" />
-        <Play v-else class="h-3 w-3" />
-        <span>{{ isPlaying ? '暂停' : '播放' }}</span>
-      </button>
-      <button v-if="!previewUrl" type="button" class="s2v-wb-stage-btn" @click="resetPlayback">
-        <RotateCcw class="h-3 w-3" />
-        <span>重置</span>
-      </button>
-      <div class="s2v-wb-stage-info">
-        <span class="s2v-wb-stage-title">{{ title }}</span>
-        <span class="s2v-wb-stage-sub s2v-mono">{{ subtitle }}</span>
-      </div>
+    <div class="s2v-studio-preview-meta">
+      <div><h3>{{ title }}</h3><p>{{ error || subtitle }}</p></div>
+      <S2VButton v-if="taskId" size="sm" @click="$emit('viewDetail')">查看任务详情<ArrowUpRight class="h-4 w-4" /></S2VButton>
     </div>
-  </div>
+  </section>
 </template>

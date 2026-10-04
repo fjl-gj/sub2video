@@ -13,6 +13,22 @@ var ErrNotFound = errors.New("not found")
 
 type Store struct {
 	Pool *pgxpool.Pool
+	// A submission-scoped copy routes and validates materials/configuration
+	// through its transaction. Never set this on the shared Store used by
+	// handlers or workers; nested pool reads can exhaust the connection pool.
+	routeTx pgx.Tx
+}
+
+type routeQuerier interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func (s *Store) routeDB() routeQuerier {
+	if s.routeTx != nil {
+		return s.routeTx
+	}
+	return s.Pool
 }
 
 func New(pool *pgxpool.Pool) *Store {

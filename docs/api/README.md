@@ -34,6 +34,8 @@ GET catalog → 选择固定模式 / 模型 → GET options
 
 预估响应不创建报价、订单或任务，不返回 `quoteId`。提交时服务端重新执行能力筛选和最低成本路由；客户端不能提交价格快照、路线、供应商或 API/workflow 执行信息。
 
+`POST /client/tasks/quote` 已停用并返回 `410 LEGACY_QUOTE_DISABLED`。新客户端不得调用或依赖旧 quote 响应。
+
 任务详情只提供用户安全字段和对象存储交付地址。上游临时 URL、供应商名称、成本、供给 ID、上游工作流和路由快照仅可在管理端受控查看。
 # 客户端直链路
 

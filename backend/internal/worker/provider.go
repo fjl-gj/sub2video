@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -20,6 +21,16 @@ type Runner struct {
 	Cfg    config.Config
 	Client *autodl.Client
 }
+
+// submitUncertainError means the request may have crossed the provider
+// boundary. It must never enter the normal refund/retry path automatically.
+type submitUncertainError struct {
+	err               error
+	providerRequestID string
+}
+
+func (e submitUncertainError) Error() string { return e.err.Error() }
+func (e submitUncertainError) Unwrap() error { return e.err }
 
 func Start(ctx context.Context, st *store.Store, cfg config.Config, interval time.Duration) {
 	r := &Runner{Store: st, Cfg: cfg}
@@ -40,6 +51,9 @@ func Start(ctx context.Context, st *store.Store, cfg config.Config, interval tim
 }
 
 func (r *Runner) Tick(ctx context.Context) error {
+	if err := r.Store.RecoverExpiredProviderSubmissions(ctx); err != nil {
+		return err
+	}
 	tasks, err := r.Store.ListPendingProviderTasks(ctx, 30)
 	if err != nil {
 		return err
@@ -47,12 +61,37 @@ func (r *Runner) Tick(ctx context.Context) error {
 	for i := range tasks {
 		t := &tasks[i]
 		if t.UpstreamTaskID != "" {
+			claimed, claimToken, claimErr := r.Store.ClaimTaskForPollWithToken(ctx, t.ID)
+			if claimErr != nil {
+				log.Printf("claim poll %s: %v", t.PublicID, claimErr)
+				continue
+			}
+			if !claimed {
+				continue
+			}
+			t.ClaimToken = claimToken
+			if t.ExecutionDeadline != nil && time.Now().After(*t.ExecutionDeadline) {
+				reason := "供应商执行超时"
+				if t.UpstreamStatus == "WAITING_STORAGE" {
+					reason = "对象存储交付等待超时"
+				}
+				if err := r.Store.FailTaskUpstreamWithToken(ctx, t.ID, reason, claimToken); err != nil {
+					log.Printf("timeout %s: %v", t.PublicID, err)
+				}
+				continue
+			}
 			if err := r.poll(ctx, t); err != nil {
 				log.Printf("poll %s: %v", t.PublicID, err)
+				// Transient poll failures release the lease and back off. The
+				// deadline check above turns a long-running task into a refund.
+				backoff := time.Duration(1<<minInt(t.PollAttempts, 5)) * time.Second
+				if retryErr := r.Store.RecordProviderPollFailureWithToken(ctx, t.ID, err.Error(), backoff, claimToken); retryErr != nil {
+					log.Printf("record poll failure %s: %v", t.PublicID, retryErr)
+				}
 			}
 			continue
 		}
-		claimed, err := r.Store.ClaimTaskForDispatch(ctx, t.ID)
+		claimed, claimToken, err := r.Store.ClaimTaskForDispatchWithToken(ctx, t.ID)
 		if err != nil {
 			log.Printf("claim dispatch %s: %v", t.PublicID, err)
 			continue
@@ -60,9 +99,29 @@ func (r *Runner) Tick(ctx context.Context) error {
 		if !claimed {
 			continue
 		}
-		if err := r.dispatchLockedOffering(ctx, t); err != nil {
+		t.ClaimToken = claimToken
+		if t.ExecutionDeadline != nil && time.Now().After(*t.ExecutionDeadline) {
+			if timeoutErr := r.Store.FailTaskUpstreamWithToken(ctx, t.ID, "任务执行超时", claimToken); timeoutErr != nil {
+				log.Printf("timeout %s: %v", t.PublicID, timeoutErr)
+			}
+			continue
+		}
+		if err := r.dispatchLockedOffering(ctx, t, claimToken); err != nil {
 			log.Printf("dispatch %s: %v", t.PublicID, err)
-			_ = r.Store.FailTaskUpstream(ctx, t.ID, err.Error())
+			var uncertain submitUncertainError
+			if errors.As(err, &uncertain) {
+				// Persist the uncertainty even when shutdown cancelled the parent
+				// request, with a short bound. A database outage is recovered by
+				// the expired-submit sweep on the next healthy worker tick.
+				finalizeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				unknownErr := r.Store.MarkTaskSubmissionUnknownWithRequestID(finalizeCtx, t.ID, err.Error(), claimToken, uncertain.providerRequestID)
+				cancel()
+				if unknownErr != nil {
+					log.Printf("mark submit unknown %s: %v", t.PublicID, unknownErr)
+				}
+			} else {
+				_ = r.Store.FailTaskUpstreamWithToken(ctx, t.ID, err.Error(), claimToken)
+			}
 		}
 	}
 	if err := r.Store.AdvanceSimulatedTasks(ctx); err != nil {
@@ -71,20 +130,30 @@ func (r *Runner) Tick(ctx context.Context) error {
 	return nil
 }
 
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (r *Runner) objectStore(ctx context.Context) blob.Store {
 	return r.Store.LoadObjectStore(ctx, r.Cfg)
 }
 
-func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTask) error {
+func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTask, claimToken string) error {
 	if t.SupplierRouteID == "" || (t.ExecutionType == "workflow" && t.UpstreamWorkflowID == "") || (t.ExecutionType == "api" && t.APIModelCode == "") {
 		return fmt.Errorf("任务缺少锁定供给")
 	}
 	if t.AdapterCode != "autodl_h3_v1" {
 		return fmt.Errorf("不支持的锁定供给适配器: %s", t.AdapterCode)
 	}
+	if t.ExecutionType == "api" {
+		return fmt.Errorf("API 执行适配器未验证，当前不可执行")
+	}
 	token, err := r.Store.ResolveSupplierToken(ctx, r.Cfg.SecretKey, t.SupplierCode, r.Cfg.AutoDLToken)
 	if err != nil || token == "" {
-		return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, "锁定供应商凭据尚未配置")
+		return r.Store.MarkTaskWaitingForConfigurationWithToken(ctx, t.ID, "锁定供应商凭据尚未配置", claimToken)
 	}
 	baseURL := r.Cfg.AutoDLBaseURL
 	authHeader := "Authorization"
@@ -104,20 +173,23 @@ func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTa
 	if !isTextCreation(t.ClientWorkflow) {
 		storeClient := r.objectStore(ctx)
 		if !storeClient.Configured() {
-			return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, "对象存储尚未配置，无法提交图片素材")
+			return r.Store.MarkTaskWaitingForConfigurationWithToken(ctx, t.ID, "对象存储尚未配置，无法提交图片素材", claimToken)
 		}
 		if err := storeClient.EnsureBucket(ctx); err != nil {
-			return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err))
+			return r.Store.MarkTaskWaitingForConfigurationWithToken(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err), claimToken)
 		}
 		if err := r.attachImageURLs(ctx, storeClient, t, body); err != nil {
 			if !strings.Contains(err.Error(), "素材") && !strings.Contains(err.Error(), "首尾帧") && !strings.Contains(err.Error(), "多图") {
-				return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err))
+				return r.Store.MarkTaskWaitingForConfigurationWithToken(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err), claimToken)
 			}
 			return err
 		}
 	}
 	if err := r.attachReferenceAudio(ctx, t, body); err != nil {
-		return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err))
+		return r.Store.MarkTaskWaitingForConfigurationWithToken(ctx, t.ID, fmt.Sprintf("对象存储暂不可用: %v", err), claimToken)
+	}
+	if err := r.Store.MarkTaskSubmitStarted(ctx, t.ID, claimToken); err != nil {
+		return err
 	}
 	var res *autodl.SubmitResult
 	if t.ExecutionType == "api" {
@@ -130,10 +202,20 @@ func (r *Runner) dispatchLockedOffering(ctx context.Context, t *store.ProviderTa
 		res, err = client.Submit(ctx, workflowCode, body)
 	}
 	if err != nil {
+		if autodl.IsSubmitUncertain(err) {
+			var providerErr *autodl.SubmitError
+			if errors.As(err, &providerErr) {
+				return submitUncertainError{err: err, providerRequestID: providerErr.ProviderRequestID}
+			}
+			return submitUncertainError{err: err}
+		}
 		return err
 	}
-	if err := r.Store.MarkTaskSubmitted(ctx, t.ID, res.TaskID, res.Status); err != nil {
-		return err
+	if err := r.Store.MarkTaskSubmittedWithToken(ctx, t.ID, res.TaskID, res.Status, claimToken); err != nil {
+		// The provider has accepted this request. A failed/ambiguous database
+		// write must never fall into automatic refund or a fresh submission.
+		log.Printf("accepted submission requires reconciliation task=%s provider_request_id=%s", t.PublicID, res.TaskID)
+		return submitUncertainError{err: fmt.Errorf("persist accepted provider submission: %w", err), providerRequestID: res.TaskID}
 	}
 	log.Printf("submitted %s via locked offering %s", t.PublicID, t.SupplierRouteID)
 	return nil
@@ -318,7 +400,7 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 	}
 	token, err := r.Store.ResolveSupplierToken(ctx, r.Cfg.SecretKey, t.SupplierCode, r.Cfg.AutoDLToken)
 	if err != nil || token == "" {
-		return r.Store.MarkTaskWaitingForConfiguration(ctx, t.ID, "锁定供应商凭据尚未配置")
+		return r.Store.MarkTaskWaitingForConfigurationWithToken(ctx, t.ID, "锁定供应商凭据尚未配置", t.ClaimToken)
 	}
 	baseURL := r.Cfg.AutoDLBaseURL
 	authHeader := "Authorization"
@@ -331,10 +413,17 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 		}
 	}
 	client := autodl.New(baseURL, token, authHeader)
-	res, err := client.Query(ctx, t.UpstreamTaskID)
+	started := time.Now()
+	var res *autodl.QueryResult
+	if t.ExecutionType == "api" {
+		res, err = client.QueryAPI(ctx, t.UpstreamTaskID)
+	} else {
+		res, err = client.Query(ctx, t.UpstreamTaskID)
+	}
 	if err != nil {
 		return err
 	}
+	_ = r.Store.RecordProviderEvent(ctx, t.ID, "polled", t.ExecutionType, t.UpstreamTaskID, res.Status, nil, time.Since(started).Milliseconds())
 	status := strings.ToUpper(res.Status)
 	switch status {
 	case "SUCCESS", "COMPLETED", "DONE":
@@ -347,9 +436,9 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 		}
 		return r.persistResult(ctx, t, url, res.Duration)
 	case "FAILED", "ERROR", "CANCELLED", "CANCELED":
-		return r.Store.FailTaskUpstream(ctx, t.ID, "upstream "+status)
+		return r.Store.FailTaskUpstreamWithToken(ctx, t.ID, "upstream "+status, t.ClaimToken)
 	case "QUEUED", "PENDING":
-		return r.Store.UpdateTaskUpstream(ctx, t.ID, res.Status, 12)
+		return r.Store.UpdateTaskUpstreamWithRetryAndToken(ctx, t.ID, res.Status, 12, 12*time.Second, t.ClaimToken)
 	case "RUNNING", "PROCESSING":
 		prog := t.Progress
 		if prog < 20 {
@@ -357,9 +446,9 @@ func (r *Runner) poll(ctx context.Context, t *store.ProviderTask) error {
 		} else if prog < 90 {
 			prog += 8
 		}
-		return r.Store.UpdateTaskUpstream(ctx, t.ID, res.Status, prog)
+		return r.Store.UpdateTaskUpstreamWithRetryAndToken(ctx, t.ID, res.Status, prog, 12*time.Second, t.ClaimToken)
 	default:
-		return r.Store.UpdateTaskUpstream(ctx, t.ID, res.Status, t.Progress)
+		return r.Store.UpdateTaskUpstreamWithRetryAndToken(ctx, t.ID, res.Status, t.Progress, 12*time.Second, t.ClaimToken)
 	}
 }
 
@@ -367,18 +456,23 @@ func (r *Runner) persistResult(ctx context.Context, t *store.ProviderTask, resul
 	if resultURL == "" {
 		return fmt.Errorf("upstream success without result URL")
 	}
-	storeClient := r.objectStore(ctx)
+	// PullURL can download a large video. Keep it below the two-minute poll
+	// lease so a second worker can safely retry after a crash; completion is
+	// fenced by the claim token below.
+	deliveryCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	storeClient := r.objectStore(deliveryCtx)
 	if !storeClient.Configured() {
-		return r.Store.MarkTaskDeliveryPending(ctx, t.ID, resultURL, "对象存储尚未配置，无法完成持久化交付")
+		return r.Store.MarkTaskDeliveryPendingWithToken(ctx, t.ID, resultURL, "对象存储尚未配置，无法完成持久化交付", t.ClaimToken)
 	}
-	if err := storeClient.EnsureBucket(ctx); err != nil {
-		return r.Store.MarkTaskDeliveryPending(ctx, t.ID, resultURL, fmt.Sprintf("对象存储桶不可用: %v", err))
+	if err := storeClient.EnsureBucket(deliveryCtx); err != nil {
+		return r.Store.MarkTaskDeliveryPendingWithToken(ctx, t.ID, resultURL, fmt.Sprintf("对象存储桶不可用: %v", err), t.ClaimToken)
 	}
 	key := fmt.Sprintf("results/%s/%s.mp4", time.Now().UTC().Format("20060102"), t.PublicID)
-	ossURL, err := storeClient.PullURL(ctx, resultURL, key, "video/mp4")
+	ossURL, err := storeClient.PullURL(deliveryCtx, resultURL, key, "video/mp4")
 	if err != nil {
-		return r.Store.MarkTaskDeliveryPending(ctx, t.ID, resultURL, fmt.Sprintf("对象存储交付失败: %v", err))
+		return r.Store.MarkTaskDeliveryPendingWithToken(ctx, t.ID, resultURL, fmt.Sprintf("对象存储交付失败: %v", err), t.ClaimToken)
 	}
-	log.Printf("task %s pulled to %s %s", t.PublicID, storeClient.Provider(), ossURL)
-	return r.Store.CompleteTaskUpstream(ctx, t.ID, resultURL, ossURL, upstreamDuration)
+	log.Printf("task %s persisted to %s object %s", t.PublicID, storeClient.Provider(), key)
+	return r.Store.CompleteTaskUpstreamWithToken(ctx, t.ID, resultURL, ossURL, upstreamDuration, t.ClaimToken)
 }

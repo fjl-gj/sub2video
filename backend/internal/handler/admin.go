@@ -20,6 +20,42 @@ type AdminHandler struct {
 	Mail  *mail.Service
 }
 
+// adminPageQuery distinguishes the new server-paged contract from legacy
+// callers that intentionally request the complete management catalog.
+func adminPageQuery(c *gin.Context) (page, pageSize int, paged bool) {
+	pageRaw, hasPage := c.GetQuery("page")
+	pageSizeRaw, hasPageSize := c.GetQuery("pageSize")
+	if !hasPage && !hasPageSize {
+		return 0, 0, false
+	}
+	page, _ = strconv.Atoi(pageRaw)
+	pageSize, _ = strconv.Atoi(pageSizeRaw)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return page, pageSize, true
+}
+
+func adminCSVQuery(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
+}
+
 func (h *AdminHandler) audit(c *gin.Context, action, targetType, targetID string, details gin.H) {
 	user := middleware.CurrentUser(c)
 	if user == nil {
@@ -31,6 +67,30 @@ func (h *AdminHandler) audit(c *gin.Context, action, targetType, targetID string
 }
 
 func (h *AdminHandler) ListSuppliers(c *gin.Context) {
+	page, pageSize, paged := adminPageQuery(c)
+	if paged {
+		items, total, err := h.Store.ListAdminSuppliersPage(c.Request.Context(), page, pageSize, strings.TrimSpace(c.Query("keyword")))
+		if err != nil {
+			response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		out := make([]gin.H, 0, len(items))
+		for _, sp := range items {
+			status := "未配置"
+			if sp.TokenConfigured {
+				status = "已配置"
+			}
+			if !sp.Enabled {
+				status = "未启用"
+			} else if sp.TokenConfigured {
+				status = "就绪"
+			}
+			out = append(out, gin.H{"id": sp.ID, "code": sp.Code, "name": sp.Name, "baseUrl": sp.BaseURL,
+				"enabled": sp.Enabled, "hasToken": sp.TokenConfigured, "status": status, "updatedAt": sp.UpdatedAt})
+		}
+		response.OK(c, gin.H{"items": out, "total": total, "page": page, "pageSize": pageSize})
+		return
+	}
 	items, err := h.Store.ListSuppliers(c.Request.Context())
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
@@ -221,6 +281,27 @@ func (h *AdminHandler) UpdateRoute(c *gin.Context) {
 }
 
 func (h *AdminHandler) ListCarriers(c *gin.Context) {
+	page, pageSize, paged := adminPageQuery(c)
+	if paged {
+		carriers, models, total, err := h.Store.ListAdminCarriersWithModelsPage(c.Request.Context(), page, pageSize, strings.TrimSpace(c.Query("keyword")))
+		if err != nil {
+			response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		cOut := make([]gin.H, 0, len(carriers))
+		for _, car := range carriers {
+			cOut = append(cOut, gin.H{"id": car.ID, "code": car.Code, "name": car.Name, "description": car.Description, "enabled": car.Enabled})
+		}
+		mOut := make([]gin.H, 0, len(models))
+		for _, model := range models {
+			mOut = append(mOut, gin.H{"id": model.ID, "carrierId": model.CarrierID, "carrierCode": model.CarrierCode, "code": model.Code,
+				"name": model.Name, "description": model.Description, "enabled": model.Enabled})
+		}
+		response.OK(c, gin.H{"carriers": cOut, "models": mOut, "total": total, "page": page, "pageSize": pageSize,
+			"cosConfigured":   h.Store.LoadObjectStore(c.Request.Context(), h.Cfg).Configured(),
+			"storageProvider": h.Store.StorageProvider(c.Request.Context()), "autodlEnvToken": h.Cfg.AutoDLToken != ""})
+		return
+	}
 	carriers, models, err := h.Store.ListCarriersWithModels(c.Request.Context())
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
@@ -642,7 +723,8 @@ func (h *AdminHandler) UpsertModelConfiguration(c *gin.Context) {
 
 func offeringDTO(item store.SupplierOffering) gin.H {
 	return gin.H{"id": item.ID, "supplierId": item.SupplierID, "supplierName": item.SupplierName, "modelId": item.ModelID,
-		"modelName": item.ModelName, "carrierName": item.CarrierName, "modeId": item.ModeID, "modeName": item.ModeName,
+		"executionId": item.ExecutionID,
+		"modelName":   item.ModelName, "carrierName": item.CarrierName, "modeId": item.ModeID, "modeName": item.ModeName,
 		"name": item.Name, "executionType": item.ExecutionType, "apiModelCode": item.APIModelCode, "apiVersion": item.APIVersion,
 		"workflowCode": item.WorkflowCode, "upstreamWorkflowId": item.UpstreamWorkflowID, "adapterCode": item.AdapterCode, "enabled": item.Enabled,
 		"healthStatus": item.HealthStatus, "quotaStatus": item.QuotaStatus, "priority": item.Priority, "minDurationSec": item.MinDurationSec, "maxDurationSec": item.MaxDurationSec,
@@ -651,6 +733,22 @@ func offeringDTO(item store.SupplierOffering) gin.H {
 }
 
 func (h *AdminHandler) ListOfferings(c *gin.Context) {
+	page, pageSize, paged := adminPageQuery(c)
+	if paged {
+		items, total, err := h.Store.ListAdminOfferingsPage(c.Request.Context(), page, pageSize,
+			strings.TrimSpace(c.Query("executionType")), strings.TrimSpace(c.Query("carrierId")),
+			strings.TrimSpace(c.Query("modelId")), strings.TrimSpace(c.Query("supplierId")))
+		if err != nil {
+			response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		out := make([]gin.H, 0, len(items))
+		for _, item := range items {
+			out = append(out, offeringDTO(item))
+		}
+		response.OK(c, gin.H{"items": out, "total": total, "page": page, "pageSize": pageSize})
+		return
+	}
 	items, err := h.Store.ListSupplierOfferings(c.Request.Context())
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
@@ -694,6 +792,22 @@ func (h *AdminHandler) UpdateOffering(c *gin.Context) {
 }
 
 func (h *AdminHandler) ListSupplierCosts(c *gin.Context) {
+	page, pageSize, paged := adminPageQuery(c)
+	if paged {
+		items, total, err := h.Store.ListAdminSupplierCostRulesPage(c.Request.Context(), page, pageSize, adminCSVQuery(c.Query("executionIds")))
+		if err != nil {
+			response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		out := make([]gin.H, 0, len(items))
+		for _, item := range items {
+			out = append(out, gin.H{"id": item.ID, "offeringId": item.OfferingID, "executionId": item.ExecutionID, "resolution": item.Resolution,
+				"generateAudio": item.GenerateAudio, "peakPerSecond": item.PeakPerSecond, "offpeakPerSecond": item.OffpeakPerSecond,
+				"currency": item.Currency, "version": item.Version, "status": item.Status})
+		}
+		response.OK(c, gin.H{"items": out, "total": total, "page": page, "pageSize": pageSize})
+		return
+	}
 	items, err := h.Store.ListSupplierCostRules(c.Request.Context())
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
@@ -719,12 +833,28 @@ func (h *AdminHandler) UpsertSupplierCost(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	h.audit(c, "supplier_cost.upsert", "supplier_cost", item.ID, gin.H{"offeringId": item.OfferingID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio, "version": item.Version})
-	response.OK(c, gin.H{"id": item.ID, "offeringId": item.OfferingID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio,
+	h.audit(c, "supplier_cost.upsert", "supplier_cost", item.ID, gin.H{"offeringId": item.OfferingID, "executionId": item.ExecutionID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio, "version": item.Version})
+	response.OK(c, gin.H{"id": item.ID, "offeringId": item.OfferingID, "executionId": item.ExecutionID, "resolution": item.Resolution, "generateAudio": item.GenerateAudio,
 		"peakPerSecond": item.PeakPerSecond, "offpeakPerSecond": item.OffpeakPerSecond, "version": item.Version, "status": item.Status})
 }
 
 func (h *AdminHandler) ListRetailPricing(c *gin.Context) {
+	page, pageSize, paged := adminPageQuery(c)
+	if paged {
+		items, total, err := h.Store.ListAdminRetailPriceRulesPage(c.Request.Context(), page, pageSize)
+		if err != nil {
+			response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		out := make([]gin.H, 0, len(items))
+		for _, item := range items {
+			out = append(out, gin.H{"id": item.ID, "modeId": item.ModeID, "modeName": item.ModeName,
+				"modelId": item.ModelID, "modelName": item.ModelName, "carrierName": item.CarrierName, "resolution": item.Resolution,
+				"generateAudio": item.GenerateAudio, "name": item.Name, "pricePerSecond": item.PricePerSecond, "version": item.Version, "status": item.Status})
+		}
+		response.OK(c, gin.H{"items": out, "total": total, "page": page, "pageSize": pageSize})
+		return
+	}
 	items, err := h.Store.ListRetailPriceRules(c.Request.Context())
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
@@ -814,7 +944,7 @@ func (h *AdminHandler) UpdateModel(c *gin.Context) {
 func (h *AdminHandler) ListTasks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
-	items, total, err := h.Store.ListAdminTasks(c.Request.Context(), c.Query("status"), page, pageSize)
+	items, total, err := h.Store.ListAdminTasks(c.Request.Context(), c.Query("status"), c.Query("keyword"), page, pageSize)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return

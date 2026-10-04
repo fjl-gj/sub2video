@@ -41,7 +41,7 @@ const slotDescriptors = computed<SlotDescriptor[]>(() => {
   }
   else {
     props.multiFrames.forEach((slot, index) => {
-      items.push({ key: `mu-${index}`, label: `参${index + 1}`, required: index === 0, slot })
+      items.push({ key: `mu-${index}`, label: `参考图 ${index + 1}`, required: index === 0, slot })
     })
     if (props.multiFrames.length < (props.maxImages || MAX_REF_IMAGES)) items.push({ key: 'add-mu', label: '', add: 'multi' })
   }
@@ -56,7 +56,7 @@ const filledCount = computed(() => {
 })
 
 const sectionTitle = computed(() => (
-  props.variant === 'keyframes' ? '首帧与尾帧' : '多图参考矩阵'
+  props.variant === 'keyframes' ? '首帧与尾帧' : '参考素材'
 ))
 
 function slotReady(slot?: CreateFrameSlot) {
@@ -91,49 +91,49 @@ function onClear(event: MouseEvent, descriptor: SlotDescriptor) {
 </script>
 
 <template>
-  <div class="s2v-wb-panel-section">
-    <div class="s2v-wb-section-head">
+  <div class="s2v-studio-section">
+    <div class="s2v-studio-field-heading">
       <span>{{ sectionTitle }}</span>
-      <span class="s2v-wb-section-count s2v-mono">{{ filledCount }} 张</span>
+      <span class="s2v-mono">{{ filledCount }} / {{ variant === 'keyframes' ? 2 : maxImages || MAX_REF_IMAGES }} 张</span>
     </div>
-    <div class="s2v-wb-slots-track">
-      <div v-for="descriptor in slotDescriptors" :key="descriptor.key" class="s2v-wb-slot-cell">
-        <span v-if="descriptor.label" class="s2v-wb-slot-label">
+    <div class="s2v-studio-slots">
+      <div v-for="descriptor in slotDescriptors" :key="descriptor.key" class="s2v-studio-slot-cell">
+        <span v-if="descriptor.label" class="s2v-studio-slot-label">
           {{ descriptor.label }}<em v-if="descriptor.required">*</em>
         </span>
-        <span v-else class="s2v-wb-slot-label">&nbsp;</span>
+        <span v-else class="s2v-studio-slot-label">&nbsp;</span>
 
         <div
-          class="s2v-wb-slot-box"
+          class="s2v-studio-slot"
           :class="cn(
-            descriptor.slot && slotReady(descriptor.slot) && 's2v-wb-slot-box-filled',
-            activeSlotKey === descriptor.key && 's2v-wb-slot-box-active',
+            descriptor.slot && slotReady(descriptor.slot) && 's2v-studio-slot-filled',
+            activeSlotKey === descriptor.key && 's2v-studio-slot-active',
           )"
+          :aria-label="descriptor.add ? '添加参考图' : `选择${descriptor.label}`"
           role="button"
           tabindex="0"
           @click="onClick(descriptor)"
-          @keydown.enter.prevent="onClick(descriptor)"
-          @keydown.space.prevent="onClick(descriptor)"
+          @keydown.enter.self.prevent="onClick(descriptor)"
+          @keydown.space.self.prevent="onClick(descriptor)"
         >
           <template v-if="descriptor.add">
             <Plus class="h-4 w-4 text-s2v-muted" />
-            <span class="s2v-wb-slot-hint">添加</span>
+            <span class="s2v-studio-caption">添加</span>
           </template>
           <template v-else-if="descriptor.slot && slotReady(descriptor.slot)">
             <img :src="slotImage(descriptor.slot)" :alt="slotName(descriptor.slot)">
             <button
               type="button"
-              class="s2v-wb-slot-clear"
+              class="s2v-studio-slot-clear"
               aria-label="清除图片"
               @click="onClear($event, descriptor)"
             >
               <X class="h-3 w-3" />
             </button>
-            <span class="s2v-wb-slot-badge">{{ slotName(descriptor.slot) }}</span>
           </template>
           <template v-else>
             <ImagePlus class="h-4 w-4 text-s2v-muted" />
-            <span class="s2v-wb-slot-hint">上传/选取</span>
+            <span class="s2v-studio-caption">上传 / 选取</span>
           </template>
         </div>
       </div>

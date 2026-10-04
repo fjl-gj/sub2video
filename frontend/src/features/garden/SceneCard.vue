@@ -55,7 +55,7 @@ function stopPreview() {
         playsinline
         preload="metadata"
       />
-      <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-s2v-ink/50 via-transparent to-s2v-ink/20" />
+      <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-s2v-media-overlay/50 via-transparent to-s2v-media-overlay/20" />
       <div class="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
         <span class="s2v-media-tag text-[10px] font-mono text-white">{{ item.category }}</span>
         <span class="s2v-media-tag text-[10px] font-mono text-white">{{ item.aspectRatio }}</span>
@@ -67,7 +67,7 @@ function stopPreview() {
         class="pointer-events-none absolute inset-0 grid place-items-center transition-opacity"
         :class="playing ? 'opacity-0' : 'opacity-100'"
       >
-        <span class="grid h-10 w-10 place-items-center rounded-full bg-s2v-ink/45 text-white">
+        <span class="grid h-10 w-10 place-items-center rounded-full bg-s2v-media-overlay/45 text-white">
           <Play class="h-4 w-4" />
         </span>
       </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Pencil, Plus, Power, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
+import '@/features/admin/catalog.css'
 import {
   createAdminCarrier,
   createAdminModel,
@@ -31,24 +32,14 @@ const editorOpen = ref(false)
 const editingID = ref('')
 const page = ref(1)
 const pageSize = 10
+const total = ref(0)
 const carrierForm = ref({ code: '', name: '', description: '', enabled: true })
 const modelForm = ref({ carrierId: '', code: '', name: '', description: '', enabled: true })
 
 const carrierOptions = computed(() => carriers.value
   .filter((item) => item.enabled)
   .map((item) => ({ label: `${item.name} (${item.code})`, value: item.id })))
-const activeCarrierCount = computed(() => carriers.value.filter((item) => item.enabled).length)
-const activeModelCount = computed(() => models.value.filter((item) => item.enabled).length)
 const normalizedKeyword = computed(() => keyword.value.trim().toLowerCase())
-const visibleCarriers = computed(() => carriers.value.filter((carrier) => {
-  const value = normalizedKeyword.value
-  if (!value) return true
-  const carrierMatch = [carrier.id, carrier.code, carrier.name, carrier.description || '']
-    .some((item) => item.toLowerCase().includes(value))
-  return carrierMatch || modelsFor(carrier.id).some((model) => [model.id, model.code, model.name, model.description || '']
-    .some((item) => item.toLowerCase().includes(value)))
-}))
-const pagedCarriers = computed(() => visibleCarriers.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 
 function apiErrorMessage(error: unknown, fallback: string) {
   const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string }
@@ -62,10 +53,14 @@ function modelsFor(carrierID: string) {
 async function load() {
   loading.value = true
   try {
-    const data = await fetchAdminCarriers()
+    const data = await fetchAdminCarriers({ page: page.value, pageSize, keyword: normalizedKeyword.value || undefined })
     carriers.value = data.carriers
     models.value = data.models
-    if (page.value > Math.max(1, Math.ceil(visibleCarriers.value.length / pageSize))) page.value = 1
+    total.value = data.total ?? data.carriers.length
+    if (page.value > Math.max(1, Math.ceil(total.value / pageSize))) {
+      page.value = 1
+      return
+    }
   } catch (error) {
     app.notify(apiErrorMessage(error, '加载承运商目录失败'))
   } finally {
@@ -133,10 +128,16 @@ async function saveCatalog() {
   }
 }
 
-watch(keyword, () => { page.value = 1 })
+watch(keyword, () => {
+  if (page.value !== 1) page.value = 1
+  else void load()
+})
+watch(page, () => { void load() })
 watch(editorOpen, (open) => { if (!open) { editor.value = null; editingID.value = '' } })
 
 async function toggleCarrier(item: AdminCarrier) {
+  const action = item.enabled ? '停用' : '启用'
+  if (!window.confirm(`确认${action}承运商“${item.name}”？`)) return
   saving.value = true
   try {
     await updateAdminCarrier(item.id, { enabled: !item.enabled })
@@ -149,6 +150,8 @@ async function toggleCarrier(item: AdminCarrier) {
 }
 
 async function toggleModel(item: AdminModel) {
+  const action = item.enabled ? '停用' : '启用'
+  if (!window.confirm(`确认${action}模型“${item.name}”？`)) return
   saving.value = true
   try {
     await updateAdminModel(item.id, { enabled: !item.enabled })
@@ -164,19 +167,14 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="s2v-page">
+  <section class="s2v-page s2v-catalog">
     <S2VPageHeader title="承运商">
-      <template #description>承运商是模型原厂；模型归属承运商。此页只维护两层基础目录，不配置工作流、售价或供应商调用信息。</template>
+      <template #description>维护模型原厂及其模型目录，管理启用状态。</template>
       <template #actions>
         <S2VButton size="sm" :disabled="loading" @click="load"><RefreshCw class="h-3.5 w-3.5" />刷新</S2VButton>
         <S2VButton variant="primary" size="sm" @click="openEditor('carrier')"><Plus class="h-3.5 w-3.5" />新增承运商</S2VButton>
       </template>
     </S2VPageHeader>
-
-    <div class="mb-5 grid gap-3 sm:grid-cols-2">
-      <S2VCard variant="metric"><span class="text-xs text-s2v-muted">启用承运商</span><strong class="mt-3 block font-mono text-xl">{{ activeCarrierCount }}</strong></S2VCard>
-      <S2VCard variant="metric"><span class="text-xs text-s2v-muted">启用模型</span><strong class="mt-3 block font-mono text-xl">{{ activeModelCount }}</strong></S2VCard>
-    </div>
 
     <S2VDialog v-model:open="editorOpen" :title="`${editingID ? '编辑' : '新增'}${editor === 'carrier' ? '承运商' : '模型'}`" description="内部编码是稳定标识，显示名称可独立调整。" hide-actions size="wide">
       <div v-if="editor === 'carrier'" class="grid gap-3 sm:grid-cols-2">
@@ -202,7 +200,7 @@ onMounted(load)
     </div>
 
     <div class="grid gap-4">
-      <S2VCard v-for="carrier in pagedCarriers" :key="carrier.id" variant="padded">
+      <S2VCard v-for="carrier in carriers" :key="carrier.id" variant="padded">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0"><div class="flex items-center gap-2"><h2 class="text-sm font-bold">{{ carrier.name }}</h2><S2VBadge :tone="carrier.enabled ? 'success' : 'neutral'">{{ carrier.enabled ? '启用' : '停用' }}</S2VBadge></div><p class="s2v-mono mt-1 text-[10px] text-s2v-muted">{{ carrier.id }} · {{ carrier.code }}</p><p class="mt-1 text-xs text-s2v-muted">{{ carrier.description || '暂无说明' }}</p></div>
           <div class="flex shrink-0 gap-1"><S2VButton size="sm" title="新增模型" @click="openEditor('model', undefined, carrier.id)"><Plus class="h-3.5 w-3.5" />模型</S2VButton><S2VButton size="sm" variant="ghost" title="编辑承运商" @click="openEditor('carrier', carrier)"><Pencil class="h-3.5 w-3.5" /></S2VButton><S2VButton size="sm" variant="ghost" :title="carrier.enabled ? '停用承运商' : '启用承运商'" :loading="saving" @click="toggleCarrier(carrier)"><Power class="h-3.5 w-3.5" /></S2VButton></div>
@@ -217,8 +215,8 @@ onMounted(load)
           </table>
         </div>
       </S2VCard>
-      <p v-if="!visibleCarriers.length" class="s2v-inset-dashed">未找到承运商或模型。</p>
-      <S2VPagination v-if="visibleCarriers.length" v-model="page" :total="visibleCarriers.length" :page-size="pageSize" />
+      <p v-if="!carriers.length" class="s2v-inset-dashed">未找到承运商或模型。</p>
+      <S2VPagination v-if="total" v-model="page" :total="total" :page-size="pageSize" />
     </div>
   </section>
 </template>

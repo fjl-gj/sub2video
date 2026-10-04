@@ -20,6 +20,8 @@ export default {
           'primary-hover': 'rgb(var(--s2v-primary-hover) / <alpha-value>)',
           'primary-soft': 'rgb(var(--s2v-primary-soft) / <alpha-value>)',
           'primary-accent': 'rgb(var(--s2v-primary-accent) / <alpha-value>)',
+          'primary-foreground': 'rgb(var(--s2v-primary-foreground) / <alpha-value>)',
+          'media-overlay': 'rgb(var(--s2v-media-overlay) / <alpha-value>)',
           success: 'rgb(var(--s2v-success) / <alpha-value>)',
           warning: 'rgb(var(--s2v-warning) / <alpha-value>)',
           danger: 'rgb(var(--s2v-danger) / <alpha-value>)',

@@ -13,6 +13,8 @@ type Store interface {
 	PutFile(ctx context.Context, objectKey, filePath, contentType string) (publicURL string, err error)
 	ObjectURL(objectKey string) string
 	SignGetURL(ctx context.Context, objectKey string, ttl time.Duration) (string, error)
+	RefreshGetURL(ctx context.Context, storedURL string, ttl time.Duration) (string, error)
+	RefreshDownloadURL(ctx context.Context, storedURL, filename string, ttl time.Duration) (string, error)
 	PullURL(ctx context.Context, remoteURL, objectKey, contentType string) (string, error)
 	EnsureBucket(ctx context.Context) error
 }

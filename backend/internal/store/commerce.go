@@ -279,7 +279,7 @@ type AdminTaskRow struct {
 	UpdatedAt        time.Time
 }
 
-func (s *Store) ListAdminTasks(ctx context.Context, statusCNFilter string, page, pageSize int) ([]AdminTaskRow, int, error) {
+func (s *Store) ListAdminTasks(ctx context.Context, statusCNFilter, keyword string, page, pageSize int) ([]AdminTaskRow, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -294,8 +294,13 @@ func (s *Store) ListAdminTasks(ctx context.Context, statusCNFilter string, page,
 		args = append(args, statusDB(statusCNFilter))
 		argN++
 	}
+	if keyword = strings.TrimSpace(keyword); keyword != "" {
+		where += fmt.Sprintf(` AND (t.public_id ILIKE $%[1]d OR t.title ILIKE $%[1]d OR u.display_name ILIKE $%[1]d OR u.email ILIKE $%[1]d)`, argN)
+		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(keyword)+"%")
+		argN++
+	}
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM generation_tasks t `+where, args...).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM generation_tasks t JOIN users u ON u.id=t.user_id `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	q := fmt.Sprintf(`
@@ -304,7 +309,7 @@ SELECT t.public_id, t.title, t.workflow, t.workflow_public_id, t.status, t.progr
        t.created_at, t.updated_at
 FROM generation_tasks t
 JOIN users u ON u.id = t.user_id
-%s ORDER BY t.updated_at DESC
+%s ORDER BY t.updated_at DESC, t.id DESC
 LIMIT $%d OFFSET $%d`, where, argN, argN+1)
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := s.Pool.Query(ctx, q, args...)

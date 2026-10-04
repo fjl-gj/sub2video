@@ -25,9 +25,9 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 	})
 
 	authH := &handler.AuthHandler{Auth: authSvc, Store: st}
-	clientH := &handler.ClientHandler{Store: st}
+	clientH := &handler.ClientHandler{Store: st, Cfg: cfg}
 	uploadH := &handler.UploadHandler{Store: st, UploadDir: cfg.UploadDir}
-	projectH := &handler.ProjectHandler{Store: st, UploadDir: cfg.UploadDir}
+	projectH := &handler.ProjectHandler{Store: st, UploadDir: cfg.UploadDir, Cfg: cfg}
 	adminH := &handler.AdminHandler{Store: st, Cfg: cfg, Mail: mailSvc}
 
 	v1 := r.Group("/api/v1")
@@ -70,7 +70,10 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				client.POST("/projects/:id/restore", projectH.Restore)
 				client.DELETE("/projects/:id", projectH.DeleteProject)
 				client.PUT("/session/current-project", projectH.SetCurrentProject)
-				client.POST("/tasks/quote", clientH.QuoteTask)
+				// The quote endpoint belongs to the retired, quote-backed contract.
+				// Keep the path for deployed clients, but fail explicitly so new
+				// clients cannot accidentally re-enter the legacy billing flow.
+				client.POST("/tasks/quote", clientH.LegacyQuoteTask)
 				client.POST("/tasks/estimate", clientH.EstimateTask)
 				client.POST("/tasks", clientH.CreateTask)
 				client.GET("/tasks", clientH.ListTasks)
@@ -109,6 +112,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 				admin.GET("/tasks", adminH.ListTasks)
 				admin.GET("/tasks/:id", adminH.GetTask)
 				admin.POST("/tasks/:id/cancel", adminH.CancelTask)
+				admin.POST("/tasks/:id/reconcile", adminH.ReconcileTask)
 				admin.GET("/tickets", adminH.ListTickets)
 				admin.PATCH("/tickets/:id", adminH.UpdateTicket)
 				admin.GET("/audit-logs", adminH.ListAuditLogs)

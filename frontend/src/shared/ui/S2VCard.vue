@@ -8,7 +8,7 @@ const props = withDefaults(defineProps<{
 }>(), { variant: 'default' })
 
 const classes = computed(() => cn(
-  's2v-panel',
+  's2v-panel min-w-0',
   props.variant === 'metric' && 'min-h-24 p-3.5',
   props.variant === 'padded' && 'p-5',
   props.variant === 'muted' && 'bg-s2v-canvas/70',

@@ -21,6 +21,16 @@
 .tmp_*/
 **/.tmp_*/
 
+# Local runtime data, release binaries, and assistant notes
+/backend/data/
+/backend/server.linux
+/.workbuddy/
+/docs/ui/creator-journey-uat-delivery.png
+
+# Python bytecode caches
+**/__pycache__/
+*.py[cod]
+
 # Operating-system files
 .DS_Store
 Thumbs.db

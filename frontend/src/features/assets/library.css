@@ -1,0 +1,48 @@
+.s2v-library-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; padding-bottom: 18px; margin-bottom: 24px; border-bottom: 1px solid rgb(var(--s2v-line)); }
+.s2v-library-toolbar > div:first-child { display: flex; align-items: center; gap: 14px; }
+.s2v-library-toolbar h2 { font-size: 15px; font-weight: 500; color: rgb(var(--s2v-ink)); }
+.s2v-library-toolbar > div > span { font-size: 12px; color: rgb(var(--s2v-muted)); }
+.s2v-library-toolbar > label { width: 240px; max-width: 100%; }
+.s2v-library-projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: var(--s2v-layout-gap); }
+.s2v-library-storage { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 23px; margin-top: 32px; border-top: 1px solid rgb(var(--s2v-line)); color: rgb(var(--s2v-muted)); font-size: 12px; }
+.s2v-library-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 240px; padding: 28px; text-align: center; border: 1px dashed rgb(var(--s2v-line-strong)); border-radius: var(--s2v-radius); color: rgb(var(--s2v-muted)); }
+.s2v-library-empty h2 { font-size: 15px; font-weight: 500; color: rgb(var(--s2v-ink)); }
+.s2v-library-empty p { font-size: 13px; line-height: 1.8; }
+.s2v-library-notice { display: flex; align-items: center; gap: 12px; padding: 14px 0; color: rgb(var(--s2v-danger)); font-size: 12px; }
+.s2v-library-notice > svg { flex-shrink: 0; }
+.s2v-library-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 22px; font-size: 12px; color: rgb(var(--s2v-muted)); }
+.s2v-library-breadcrumb button { min-height: 36px; overflow-wrap: anywhere; }
+.s2v-library-breadcrumb button:hover, .s2v-library-breadcrumb button[aria-current] { color: rgb(var(--s2v-primary)); }
+.s2v-library-interior { display: grid; grid-template-columns: 174px minmax(0, 1fr); gap: 24px; }
+.s2v-library-folders { display: grid; align-content: start; gap: 4px; padding-right: 18px; border-right: 1px solid rgb(var(--s2v-line)); }
+.s2v-library-folders button { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 12px; text-align: left; color: rgb(var(--s2v-muted)); font-size: 12px; border-radius: var(--s2v-radius-control); }
+.s2v-library-folders button.selected { background: rgb(var(--s2v-nav-hover)); color: rgb(var(--s2v-primary)); }
+.s2v-library-folders button:hover { color: rgb(var(--s2v-ink)); background: rgb(var(--s2v-nav-hover)); }
+.s2v-library-folders .s2v-library-subfolder { padding-left: 34px; }
+.s2v-library-files { min-width: 0; }
+.s2v-library-file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); align-items: start; gap: 20px; }
+.s2v-library-files .s2v-table { min-width: 580px; }
+.s2v-library-footnote { margin-top: 26px; padding-left: 14px; border-left: 2px solid rgb(var(--s2v-primary) / .5); font-size: 12px; color: rgb(var(--s2v-muted)); line-height: 1.9; }
+.s2v-library-file { min-width: 0; border: 1px solid rgb(var(--s2v-line)); border-radius: var(--s2v-radius); overflow: hidden; background: rgb(var(--s2v-surface)); }
+.s2v-library-file-media { width: 100%; display: grid; place-items: center; aspect-ratio: 16 / 10; background: rgb(var(--s2v-canvas)); color: rgb(var(--s2v-primary)); overflow: hidden; }
+.s2v-library-file-media img { width: 100%; height: 100%; object-fit: cover; }
+.s2v-library-file-body { padding: 16px; }
+.s2v-library-file-title { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.s2v-library-file-title strong { color: rgb(var(--s2v-ink)); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.s2v-library-file-meta { font-size: 11px; color: rgb(var(--s2v-muted)); margin-top: 8px; line-height: 1.8; }
+.s2v-library-file-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.s2v-library-text-action { display: inline-flex; align-items: center; justify-content: flex-start; gap: 7px; min-height: 40px; color: rgb(var(--s2v-primary)); font-size: 12px; text-align: left; overflow-wrap: anywhere; }
+.s2v-library-text-action:hover { text-decoration: underline; }
+.s2v-library-dialog { display: grid; gap: 18px; }
+.s2v-library-dialog p { color: rgb(var(--s2v-muted)); font-size: 12px; line-height: 1.8; }
+.s2v-library-dialog .s2v-library-dialog-error { color: rgb(var(--s2v-danger)); }
+.s2v-library-dialog-footer { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 14px; }
+.s2v-library-preview { display: grid; gap: 18px; }
+.s2v-library-preview-stage { display: grid; min-height: 220px; place-items: center; overflow: hidden; border-radius: var(--s2v-radius-control); background: rgb(var(--s2v-media-overlay)); }
+.s2v-library-preview-stage img, .s2v-library-preview-stage video { display: block; width: 100%; max-height: 60dvh; object-fit: contain; }
+.s2v-library-preview-stage audio { width: min(440px, 100%); }
+.s2v-library-preview-error { display: grid; place-items: center; gap: 16px; padding: 24px; color: rgb(var(--s2v-muted)); text-align: center; font-size: 13px; }
+.s2v-library-preview-meta { display: flex; flex-wrap: wrap; gap: 12px; color: rgb(var(--s2v-muted)); font-size: 12px; }
+.s2v-library button:focus-visible, .s2v-library-text-action:focus-visible { outline: 2px solid rgb(var(--s2v-primary)); outline-offset: 3px; }
+@container workspace (max-width: 800px) { .s2v-library-interior { grid-template-columns: 1fr; gap: 20px; } .s2v-library-folders { display: flex; flex-wrap: wrap; padding: 0 0 18px; border-right: 0; border-bottom: 1px solid rgb(var(--s2v-line)); } .s2v-library-folders .s2v-library-subfolder { padding-left: 12px; } .s2v-library-folders button, .s2v-library-breadcrumb button, .s2v-library-text-action { min-height: 44px; } }
+@media (max-width: 520px) { .s2v-library-projects, .s2v-library-file-grid { grid-template-columns: 1fr; } .s2v-library-toolbar { gap: 16px; } .s2v-library-toolbar > label { width: 100%; } .s2v-library-storage { margin-top: 24px; } }

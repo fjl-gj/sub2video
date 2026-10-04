@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sbu2video/backend/internal/config"
 	"github.com/sbu2video/backend/internal/middleware"
 	"github.com/sbu2video/backend/internal/response"
 	"github.com/sbu2video/backend/internal/store"
@@ -20,6 +22,7 @@ import (
 type ProjectHandler struct {
 	Store     *store.Store
 	UploadDir string
+	Cfg       config.Config
 }
 
 func projectDTO(p *store.Project) gin.H {
@@ -77,7 +80,9 @@ func fileDTO(it store.FsItem, projectID string) gin.H {
 		h["sourceTask"] = it.SourceTask
 	}
 	if it.RemoteURL != "" {
-		h["remoteUrl"] = it.RemoteURL
+		// Resolve the private object only through the ownership-checked download
+		// endpoint; persisted signatures must never become permanent media URLs.
+		h["remoteUrl"] = h["url"]
 	}
 	return h
 }
@@ -340,7 +345,15 @@ func (h *ProjectHandler) GetFile(c *gin.Context) {
 		return
 	}
 	if item.RemoteURL != "" {
-		c.Redirect(http.StatusFound, item.RemoteURL)
+		mediaCtx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		freshURL, err := h.Store.LoadObjectStore(mediaCtx, h.Cfg).RefreshGetURL(mediaCtx, item.RemoteURL, deliveryURLTTL)
+		if err != nil || freshURL == "" {
+			response.Fail(c, http.StatusServiceUnavailable, "DELIVERY_UNAVAILABLE", "文件访问地址暂不可用，请稍后重试或联系支持")
+			return
+		}
+		c.Header("Cache-Control", "private, no-store")
+		c.Redirect(http.StatusFound, freshURL)
 		return
 	}
 	response.Fail(c, http.StatusNotFound, "NOT_FOUND", "文件内容不可用")

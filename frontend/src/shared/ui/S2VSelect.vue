@@ -8,6 +8,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
     <span v-if="label">{{ label }}</span>
     <select
       :value="modelValue"
+      :aria-label="label"
       :disabled="disabled"
       class="h-10 w-full rounded-control border border-s2v-line bg-s2v-canvas px-3 text-sm font-normal text-s2v-ink"
       @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"

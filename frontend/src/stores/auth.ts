@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef } from 'vue'
 import {
   fetchPublicSettings as fetchPublicSettingsApi,
   forgotPassword as forgotPasswordApi,
@@ -12,37 +12,81 @@ import {
   type AuthUser,
   type PublicSettings,
 } from '@/api/auth'
-import { clearTokens, getAccessToken } from '@/api/http'
+import { getAuthSession, onAuthSessionChange } from '@/shared/lib/auth-session'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
   const bootstrapped = ref(false)
+  const bootstrapError = ref('')
   const publicSettings = ref<PublicSettings | null>(null)
+  const session = shallowRef(getAuthSession())
 
-  const isAuthenticated = computed(() => Boolean(user.value && getAccessToken()))
+  const unsubscribe = onAuthSessionChange((next, previous) => {
+    session.value = next
+    if (next.id !== previous.id || !next.accessToken) {
+      user.value = null
+      bootstrapError.value = ''
+      bootstrapped.value = !next.accessToken
+    } else if (!previous.accessToken && next.accessToken && !user.value) {
+      // Another tab can finish signing in after this tab already returned to
+      // the login page. The next navigation must reload that user's identity.
+      bootstrapped.value = false
+    }
+  })
+  onScopeDispose(unsubscribe)
+
+  const isAuthenticated = computed(() => Boolean(user.value && session.value.accessToken))
   const displayName = computed(() => user.value?.workspaceName || user.value?.displayName || '')
   const balance = computed(() => user.value?.balance ?? 0)
 
+  let bootstrapping: { sessionId: string; promise: Promise<void> } | null = null
+
   async function bootstrap() {
-    if (!getAccessToken()) {
+    const expected = getAuthSession()
+    if (bootstrapping?.sessionId === expected.id) return bootstrapping.promise
+    session.value = expected
+    if (!expected.accessToken) {
       user.value = null
       bootstrapped.value = true
       return
     }
-    try {
-      user.value = await meApi()
-    } catch {
-      clearTokens()
-      user.value = null
-    } finally {
-      bootstrapped.value = true
-    }
+    bootstrapError.value = ''
+    const promise = (async () => {
+      try {
+        const nextUser = await meApi()
+        const current = getAuthSession()
+        if (current.id !== expected.id) return
+        session.value = current
+        user.value = nextUser
+      } catch {
+        if (getAuthSession().id === expected.id) {
+          // The HTTP layer alone invalidates proven-expired sessions. A
+          // temporary outage must not erase tokens or an already loaded user.
+          bootstrapError.value = '暂时无法确认登录状态，请重试'
+        }
+      } finally {
+        if (getAuthSession().id === expected.id) bootstrapped.value = true
+      }
+    })()
+    const pending = { sessionId: expected.id, promise }
+    bootstrapping = pending
+    try { await promise }
+    finally { if (bootstrapping === pending) bootstrapping = null }
+  }
+
+  function completeAuthentication(data: { user: AuthUser; sessionId: string }) {
+    const current = getAuthSession()
+    if (current.id !== data.sessionId || !current.accessToken) throw new Error('登录会话已变化，请重试')
+    session.value = current
+    user.value = data.user
+    bootstrapError.value = ''
+    bootstrapped.value = true
+    return data.user
   }
 
   async function login(email: string, password: string) {
     const data = await loginApi(email, password)
-    user.value = data.user
-    return data.user
+    return completeAuthentication(data)
   }
 
   async function fetchPublicSettings() {
@@ -56,8 +100,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function register(email: string, password: string, displayName: string, verifyCode = '') {
     const data = await registerApi(email, password, displayName, verifyCode)
-    user.value = data.user
-    return data.user
+    return completeAuthentication(data)
   }
 
   async function forgotPassword(email: string) {
@@ -69,8 +112,14 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    await logoutApi()
-    user.value = null
+    try {
+      await logoutApi()
+      return true
+    } catch {
+      // Local invalidation already happened. Callers must still leave private
+      // pages when server revocation times out or is temporarily unavailable.
+      return false
+    }
   }
 
   function setBalance(value: number) {
@@ -80,6 +129,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     bootstrapped,
+    bootstrapError,
     publicSettings,
     isAuthenticated,
     displayName,

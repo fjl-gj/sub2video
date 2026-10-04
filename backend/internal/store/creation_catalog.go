@@ -58,6 +58,7 @@ type QuoteInput struct {
 	Resolution      string
 	AspectRatio     string
 	GenerateAudio   bool
+	ImageCount      int
 }
 
 type TaskQuote struct {
@@ -96,42 +97,43 @@ type TaskQuote struct {
 }
 
 type SupplierOffering struct {
-	ID                     string
-	ExecutionID            string
-	LegacyOfferingID       string
-	SupplierID             string
-	SupplierCode           string
-	SupplierName           string
-	SupplierBaseURL        string
-	SupplierAuthHeader     string
-	ModelID                string
-	ModelCode              string
-	ModelName              string
-	CarrierName            string
-	ModeID                 string
-	ModeCode               string
-	ModeName               string
-	Name                   string
-	UpstreamWorkflowID     string
-	ExecutionType          string
-	APIModelCode           string
-	APIVersion             string
-	WorkflowCode           string
-	AdapterCode            string
-	Enabled                bool
-	HealthStatus           string
-	QuotaStatus            string
-	Priority               int
-	MinDurationSec         int
-	MaxDurationSec         int
-	Resolutions            []string
-	AspectRatios           []string
-	MinImages              int
-	MaxImages              int
-	SupportsGeneratedAudio bool
-	ParameterMapping       map[string]any
-	PeakCostPerSecond      float64
-	OffpeakCostPerSecond   float64
+	ID                      string
+	ExecutionID             string
+	LegacyOfferingID        string
+	SupplierID              string
+	SupplierCode            string
+	SupplierName            string
+	SupplierBaseURL         string
+	SupplierAuthHeader      string
+	SupplierTokenConfigured bool
+	ModelID                 string
+	ModelCode               string
+	ModelName               string
+	CarrierName             string
+	ModeID                  string
+	ModeCode                string
+	ModeName                string
+	Name                    string
+	UpstreamWorkflowID      string
+	ExecutionType           string
+	APIModelCode            string
+	APIVersion              string
+	WorkflowCode            string
+	AdapterCode             string
+	Enabled                 bool
+	HealthStatus            string
+	QuotaStatus             string
+	Priority                int
+	MinDurationSec          int
+	MaxDurationSec          int
+	Resolutions             []string
+	AspectRatios            []string
+	MinImages               int
+	MaxImages               int
+	SupportsGeneratedAudio  bool
+	ParameterMapping        map[string]any
+	PeakCostPerSecond       float64
+	OffpeakCostPerSecond    float64
 }
 
 // DirectRouteRequest is the client creation contract used for both estimates
@@ -144,6 +146,12 @@ type DirectRouteRequest struct {
 	Resolution      string
 	AspectRatio     string
 	GenerateAudio   bool
+	// ImageCount is derived from client source references and is used only for
+	// capability filtering. The task snapshot remains the dispatch authority.
+	ImageCount int
+	// SupplierTokenFallback is an internal runtime credential hint. It is
+	// populated by the handler from configuration and is never client input.
+	SupplierTokenFallback string
 }
 
 // ResolvedRoute is an internal route selected from API and workflow
@@ -281,6 +289,8 @@ ON CONFLICT (mode_id, model_id) DO NOTHING`, item.code); err != nil {
 		minImages, maxImages := 0, 0
 		if item.mode == "multi_image_to_video" {
 			minImages, maxImages = 1, 9
+		} else if item.mode == "first_last_frame_to_video" {
+			minImages, maxImages = 2, 2
 		}
 		if _, err := s.Pool.Exec(ctx, `
 INSERT INTO supplier_offerings (
@@ -307,15 +317,13 @@ ON CONFLICT (supplier_id, model_id, mode_id, upstream_workflow_id) DO NOTHING`,
 				peak, offpeak = 0.03, 0.02
 			}
 			for _, generateAudio := range audioOptions {
+				// Startup seeds fill missing defaults only. Existing costs and
+				// their activation/effective windows are administrator-owned.
 				if _, err := s.Pool.Exec(ctx, `
 INSERT INTO supplier_cost_rules (public_id, offering_id, resolution, generate_audio, price_per_sec_peak, price_per_sec_offpeak, version, status)
 SELECT $1, offering.id, $3, $4, $5, $6, 'v1', 'active'
 FROM supplier_offerings offering WHERE offering.public_id=$2
-				ON CONFLICT (offering_id, resolution, generate_audio) DO UPDATE
-				SET price_per_sec_peak=EXCLUDED.price_per_sec_peak,
-				    price_per_sec_offpeak=EXCLUDED.price_per_sec_offpeak,
-				    status=EXCLUDED.status,
-				    updated_at=NOW()`, fmt.Sprintf("cost_%s_%s_%t", item.id, resolution, generateAudio), item.id, resolution, generateAudio, peak, offpeak); err != nil {
+ON CONFLICT (offering_id, resolution, generate_audio) DO NOTHING`, fmt.Sprintf("cost_%s_%s_%t", item.id, resolution, generateAudio), item.id, resolution, generateAudio, peak, offpeak); err != nil {
 					return fmt.Errorf("seed cost %s %s audio=%t: %w", item.mode, resolution, generateAudio, err)
 				}
 			}
@@ -412,7 +420,19 @@ WHERE mode.code=$2
 	return nil
 }
 
+// ListClientCreationCatalog returns the client-safe creation catalog using
+// only credentials persisted on suppliers. The runtime-aware variant below
+// is used by the HTTP handler when a provider credential is supplied through
+// process configuration (for example SUB2VIDEO_AUTODL_TOKEN).
 func (s *Store) ListClientCreationCatalog(ctx context.Context) (*CreationCatalog, error) {
+	return s.ListClientCreationCatalogWithFallback(ctx, "")
+}
+
+// ListClientCreationCatalogWithFallback keeps catalog availability aligned
+// with direct routing. A non-empty fallback is an internal credential hint;
+// it is never serialized to the client or exposed in the catalog DTO.
+func (s *Store) ListClientCreationCatalogWithFallback(ctx context.Context, tokenFallback string) (*CreationCatalog, error) {
+	tokenFallback = strings.TrimSpace(tokenFallback)
 	catalog := &CreationCatalog{}
 	rows, err := s.Pool.Query(ctx, `
 SELECT public_id, code, name, description, status, sort_order
@@ -435,12 +455,16 @@ SELECT DISTINCT c.public_id, c.code, c.name, c.description, c.enabled, c.sort_or
 FROM carriers c
 JOIN models m ON m.carrier_id=c.id AND m.enabled
 JOIN mode_model_policies p ON p.model_id=m.id AND p.enabled
+JOIN creation_modes mode ON mode.id=p.mode_id AND mode.status='published'
 JOIN supplier_model_bindings binding ON binding.model_id=m.id AND binding.enabled AND binding.status='active'
 JOIN supplier_executions execution ON execution.binding_id=binding.id AND execution.mode_id=p.mode_id
-  AND execution.enabled AND execution.health_status <> 'unavailable'
+  AND execution.enabled AND execution.health_status NOT IN ('degraded', 'unavailable')
   AND execution.quota_status NOT IN ('unavailable','exhausted')
-  AND execution.execution_type IN ('api','workflow')
-JOIN suppliers s ON s.id=binding.supplier_id AND s.enabled AND s.token_encrypted <> ''
+  AND execution.execution_type='workflow'
+  AND execution.adapter_code='autodl_h3_v1'
+JOIN suppliers s ON s.id=binding.supplier_id AND s.enabled
+  AND s.status NOT IN ('disabled', 'unavailable', 'degraded')
+  AND (s.token_encrypted <> '' OR ($1 <> '' AND lower(s.code)='autodl'))
 JOIN retail_price_rules r ON r.model_id IS NULL AND r.mode_id=p.mode_id AND r.status='active'
   AND (r.effective_from IS NULL OR r.effective_from <= NOW())
   AND (r.effective_to IS NULL OR r.effective_to > NOW())
@@ -450,7 +474,8 @@ JOIN supplier_cost_rules cost ON cost.execution_id=execution.id AND cost.status=
   AND cost.resolution=r.resolution AND cost.generate_audio=r.generate_audio
   AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
   AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
-ORDER BY c.sort_order, c.code`)
+WHERE c.enabled
+ORDER BY c.sort_order, c.code`, tokenFallback)
 	if err != nil {
 		return nil, err
 	}
@@ -473,10 +498,13 @@ JOIN mode_model_policies p ON p.model_id=m.id AND p.enabled
 JOIN creation_modes mode ON mode.id=p.mode_id AND mode.status='published'
 JOIN supplier_model_bindings binding ON binding.model_id=m.id AND binding.enabled AND binding.status='active'
 JOIN supplier_executions execution ON execution.binding_id=binding.id AND execution.mode_id=mode.id
-  AND execution.enabled AND execution.health_status <> 'unavailable'
+  AND execution.enabled AND execution.health_status NOT IN ('degraded', 'unavailable')
   AND execution.quota_status NOT IN ('unavailable','exhausted')
-  AND execution.execution_type IN ('api','workflow')
-JOIN suppliers supplier ON supplier.id=binding.supplier_id AND supplier.enabled AND supplier.token_encrypted <> ''
+  AND execution.execution_type='workflow'
+  AND execution.adapter_code='autodl_h3_v1'
+JOIN suppliers supplier ON supplier.id=binding.supplier_id AND supplier.enabled
+  AND supplier.status NOT IN ('disabled', 'unavailable', 'degraded')
+  AND (supplier.token_encrypted <> '' OR ($1 <> '' AND lower(supplier.code)='autodl'))
 JOIN retail_price_rules retail ON retail.model_id IS NULL AND retail.mode_id=mode.id AND retail.status='active'
   AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
   AND (retail.effective_to IS NULL OR retail.effective_to > NOW())
@@ -488,7 +516,7 @@ JOIN supplier_cost_rules cost ON cost.execution_id=execution.id AND cost.status=
   AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
 WHERE m.enabled
 GROUP BY m.public_id, c.public_id, c.code, c.name, m.code, m.name, m.description, m.sort_order
-ORDER BY c.code, m.sort_order, m.code`)
+ORDER BY c.code, m.sort_order, m.code`, tokenFallback)
 	if err != nil {
 		return nil, err
 	}
@@ -504,17 +532,30 @@ ORDER BY c.code, m.sort_order, m.code`)
 }
 
 func (s *Store) ResolveCreationOptions(ctx context.Context, modeID, modelID string) (*CreationOptions, error) {
+	return s.ResolveCreationOptionsWithFallback(ctx, modeID, modelID, "")
+}
+
+// ResolveCreationOptionsWithFallback uses the same internal credential
+// fallback as direct estimate/submission routing. The returned options remain
+// client-safe capability data only.
+func (s *Store) ResolveCreationOptionsWithFallback(ctx context.Context, modeID, modelID, tokenFallback string) (*CreationOptions, error) {
 	mode, err := s.getCreationMode(ctx, modeID)
 	if err != nil {
 		return nil, err
 	}
+	if mode.Status != "published" {
+		return nil, errors.New("创作模式未开放")
+	}
 	if modelID == "" {
-		modelID, err = s.recommendedModelID(ctx, mode.ID)
+		modelID, err = s.recommendedModelIDWithFallback(ctx, mode.ID, tokenFallback)
 		if err != nil {
 			return nil, err
 		}
 	}
-	offerings, err := s.listDirectOfferings(ctx, mode.ID, modelID)
+	if !s.modelSupportsMode(ctx, mode.ID, modelID) {
+		return nil, errors.New("该模型不支持当前创作模式")
+	}
+	offerings, err := s.listDirectOfferingsWithFallback(ctx, mode.ID, modelID, tokenFallback)
 	if err != nil {
 		return nil, err
 	}
@@ -528,11 +569,13 @@ func (s *Store) ResolveCreationOptions(ctx context.Context, modeID, modelID stri
 	for _, offering := range offerings {
 		nonAudioAvailable := false
 		for _, value := range offering.Resolutions {
-			// Capabilities come from the execution snapshot. Final cost/routing
-			// validation still happens in ResolveDirectRoute at estimate/submit.
-			resolutions[value] = true
-			nonAudioAvailable = true
-			if offering.SupportsGeneratedAudio {
+			withoutAudio := s.hasBillableOfferingPair(ctx, mode.ID, modelID, offering.ID, value, false)
+			withAudio := offering.SupportsGeneratedAudio && s.hasBillableOfferingPair(ctx, mode.ID, modelID, offering.ID, value, true)
+			if !withoutAudio && !withAudio {
+				continue
+			}
+			resolutions[value], nonAudioAvailable = true, true
+			if withAudio {
 				options.SupportsGeneratedAudio = true
 			}
 		}
@@ -564,6 +607,12 @@ func (s *Store) ResolveCreationOptions(ctx context.Context, modeID, modelID stri
 	sort.Ints(options.Durations)
 	sort.Strings(options.Resolutions)
 	sort.Strings(options.AspectRatios)
+	if mode.Code == "first_last_frame_to_video" {
+		options.MinImages, options.MaxImages = 2, 2
+	}
+	if len(options.Resolutions) == 0 || len(options.Durations) == 0 || len(options.AspectRatios) == 0 {
+		return nil, errors.New("当前模型暂无可用供给")
+	}
 	return options, nil
 }
 
@@ -753,6 +802,9 @@ func validateModeInput(ctx context.Context, s *Store, userID int64, quote *TaskQ
 	if meta == nil {
 		meta = &SourceMeta{}
 	}
+	if err := ValidateCreationSourceShape(quote.ModeCode, *meta); err != nil {
+		return err
+	}
 	if meta.Audio != nil {
 		if err := s.validateReferenceAudioSource(ctx, userID, meta.Audio); err != nil {
 			return err
@@ -881,7 +933,7 @@ FOR UPDATE`, quoteID, userID).Scan(
 
 func (s *Store) getCreationMode(ctx context.Context, publicID string) (*CreationMode, error) {
 	var item CreationMode
-	err := s.Pool.QueryRow(ctx, `SELECT public_id, code, name, description, status, sort_order FROM creation_modes WHERE public_id=$1`, publicID).Scan(&item.ID, &item.Code, &item.Name, &item.Description, &item.Status, &item.SortOrder)
+	err := s.routeDB().QueryRow(ctx, `SELECT public_id, code, name, description, status, sort_order FROM creation_modes WHERE public_id=$1`, publicID).Scan(&item.ID, &item.Code, &item.Name, &item.Description, &item.Status, &item.SortOrder)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -893,7 +945,7 @@ func (s *Store) getCreationMode(ctx context.Context, publicID string) (*Creation
 
 func (s *Store) getCatalogModel(ctx context.Context, publicID string) (*CreationCatalogModel, error) {
 	var item CreationCatalogModel
-	err := s.Pool.QueryRow(ctx, `
+	err := s.routeDB().QueryRow(ctx, `
 SELECT m.public_id, c.public_id, c.code, c.name, m.code, m.name, m.description
 FROM models m JOIN carriers c ON c.id=m.carrier_id
 WHERE m.public_id=$1 AND m.enabled AND c.enabled`, publicID).Scan(&item.ID, &item.CarrierID, &item.CarrierCode, &item.CarrierName, &item.Code, &item.Name, &item.Description)
@@ -908,12 +960,16 @@ WHERE m.public_id=$1 AND m.enabled AND c.enabled`, publicID).Scan(&item.ID, &ite
 
 func (s *Store) modelSupportsMode(ctx context.Context, modeID, modelID string) bool {
 	var ok bool
-	_ = s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mode_model_policies WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1) AND model_id=(SELECT id FROM models WHERE public_id=$2) AND enabled)`, modeID, modelID).Scan(&ok)
+	_ = s.routeDB().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mode_model_policies WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1) AND model_id=(SELECT id FROM models WHERE public_id=$2) AND enabled)`, modeID, modelID).Scan(&ok)
 	return ok
 }
 
 func (s *Store) recommendedModelID(ctx context.Context, modeID string) (string, error) {
-	ids, err := s.recommendedModelIDs(ctx, modeID)
+	return s.recommendedModelIDWithFallback(ctx, modeID, "")
+}
+
+func (s *Store) recommendedModelIDWithFallback(ctx context.Context, modeID, tokenFallback string) (string, error) {
+	ids, err := s.recommendedModelIDsWithFallback(ctx, modeID, tokenFallback)
 	if err != nil || len(ids) == 0 {
 		return "", errors.New("当前模式暂无可用模型")
 	}
@@ -921,26 +977,42 @@ func (s *Store) recommendedModelID(ctx context.Context, modeID string) (string, 
 }
 
 func (s *Store) recommendedModelIDs(ctx context.Context, modeID string) ([]string, error) {
-	rows, err := s.Pool.Query(ctx, `
+	return s.recommendedModelIDsWithFallback(ctx, modeID, "")
+}
+
+func (s *Store) recommendedModelIDsWithFallback(ctx context.Context, modeID, tokenFallback string) ([]string, error) {
+	tokenFallback = strings.TrimSpace(tokenFallback)
+	rows, err := s.routeDB().Query(ctx, `
 SELECT m.public_id
 FROM mode_model_policies p
 JOIN models m ON m.id=p.model_id AND m.enabled
 JOIN carriers c ON c.id=m.carrier_id AND c.enabled
-WHERE p.mode_id=(SELECT id FROM creation_modes WHERE public_id=$1) AND p.enabled
+WHERE p.mode_id=(SELECT id FROM creation_modes WHERE public_id=$1 AND status='published') AND p.enabled
   AND EXISTS (
     SELECT 1
     FROM supplier_executions execution
     JOIN supplier_model_bindings binding ON binding.id=execution.binding_id
       AND binding.model_id=m.id AND binding.enabled AND binding.status='active'
     JOIN suppliers supplier ON supplier.id=binding.supplier_id
-      AND supplier.enabled AND supplier.token_encrypted <> ''
+      AND supplier.enabled
+      AND supplier.status NOT IN ('disabled', 'unavailable', 'degraded')
+      AND (supplier.token_encrypted <> '' OR (LOWER(supplier.code)='autodl' AND $2 <> ''))
     JOIN supplier_cost_rules cost ON cost.execution_id=execution.id
       AND cost.status='active'
       AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
       AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
+    JOIN retail_price_rules retail ON retail.mode_id=execution.mode_id AND retail.model_id IS NULL
+      AND retail.resolution=cost.resolution AND retail.generate_audio=cost.generate_audio
+      AND retail.status='active'
+      AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
+      AND (retail.effective_to IS NULL OR retail.effective_to > NOW())
+      AND execution.resolutions ? retail.resolution
+      AND (NOT retail.generate_audio OR execution.supports_generated_audio)
     WHERE execution.mode_id=p.mode_id
-      AND execution.enabled AND execution.health_status <> 'unavailable'
+      AND execution.enabled AND execution.health_status NOT IN ('degraded', 'unavailable')
       AND execution.quota_status NOT IN ('unavailable', 'exhausted')
+      AND execution.execution_type='workflow'
+      AND execution.adapter_code='autodl_h3_v1'
   )
   AND EXISTS (
     SELECT 1 FROM retail_price_rules retail
@@ -949,7 +1021,7 @@ WHERE p.mode_id=(SELECT id FROM creation_modes WHERE public_id=$1) AND p.enabled
       AND (retail.effective_to IS NULL OR retail.effective_to > NOW())
   )
 GROUP BY m.public_id
-ORDER BY MIN(p.recommendation_rank), m.public_id`, modeID)
+ORDER BY MIN(p.recommendation_rank), m.public_id`, modeID, tokenFallback)
 	if err != nil {
 		return nil, err
 	}
@@ -1071,6 +1143,15 @@ func offeringMatches(offering SupplierOffering, in QuoteInput) bool {
 	if in.GenerateAudio && !offering.SupportsGeneratedAudio {
 		return false
 	}
+	// A configured minimum is a hard capability requirement. Treat an absent
+	// reference list as zero so estimates cannot route a multi-image request to
+	// an execution that will reject it later during submission.
+	if offering.MinImages > 0 && in.ImageCount < offering.MinImages {
+		return false
+	}
+	if offering.MaxImages > 0 && in.ImageCount > offering.MaxImages {
+		return false
+	}
 	return includes(offering.Resolutions, in.Resolution) && includes(offering.AspectRatios, in.AspectRatio)
 }
 
@@ -1082,11 +1163,13 @@ func (s *Store) hasBillableOfferingPair(ctx context.Context, modeID, modelID, of
 SELECT EXISTS(
   SELECT 1
   FROM supplier_cost_rules cost
-	JOIN supplier_offerings offering ON offering.id=cost.offering_id
+	JOIN supplier_executions execution ON execution.id=cost.execution_id
+	JOIN supplier_model_bindings binding ON binding.id=execution.binding_id
+	JOIN models model ON model.id=binding.model_id AND model.public_id=$2
   JOIN retail_price_rules retail ON retail.mode_id=(SELECT id FROM creation_modes WHERE public_id=$1)
     AND retail.model_id IS NULL
     AND retail.resolution=$4 AND retail.generate_audio=$5
-	WHERE (offering.public_id=$3 OR EXISTS (SELECT 1 FROM supplier_executions execution WHERE execution.public_id=$3 AND execution.id=cost.execution_id))
+	WHERE execution.public_id=$3 AND execution.mode_id=retail.mode_id
     AND cost.resolution=$4 AND cost.generate_audio=$5
     AND cost.status='active' AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
     AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
@@ -1100,26 +1183,41 @@ SELECT EXISTS(
 // the historical pricing table, it only considers combinations that can be
 // quoted and executed by the current creation catalog.
 func (s *Store) CheapestAvailableRetailPrice(ctx context.Context) (float64, bool, error) {
+	return s.CheapestAvailableRetailPriceWithFallback(ctx, "")
+}
+
+// CheapestAvailableRetailPriceWithFallback is the overview-only reference
+// price for the same execution catalog used by direct routing. The fallback
+// token is intentionally limited to the configured AutoDL environment token;
+// it is never returned to the client.
+func (s *Store) CheapestAvailableRetailPriceWithFallback(ctx context.Context, tokenFallback string) (float64, bool, error) {
+	tokenFallback = strings.TrimSpace(tokenFallback)
 	var price *float64
 	err := s.Pool.QueryRow(ctx, `
 SELECT MIN(retail.price_per_sec::float8)
 FROM retail_price_rules retail
 JOIN creation_modes mode ON mode.id=retail.mode_id AND mode.status='published'
-JOIN models model ON model.enabled
+JOIN supplier_executions execution ON execution.mode_id=mode.id
+  AND execution.enabled AND execution.health_status NOT IN ('degraded', 'unavailable')
+  AND execution.quota_status NOT IN ('unavailable', 'exhausted')
+  AND execution.adapter_code='autodl_h3_v1'
+  AND execution.execution_type='workflow'
+  AND execution.resolutions ? retail.resolution
+  AND (NOT retail.generate_audio OR execution.supports_generated_audio)
+JOIN supplier_model_bindings binding ON binding.id=execution.binding_id AND binding.enabled AND binding.status='active'
+JOIN models model ON model.id=binding.model_id AND model.enabled
 JOIN carriers carrier ON carrier.id=model.carrier_id AND carrier.enabled
 JOIN mode_model_policies policy ON policy.mode_id=mode.id AND policy.model_id=model.id AND policy.enabled
-JOIN supplier_offerings offering ON offering.mode_id=mode.id AND offering.model_id=model.id
-  AND offering.enabled AND offering.health_status <> 'unavailable' AND offering.adapter_code='autodl_h3_v1'
-  AND offering.resolutions ? retail.resolution
-  AND (NOT retail.generate_audio OR offering.supports_generated_audio)
-JOIN suppliers supplier ON supplier.id=offering.supplier_id AND supplier.enabled AND supplier.token_encrypted <> ''
-	JOIN supplier_cost_rules cost ON (cost.offering_id=offering.id OR cost.execution_id IN (SELECT id FROM supplier_executions WHERE legacy_offering_id=offering.id)) AND cost.resolution=retail.resolution
+JOIN suppliers supplier ON supplier.id=binding.supplier_id AND supplier.enabled
+  AND supplier.status NOT IN ('disabled', 'unavailable', 'degraded')
+	JOIN supplier_cost_rules cost ON cost.execution_id=execution.id AND cost.resolution=retail.resolution
   AND cost.generate_audio=retail.generate_audio AND cost.status='active'
   AND (cost.effective_from IS NULL OR cost.effective_from <= NOW())
   AND (cost.effective_to IS NULL OR cost.effective_to > NOW())
 WHERE retail.model_id IS NULL AND retail.status='active'
   AND (retail.effective_from IS NULL OR retail.effective_from <= NOW())
-  AND (retail.effective_to IS NULL OR retail.effective_to > NOW())`).Scan(&price)
+  AND (retail.effective_to IS NULL OR retail.effective_to > NOW())
+  AND (supplier.token_encrypted <> '' OR (LOWER(supplier.code)='autodl' AND $1 <> ''))`, tokenFallback).Scan(&price)
 	if err != nil {
 		return 0, false, err
 	}
@@ -1171,7 +1269,7 @@ func (s *Store) findSupplierCost(ctx context.Context, offeringID, resolution str
 	var id, version string
 	var peak, off float64
 	var databaseNow time.Time
-	err := s.Pool.QueryRow(ctx, `
+	err := s.routeDB().QueryRow(ctx, `
 SELECT public_id, version, price_per_sec_peak::float8, price_per_sec_offpeak::float8, NOW()
 FROM supplier_cost_rules
 WHERE (execution_id=(SELECT id FROM supplier_executions WHERE public_id=$1)
@@ -1294,17 +1392,20 @@ ORDER BY carrier.sort_order, model.sort_order, mode.sort_order, policy.recommend
 
 func (s *Store) ListSupplierOfferings(ctx context.Context) ([]SupplierOffering, error) {
 	rows, err := s.Pool.Query(ctx, `
-SELECT o.public_id, supplier.public_id, supplier.code, supplier.name, supplier.base_url, supplier.auth_header,
+SELECT execution.public_id, COALESCE(o.public_id,''), supplier.public_id, supplier.code, supplier.name, supplier.base_url, supplier.auth_header,
        model.public_id, model.code, model.name, carrier.name, mode.public_id, mode.code, mode.name,
-       o.name, o.upstream_workflow_id, o.execution_type, o.api_model_code, o.api_version, o.workflow_code, o.adapter_code, o.enabled, o.health_status, o.quota_status, o.priority,
-       o.min_duration_sec, o.max_duration_sec, o.resolutions, o.aspect_ratios, o.min_images, o.max_images,
-       o.supports_generated_audio
-FROM supplier_offerings o
-JOIN suppliers supplier ON supplier.id=o.supplier_id
-JOIN models model ON model.id=o.model_id
+       COALESCE(o.name, NULLIF(execution.workflow_code,''), NULLIF(execution.api_model_code,''), model.name),
+       COALESCE(o.upstream_workflow_id, execution.workflow_code), execution.execution_type, execution.api_model_code, execution.api_version, execution.workflow_code, execution.adapter_code, execution.enabled, execution.health_status, execution.quota_status, execution.priority,
+       execution.min_duration_sec, execution.max_duration_sec, execution.resolutions, execution.aspect_ratios, execution.min_images, execution.max_images,
+       execution.supports_generated_audio
+FROM supplier_executions execution
+JOIN supplier_model_bindings binding ON binding.id=execution.binding_id
+JOIN suppliers supplier ON supplier.id=binding.supplier_id
+JOIN models model ON model.id=binding.model_id
 JOIN carriers carrier ON carrier.id=model.carrier_id
-JOIN creation_modes mode ON mode.id=o.mode_id
-ORDER BY supplier.code, model.code, mode.sort_order, o.priority, o.public_id`)
+JOIN creation_modes mode ON mode.id=execution.mode_id
+LEFT JOIN supplier_offerings o ON o.id=execution.legacy_offering_id
+ORDER BY supplier.code, model.code, mode.sort_order, execution.priority, execution.public_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1313,12 +1414,13 @@ ORDER BY supplier.code, model.code, mode.sort_order, o.priority, o.public_id`)
 	for rows.Next() {
 		var item SupplierOffering
 		var resRaw, aspectRaw []byte
-		if err := rows.Scan(&item.ID, &item.SupplierID, &item.SupplierCode, &item.SupplierName, &item.SupplierBaseURL, &item.SupplierAuthHeader,
+		if err := rows.Scan(&item.ID, &item.LegacyOfferingID, &item.SupplierID, &item.SupplierCode, &item.SupplierName, &item.SupplierBaseURL, &item.SupplierAuthHeader,
 			&item.ModelID, &item.ModelCode, &item.ModelName, &item.CarrierName, &item.ModeID, &item.ModeCode, &item.ModeName,
 			&item.Name, &item.UpstreamWorkflowID, &item.ExecutionType, &item.APIModelCode, &item.APIVersion, &item.WorkflowCode, &item.AdapterCode, &item.Enabled, &item.HealthStatus, &item.QuotaStatus, &item.Priority,
 			&item.MinDurationSec, &item.MaxDurationSec, &resRaw, &aspectRaw, &item.MinImages, &item.MaxImages, &item.SupportsGeneratedAudio); err != nil {
 			return nil, err
 		}
+		item.ExecutionID = item.ID
 		_ = json.Unmarshal(resRaw, &item.Resolutions)
 		_ = json.Unmarshal(aspectRaw, &item.AspectRatios)
 		items = append(items, item)
@@ -1457,11 +1559,23 @@ func (s *Store) UpdateSupplierOffering(ctx context.Context, offeringID string, i
 	current.Enabled, current.Priority, current.MinImages, current.MaxImages, current.SupportsGeneratedAudio = in.Enabled, in.Priority, in.MinImages, in.MaxImages, in.SupportsGeneratedAudio
 	resRaw, _ := json.Marshal(current.Resolutions)
 	aspectRaw, _ := json.Marshal(current.AspectRatios)
+	legacyID := current.LegacyOfferingID
+	if legacyID == "" {
+		_, err = s.Pool.Exec(ctx, `UPDATE supplier_executions SET execution_type=$1, api_model_code=$2, api_version=$3, workflow_code=$4, adapter_code=$5, enabled=$6,
+	health_status=$7, priority=$8, min_duration_sec=$9, max_duration_sec=$10, resolutions=$11::jsonb, aspect_ratios=$12::jsonb,
+	min_images=$13, max_images=$14, supports_generated_audio=$15, updated_at=NOW() WHERE public_id=$16`,
+			current.ExecutionType, current.APIModelCode, current.APIVersion, current.WorkflowCode, current.AdapterCode, current.Enabled, current.HealthStatus, current.Priority,
+			current.MinDurationSec, current.MaxDurationSec, string(resRaw), string(aspectRaw), current.MinImages, current.MaxImages, current.SupportsGeneratedAudio, current.ID)
+		if err != nil {
+			return nil, err
+		}
+		return s.GetSupplierOfferingExecution(ctx, current.ID)
+	}
 	_, err = s.Pool.Exec(ctx, `UPDATE supplier_offerings SET name=$1, upstream_workflow_id=$2, execution_type=$3, api_model_code=$4, api_version=$5, workflow_code=$6, adapter_code=$7, enabled=$8,
 health_status=$9, priority=$10, min_duration_sec=$11, max_duration_sec=$12, resolutions=$13::jsonb, aspect_ratios=$14::jsonb,
 min_images=$15, max_images=$16, supports_generated_audio=$17, updated_at=NOW() WHERE public_id=$18`,
 		current.Name, current.UpstreamWorkflowID, current.ExecutionType, current.APIModelCode, current.APIVersion, current.WorkflowCode, current.AdapterCode, current.Enabled, current.HealthStatus, current.Priority,
-		current.MinDurationSec, current.MaxDurationSec, string(resRaw), string(aspectRaw), current.MinImages, current.MaxImages, current.SupportsGeneratedAudio, offeringID)
+		current.MinDurationSec, current.MaxDurationSec, string(resRaw), string(aspectRaw), current.MinImages, current.MaxImages, current.SupportsGeneratedAudio, legacyID)
 	if err != nil {
 		return nil, err
 	}
@@ -1469,19 +1583,20 @@ min_images=$15, max_images=$16, supports_generated_audio=$17, updated_at=NOW() W
 workflow_code=o.workflow_code, adapter_code=o.adapter_code, enabled=o.enabled, health_status=o.health_status, priority=o.priority,
 min_duration_sec=o.min_duration_sec, max_duration_sec=o.max_duration_sec, resolutions=o.resolutions, aspect_ratios=o.aspect_ratios,
 min_images=o.min_images, max_images=o.max_images, supports_generated_audio=o.supports_generated_audio, updated_at=NOW()
-FROM supplier_offerings o WHERE e.legacy_offering_id=o.id AND o.public_id=$1`, offeringID)
+FROM supplier_offerings o WHERE e.legacy_offering_id=o.id AND o.public_id=$1`, legacyID)
 	if err != nil {
 		return nil, err
 	}
-	return s.GetSupplierOfferingExecution(ctx, offeringID)
+	return s.GetSupplierOfferingExecution(ctx, legacyID)
 }
 
 func (s *Store) ListSupplierCostRules(ctx context.Context) ([]SupplierCostRule, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT cost.public_id, offering.public_id, COALESCE(execution.public_id,''), cost.resolution, cost.generate_audio,
+	rows, err := s.Pool.Query(ctx, `SELECT cost.public_id, COALESCE(offering.public_id,''), COALESCE(execution.public_id,''), cost.resolution, cost.generate_audio,
 cost.price_per_sec_peak::float8, cost.price_per_sec_offpeak::float8, cost.currency, cost.version, cost.status
-FROM supplier_cost_rules cost JOIN supplier_offerings offering ON offering.id=cost.offering_id
+FROM supplier_cost_rules cost
+LEFT JOIN supplier_offerings offering ON offering.id=cost.offering_id
 LEFT JOIN supplier_executions execution ON execution.id=cost.execution_id
-ORDER BY offering.public_id, cost.resolution, cost.generate_audio`)
+ORDER BY COALESCE(execution.public_id, offering.public_id), cost.resolution, cost.generate_audio`)
 	if err != nil {
 		return nil, err
 	}
@@ -1498,7 +1613,7 @@ ORDER BY offering.public_id, cost.resolution, cost.generate_audio`)
 }
 
 func (s *Store) UpsertSupplierCostRule(ctx context.Context, in SupplierCostRule) (*SupplierCostRule, error) {
-	if in.OfferingID == "" || in.Resolution == "" || in.PeakPerSecond < 0 || in.OffpeakPerSecond < 0 {
+	if in.ExecutionID == "" && in.OfferingID == "" || in.Resolution == "" || in.PeakPerSecond < 0 || in.OffpeakPerSecond < 0 {
 		return nil, errors.New("成本规则参数不合法")
 	}
 	if in.Status == "" {
@@ -1511,13 +1626,44 @@ func (s *Store) UpsertSupplierCostRule(ctx context.Context, in SupplierCostRule)
 		in.ID = NewPriceID()
 	}
 	in.Version = fmt.Sprintf("v%d", time.Now().UnixNano())
-	_, err := s.Pool.Exec(ctx, `
-INSERT INTO supplier_cost_rules (public_id, offering_id, execution_id, resolution, generate_audio, price_per_sec_peak, price_per_sec_offpeak, currency, version, status)
-SELECT $1, offering.id, execution.id, $3, $4, $5, $6, $7, $8, $9 FROM supplier_offerings offering
-LEFT JOIN supplier_executions execution ON execution.legacy_offering_id=offering.id WHERE offering.public_id=$2
-ON CONFLICT (offering_id, resolution, generate_audio) DO UPDATE SET price_per_sec_peak=EXCLUDED.price_per_sec_peak,
-price_per_sec_offpeak=EXCLUDED.price_per_sec_offpeak, execution_id=EXCLUDED.execution_id, currency=EXCLUDED.currency, version=EXCLUDED.version, status=EXCLUDED.status, updated_at=NOW()`,
-		in.ID, in.OfferingID, in.Resolution, in.GenerateAudio, in.PeakPerSecond, in.OffpeakPerSecond, in.Currency, in.Version, in.Status)
+	var executionInternalID, offeringInternalID int64
+	if in.ExecutionID != "" {
+		if err := s.Pool.QueryRow(ctx, `SELECT execution.id, COALESCE(execution.legacy_offering_id,0) FROM supplier_executions execution WHERE execution.public_id=$1`, in.ExecutionID).Scan(&executionInternalID, &offeringInternalID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
+		if offeringInternalID > 0 {
+			_ = s.Pool.QueryRow(ctx, `SELECT public_id FROM supplier_offerings WHERE id=$1`, offeringInternalID).Scan(&in.OfferingID)
+		}
+	} else {
+		if err := s.Pool.QueryRow(ctx, `SELECT offering.id, COALESCE(execution.id,0), COALESCE(execution.public_id,'') FROM supplier_offerings offering LEFT JOIN supplier_executions execution ON execution.legacy_offering_id=offering.id WHERE offering.public_id=$1`, in.OfferingID).Scan(&offeringInternalID, &executionInternalID, &in.ExecutionID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
+	}
+	var existingID string
+	if executionInternalID > 0 {
+		err := s.Pool.QueryRow(ctx, `SELECT public_id FROM supplier_cost_rules WHERE execution_id=$1 AND resolution=$2 AND generate_audio=$3`, executionInternalID, in.Resolution, in.GenerateAudio).Scan(&existingID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+	} else {
+		err := s.Pool.QueryRow(ctx, `SELECT public_id FROM supplier_cost_rules WHERE offering_id=$1 AND resolution=$2 AND generate_audio=$3`, offeringInternalID, in.Resolution, in.GenerateAudio).Scan(&existingID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+	}
+	var err error
+	if existingID != "" {
+		_, err = s.Pool.Exec(ctx, `UPDATE supplier_cost_rules SET price_per_sec_peak=$1, price_per_sec_offpeak=$2, execution_id=NULLIF($3,0), currency=$4, version=$5, status=$6, updated_at=NOW() WHERE public_id=$7`, in.PeakPerSecond, in.OffpeakPerSecond, executionInternalID, in.Currency, in.Version, in.Status, existingID)
+		in.ID = existingID
+	} else {
+		_, err = s.Pool.Exec(ctx, `INSERT INTO supplier_cost_rules (public_id, offering_id, execution_id, resolution, generate_audio, price_per_sec_peak, price_per_sec_offpeak, currency, version, status) VALUES ($1, NULLIF($2,0), NULLIF($3,0), $4, $5, $6, $7, $8, $9, $10)`, in.ID, offeringInternalID, executionInternalID, in.Resolution, in.GenerateAudio, in.PeakPerSecond, in.OffpeakPerSecond, in.Currency, in.Version, in.Status)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1526,7 +1672,7 @@ price_per_sec_offpeak=EXCLUDED.price_per_sec_offpeak, execution_id=EXCLUDED.exec
 		return nil, err
 	}
 	for i := range items {
-		if items[i].OfferingID == in.OfferingID && items[i].Resolution == in.Resolution && items[i].GenerateAudio == in.GenerateAudio {
+		if ((in.ExecutionID != "" && items[i].ExecutionID == in.ExecutionID) || (in.ExecutionID == "" && items[i].OfferingID == in.OfferingID)) && items[i].Resolution == in.Resolution && items[i].GenerateAudio == in.GenerateAudio {
 			return &items[i], nil
 		}
 	}
@@ -1574,9 +1720,8 @@ func (s *Store) UpsertRetailPriceRule(ctx context.Context, in RetailPriceRule) (
 	err := s.Pool.QueryRow(ctx, `
 SELECT retail.public_id FROM retail_price_rules retail
 JOIN creation_modes mode ON mode.id=retail.mode_id
-	LEFT JOIN models model ON model.id=retail.model_id
-	WHERE mode.public_id=$1 AND retail.model_id IS NULL AND retail.resolution=$3 AND retail.generate_audio=$4
-ORDER BY retail.updated_at DESC LIMIT 1`, in.ModeID, in.ModelID, in.Resolution, in.GenerateAudio).Scan(&existingID)
+	WHERE mode.public_id=$1 AND retail.model_id IS NULL AND retail.resolution=$2 AND retail.generate_audio=$3
+ORDER BY retail.updated_at DESC LIMIT 1`, in.ModeID, in.Resolution, in.GenerateAudio).Scan(&existingID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
@@ -1586,9 +1731,9 @@ ORDER BY retail.updated_at DESC LIMIT 1`, in.ModeID, in.ModelID, in.Resolution, 
 		in.ID = NewPriceID()
 		_, err = s.Pool.Exec(ctx, `
 		INSERT INTO retail_price_rules (public_id, mode_id, model_id, resolution, generate_audio, name, price_per_sec, version, status)
-SELECT $1, mode.id, NULLIF($3,''), $4, $5, $6, $7, $8, $9 FROM creation_modes mode
+SELECT $1, mode.id, NULL::bigint, $3, $4, $5, $6, $7, $8 FROM creation_modes mode
 WHERE mode.public_id=$2`,
-			in.ID, in.ModeID, in.ModelID, in.Resolution, in.GenerateAudio, in.Name, in.PricePerSecond, in.Version, in.Status)
+			in.ID, in.ModeID, in.Resolution, in.GenerateAudio, in.Name, in.PricePerSecond, in.Version, in.Status)
 	}
 	if err != nil {
 		return nil, err

@@ -1,208 +1,134 @@
 # Sub2Video Design System
 
-This document is the single source of truth for the Sub2Video UI. Cursor,
-Codex, Copilot, and human contributors must read it before changing UI.
+This is the source of truth for Sub2Video visual decisions. Read it before changing UI.
 
-## Visual vs product IA
+## Current baseline: commercial studio (2026-09-25)
 
-Two sources, two jobs. Do not mix them.
+The user explicitly requested a redesign referencing 小云雀、可灵 AI、有戏 AI, replacing the earlier generic dashboard styling. The current visual baseline is [studio-redesign.html](./studio-redesign.html); exported design images cover creation, overview, administration and mobile. [studio-redesign.md](./studio-redesign.md) records the research, decisions and acceptance criteria.
 
-| Concern | Source of truth | Do not |
+The earlier files under docs/原型设计 are retained as historical prototypes. Their indigo/emerald palette, rain animation and dashboard metric recipes are superseded by this baseline. Do not combine the old and new visual languages.
+
+Product menus, routes, task/order/asset boundaries and business contracts remain unchanged. User-facing names remain 首页概览、创作、广场、任务、资产、回收站、钱包、帮助与工单. Do not add subscriptions, agents, API keys or features merely because a reference product has them.
+
+The connected creator journey is defined in [creator-journey.html](./creator-journey.html) and [creator-journey.md](./creator-journey.md). The public product homepage `/` and editorial tutorial `/guides/:id` precede the authenticated workspace. `/app/overview` remains the private overview. 广场 now lists the same clearly labelled editorial tutorials; generic sample videos are not presented as generated case studies.
+
+## One language, two surfaces
+
+Client: a dark creator workspace focused on input materials, video results and iteration.
+Admin: a light operational workspace focused on configuration, readable data, filtering and edits.
+
+Both surfaces use the same typography, wordmark, warm amber brand family, icon language, spacing, control recipes and status meanings. A difference in working background must not become two unrelated brands.
+
+| Token | Client | Admin / light baseline |
 | --- | --- | --- |
-| Color, type, radius, shadow, density, chrome | `docs/原型设计/sub2video-client.html` and `docs/原型设计/sub2video-admin.html` | Invent a third visual language |
-| Menus, routes, works/assets object model | `docs/产品方案总览.md` | Copy HTML-only names (创作台 / 作品集) into Vue |
+| Canvas | 20 22 22 | 245 246 244 |
+| Surface | 27 30 28 | 255 255 255 |
+| Ink | 244 244 240 | 37 44 38 |
+| Body | 216 222 216 | 54 63 56 |
+| Muted | 162 170 166 | 100 112 103 |
+| Line | 50 56 50 | 219 226 216 |
+| Primary | 232 185 129 | 132 88 43 |
+| Primary foreground | 37 34 28 | 255 255 255 |
+| Card radius | 12px | 12px |
+| Control / nav radius | 8px | 8px |
 
-The HTML files are visual baselines only. Production pages are Vue. Keep product
-IA (创作 / 广场 / 任务 / 资产 / 回收站) even while matching HTML chrome, type,
-and component recipes.
+Brand accent is reserved for the principal action, selected navigation and focus. Statuses use semantic success/warning/danger tokens. Do not reuse brand color for success. Media overlays use a separate dark media-overlay token; ink becomes light in the client and cannot be used as a black overlay.
 
-## AI change checklist
+Use neutral surfaces, fine borders, little or no shadow. No ornamental neon gradients, sparkle icons on every action, fake badges, decorative canvas animation or repeated containers inside containers. Image/video content supplies the visual richness.
 
-```text
-1. Menu / route / works·assets model → 产品方案总览.md (never the HTML sidebar)
-2. Color / font / radius / shadow / spacing → tokens.css (values from the HTML)
-3. Button / card / nav item / page header / dialog / toast → shared/ui
-4. One-off business chrome → features
-5. Columns, order, max-width → widgets / pages (layout utilities only)
-```
+## Typography and layout
 
-Before editing UI: read this file, then the matching HTML surface. After a
-recipe-level visual change, update Playwright snapshots in the same change and
-name the HTML baseline in the review.
+- Source Han Sans SC for reading; Inter for the wordmark; JetBrains Mono selectively for money and IDs.
+- Keep self-hosted fonts under frontend/public/fonts. Use existing system CJK fallbacks when a subset lacks a character.
+- Page title: 25px / 500 on desktop, 22px on mobile. Section title: 15–16px / 500.
+- Main controls and reading text: 13–14px; auxiliary labels: 11–12px. Avoid long text at 10px.
+- Desktop header: 64px. Sidebar: 200px. Workspace content uses a fluid 24–40px horizontal gutter and a 1760px maximum; center it within the area remaining after the sidebar. Reserve scrollbars on both edges to keep that axis stable.
+- Client nav row: 42px; admin nav row: 36px. Primary touch actions: at least 44px.
+- Mobile header: 56px; 16px content gutters. Client retains bottom navigation with safe-area padding.
+- Minimum supported width: 320px. Mobile drawers must close on navigation and Escape.
+- Admin data tables scroll inside their container; never squeeze seven columns into vertical text.
 
-## Product Surfaces
+### Responsive alignment refinement (2026-09-29)
 
-- Client: creator workflow, plaza, tasks, project files, trash, wallet, support, and profile.
-- Admin: workflow supply, providers, pricing, tasks, users, support, and system
-  operations.
-- Client and admin use separate layouts and route namespaces. They share
-  primitives, but not navigation or page responsibilities.
+Borrow Xiaomi's disciplined alignment, generous media scale and simple hierarchy, while retaining Sub2Video's brand, truthful media labels and existing palette. Header, hero, section grids and footer share one outer content axis. Public content uses the same 1760px ceiling and fluid gutter; do not mix a separately translated viewport-width hero with a narrow body. Homepage headline and actions are centered; tutorial/process/FAQ sections use balanced columns. Long reading text keeps a local line-length limit rather than narrowing the entire page.
 
-## Visual Language
+Workspace pages are named inline-size containers. Creation changes to a single column when actual content width is at most 840px; results and asset folders collapse based on their available area, not only viewport width. This prevents a desktop sidebar plus an internal sidebar or three narrow cards at tablet widths. Keep input before preview on phones, 16px outer gutters and clearance for the bottom navigation/safe area. Grid symmetry means consistent axes and spacing, not forcing forms and video previews to identical widths.
 
-Compact frosted white top bar (`h-14`, `bg-white/95`, `backdrop-blur-md`), white
-240px sidebar, soft slate canvas (`slate-50/70`), fine `slate-200/80` borders,
-micro-shadows, dense information surfaces.
+Verify 320, 390, 768, 1024, 1440 and 1920px viewports. Check both geometry (alignment, overflow, usable controls) and actual screenshots; desktop/mobile snapshot baselines alone miss the tablet and wide-screen gaps.
 
-Client emphasis is indigo (`#4f46e5`). Admin emphasis is emerald (`#059669`).
-Health, online, and success states stay green on both surfaces. Do not show
-supplier, GPU, or cluster status in client or admin top-bar chrome. Supply
-metrics belong on admin monitoring pages, not the global header.
+## Core page composition
 
-### Typography
+### Creation
 
-UI reading type is self-hosted **Source Han Sans SC** (思源黑体简体), subset to
-product/UI glyphs as Regular (400) and Medium (500/600). Inter remains Latin-only
-for brand marks (`.s2v-latin`). Money, IDs, duration, resolution, GPU counts, and
-nav trailing tags use self-hosted JetBrains Mono (`.s2v-mono`).
+Desktop: an input column scaling from 320 to 420px on the left, flexible preview/results on the right. Mobile: mode and creation inputs precede the preview.
 
-```css
-/* Client / body: Source Han first, system CJK fallbacks. */
-font-family: "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB",
-  "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable Text",
-  "Segoe UI", sans-serif;
+Input sequence: fixed mode, required source materials, prompt, explicitly labelled settings, estimate and submit. Carrier/model remain visible preferences. Supplier, API/workflow, cost and upstream identifiers remain hidden.
 
-/* Admin: same Source Han stack, Segoe kept as Latin-friendly fallback. */
-font-family: "Source Han Sans SC", "Segoe UI Variable Text", "Segoe UI",
-  "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+Empty preview: explain the next step. An image is a reference preview, never a simulated movie. Show video controls only for an actual delivered video URL. Recent results come from API data and navigate to real task details.
 
-/* Brand Latin only. */
-font-family: Inter, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+Estimate states: waiting, calculating, available, failed. A missing estimate is never ¥0.00. Superseded responses must not overwrite the latest selection.
 
-font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-```
+### Overview and assets
 
-Self-host Source Han Sans SC, Inter, and JetBrains Mono under
-`frontend/public/fonts` with `font-display: swap`. Rebuild Source Han subsets
-with `frontend/scripts/subset_source_han.py` when UI copy gains new CJK glyphs.
-Do not paint the whole UI with Inter. Body line-height is **1.6**; page titles
-use weight **600**, not 700.
+Overview: three existing mode entrances, recent delivered video, active tasks, then compact balance/storage information. Modes use the real creation catalog for availability. No manufactured tasks or promotional statistics.
 
-### Token values (from the HTML, measured)
+Assets: project identity, file count and recent context; preserve current folder model and actions. Use actual covers when available or a clear folder treatment. Never use sample photos as a user's work.
 
-| Token | Value |
+### Public tutorials and delivery
+
+Public pages share the client tokens and wordmark. Use editorial headings, composition references, a small tutorial library and concrete preparation steps. Reference photos must be labelled as such, never as delivered video or verified generation results.
+
+The product homepage uses a wide film stage, three separate mode entrances, an editorial tutorial section, a four-step creation/delivery explanation and keyboard-accessible FAQ. Keep the hierarchy and imagery distinct from a dashboard. Public navigation targets `#modes`, `#guides` and `#process`; mode links preserve the selected mode through authentication without replacing an existing draft. Browsing public content must not request private workspace APIs or start estimates/tasks.
+
+The homepage reuses the self-hosted licensed reference footage described in [auth-entrance.md](./auth-entrance.md), with visible source/license credit. Desktop playback begins after first paint/load; mobile, reduced-motion and data-saving visitors see the poster until they choose to play. Pause when hidden or offscreen. A playback error retains the poster, retry control and working creation/tutorial links. Promotional copy must reflect shipped capabilities: individual video shots, current estimates, task delivery and external editing of a complete film. Do not invent prices, generated case studies, customer counts or available online payments.
+
+Tutorial links contain trusted editorial IDs only. Authentication preserves the internal destination. Existing drafts require explicit application before replacing prompt/settings. Actual capabilities come from the creation catalog; unavailable tutorial modes cannot silently switch to another mode. Images must be supplied by the creator.
+
+Successful submission opens `/app/works/:id`. Show an actual video only when the task has a ready delivery URL. Preserve download and save actions when browser playback fails; absence of a delivery URL is a distinct pending/unavailable state. Saving requires a chosen project and retains errors in the dialog. Open the returned folder through `/app/assets?project=...&folder=...`; the page must restore this location after refresh.
+
+### Administration
+
+Concise page heading, primary action, tabs/filters, records, pagination, modal editing. Remove decorative count cards where the list/tabs already answer the question. Internal supply/cost details remain administrator-only.
+
+### Login and registration
+
+`/auth/login` and `/auth/register` share a film-led entrance: a large left-hand media panel and a focused right-hand form on desktop, a compact media header above the form below 900px. Use the existing client neutrals, amber action, wordmark and control recipes; no floating dashboard card, fake social sign-in or decorative status metrics. See [auth-entrance.md](./auth-entrance.md).
+
+Self-host licensed footage and its poster. Keep visible authorship/license credit and identify reference footage honestly; it is not a generated result or customer case study. Muted playback has a visible pause control. Reduced-motion, data-saving and small-screen users start with the poster. Media failure never blocks authentication.
+
+Forms support native keyboard submission, password managers, password visibility and meaningful errors. Register only after public settings are loaded and registration is enabled; require explicit terms agreement. Preserve the internal destination across login/register, and distinguish an expired session from a temporary connection failure. A visually complete entrance does not establish backend, email delivery or commercial acceptance.
+
+## Ownership and implementation
+
+| Responsibility | Owner |
 | --- | --- |
-| Canvas | `248 250 252` at 70% (`slate-50/70`) |
-| Surface | `255 255 255` |
-| Ink | `15 23 42` (`slate-900`) for titles; body `30 41 59` (`slate-800`) |
-| Muted | `100 116 139` / labels `148 163 184` |
-| Line | `226 232 240` at 80% |
-| Client primary | `79 70 229` (`indigo-600`); active nav text `67 56 202` |
-| Admin primary | `5 150 105` (`emerald-600`); active nav text `4 120 87` |
-| Card radius | **16px** (`rounded-2xl`) |
-| Control radius | **8px** nav item / chips; **12px** buttons (`rounded-xl`) |
-| Nav item | height **36px**, icon slot **20px**, icon **16px**, label **13px** |
-| Page title | **20px** / `font-semibold` (600) |
-| Content | `max-w-6xl` (1152px), main padding 32px |
-| Micro-shadow | `0 1px 3px rgba(0,0,0,0.04), 0 1px 2px -1px rgba(0,0,0,0.02)` |
-| Top bar | 56px, frosted white, no solid slab |
+| Global values | shared/styles/tokens.css + tailwind.config.ts |
+| Shared chrome / button / nav / dialog recipes | shared/ui |
+| Domain visuals and behavior | features / entities |
+| Composition only | pages / widgets |
 
-`--s2v-radius` is the card radius (16px). Buttons use `rounded-xl` (12px). Nav
-items use `rounded-lg` (8px). Do not collapse these three into one number.
+Continue using Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind 3.4, Reka UI, tailwind-variants, cn(), and Lucide.
 
-### Token Ownership
+Pages may compose layout utilities. They must not define visual color/shadow/radius/button recipes. No arbitrary visual Tailwind values, !important, or feature-specific overrides of shared components. Add public component variants only when at least two surfaces need them.
 
-Design tokens define values, not component behavior. Component recipes decide
-how those values are used. Pages only compose components and layout.
+Feature CSS must be scoped by a feature root or unique namespace. Never rely on route CSS loading order. Dialogs and other portals inherit the current surface from the document root, including after client/admin navigation.
 
-| Decision | Owner | Examples |
-| --- | --- | --- |
-| Brand colors, type, radii, shadows | `shared/styles/tokens.css` and `tailwind.config.ts` | primary, canvas, card radius |
-| Button states and sizes | `shared/ui/S2VButton.vue` | primary, danger, loading |
-| Card density and emphasis | `shared/ui/S2VCard.vue` | default, metric, muted, highlight |
-| Nav item slot and badges | `shared/ui/S2VNavItem.vue` | active; live counts only |
-| Page header chrome | `shared/ui/S2VPageHeader.vue` | Chinese title + optional description; no English product tags |
-| List pagination | `shared/ui/S2VPagination.vue` | page + total; used by task, ticket, and ledger lists |
-| Dialog / toast | `shared/ui/S2VDialog.vue`, `S2VToast.vue` | confirm, success, danger |
-| Page grid and responsive composition | `widgets/` and `pages/` | columns, gaps, max width |
-| Product-specific special treatment | `features/` | upload card, task refund action |
+Existing legacy recipes in tokens.css are retained for unaffected components; place new component recipes in shared/ui or the owning feature rather than expanding that legacy block.
 
-## Themes
+## Truthful states and accessibility
 
-```html
-<div data-surface="client">
-<div data-surface="admin">
-```
+- All actionable controls have meaningful names and visible focus.
+- Upload, estimate, submission, preview, empty, loading and error states have distinct copy.
+- Balance, tasks and downloads come from APIs; no mock success in production pages.
+- Keep diagnostic supplier details out of client error messages.
+- Use proper video/image media, handle media failure, and preserve download/detail actions where supported.
+- Preserve keyboard interaction and Reka focus management in modals.
+- Design prototype photos and amounts are labelled examples; prototype is not a backend acceptance environment.
 
-Client tokens use indigo. Admin tokens use emerald. Shared components consume
-semantic `s2v-*` variables and do not branch on client/admin in templates.
-Success / online / GPU health always use `--s2v-success`, never `--s2v-primary`.
+## Verification
 
-## Closed components
+Every UI change must pass lint:check, typecheck, relevant interaction tests, desktop/mobile inspection, and visual regression when primitives/layout change.
 
-Use a shared component when the visual pattern repeats. Use a feature component
-when the behavior or content is product-specific. Do not expose arbitrary visual
-class overrides on shared components.
+Screenshots use deterministic fixtures and locally loaded fonts. Intentional baseline updates must be reviewed visually. Do not mask layout mistakes by increasing screenshot tolerances.
 
-Add a public variant only when at least two business surfaces use the same
-semantic state. One-off visual exceptions belong in a feature component.
-
-| Component | Recipe |
-| --- | --- |
-| `S2VButton` | `primary` is solid brand fill, no grey border, `font-bold`, micro-shadow. `secondary` is white + `slate-200` border + micro-shadow. `variant` is a real Vue prop. |
-| `S2VCard` | 16px radius, micro-shadow, `slate-200/80` border. `metric` is the overview stat cell; `compact` is a dense row. Pages must not pass `rounded-*`, `shadow-*`, `border-*`, `bg-*`, or `p-*`. |
-| `S2VProgress` | Shared track + primary fill. Pages pass a 0–100 value only. |
-| `S2VNavItem` | Only sidebar row. Height 36px, 20px icon slot, 13px label, 8px radius. Optional trailing `font-mono` tag. |
-| `S2VPageHeader` | Row with optional badge, 20px title, bottom border. Not eyebrow + 23px + long subcopy. |
-| `S2VBadge` | Small rounded square (`rounded`), not a full pill, except status dots. Use semantic tones. |
-| `S2VDialog` | Reka UI headless + frosted center modal. Destructive actions use this, not toast. |
-| `S2VToast` | Bottom-right system toast with success / warning / danger tones. |
-| `S2VInput` / `S2VSelect` / `S2VTextarea` | Shared control radius. Prefix/suffix slots for search. Pages must not draw raw inputs. |
-| `S2VSegmented` | Toolbar tab row (works / garden / tasks). |
-| `S2VChoice` | Selected option chip or recharge/ratio tile. |
-
-Preferred usage:
-
-```vue
-<S2VButton variant="primary" size="lg">开始生成</S2VButton>
-<S2VCard variant="metric">...</S2VCard>
-<S2VPageHeader badge="S2V Video Studio" title="欢迎回来，李维工作室" />
-```
-
-Avoid:
-
-```vue
-<button class="rounded-xl bg-indigo-600 px-4 py-2 text-white">...</button>
-<S2VCard class="border-2 border-dashed">...</S2VCard>
-```
-
-## Tailwind Rules
-
-- Tailwind is used inside shared and feature components, not as a page-level
-  visual language.
-- Pages may use layout utilities (`grid`, `flex`, `gap`, `max-w`, `overflow`).
-- Pages may not use raw color, shadow, border, radius, or control recipes.
-- No arbitrary visual values (`bg-[#...]`, `px-[...]`, `rounded-[...]`).
-- `@apply` is limited to global reset and shared focus utilities.
-- Class merging goes through `shared/lib/cn.ts`.
-- Never use `!important` for application UI.
-
-## Responsive Contract
-
-- Minimum supported width: 320px.
-- Desktop client/admin: 240px sidebar and 56px top bar.
-- Desktop nav / toolbar rows: **36px**. Do not stretch sidebar items to 44px.
-- Client mobile: top bar plus bottom navigation for overview, create, works,
-  wallet, and profile; secondary pages live in the mobile menu.
-- Admin mobile: top bar plus grouped drawer; no four-item bottom bar. Tables
-  become cards or explicit horizontal scroll regions.
-- Touch primary targets (bottom nav, main CTA) are at least 44px.
-- No page may introduce horizontal overflow.
-
-## UI Change Decision Tree
-
-1. Global brand or primitive value? Change tokens.
-2. Same component behavior everywhere? Change the shared component recipe.
-3. Repeated semantic state? Add a named variant.
-4. One business surface only? Create a feature component.
-5. Only layout/order/columns? Change the widget or page composition.
-
-## Visual Acceptance
-
-Playwright screenshots cover client/admin desktop (1440x900) and mobile
-(390x844). Use deterministic mock data, local fonts/assets, `document.fonts.ready`,
-and disable animations in the screenshot. Runtime UI still uses `badge-pulse` for
-GPU online; do not delete the animation to satisfy tests.
-
-Recipe-level alignment with the HTML baselines **must** update snapshots in the
-same change. Do not update snapshots only to hide an unintended drift.
+UI mocks establish layout and interaction contracts only. They do not verify PostgreSQL/Redis, supplier execution, wallet accounting, real delivery or commercial readiness.

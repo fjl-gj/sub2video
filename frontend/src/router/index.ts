@@ -1,12 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getAccessToken } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { authReturnPath } from '@/shared/lib/auth-redirect'
+import { getAuthSession, onAuthSessionChange } from '@/shared/lib/auth-session'
 
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior: (to) => to.hash ? { el: to.hash, top: 24 } : { top: 0 },
   routes: [
-    { path: '/', redirect: '/app/overview' },
+    { path: '/', component: () => import('@/layouts/PublicLayout.vue'), meta: { surface: 'client' }, children: [
+      { path: '', component: () => import('@/pages/public/ProductHomePage.vue'), meta: { title: '用镜头讲故事' } },
+      { path: 'guides/:id', component: () => import('@/pages/public/GuideDetailPage.vue'), meta: { title: '镜头教程' } },
+    ] },
     { path: '/login', redirect: '/auth/login' },
     { path: '/auth', component: () => import('@/layouts/AuthLayout.vue'), children: [
       { path: 'login', component: () => import('@/pages/auth/LoginPage.vue'), meta: { guest: true } },
@@ -54,23 +58,44 @@ router.beforeEach(async (to) => {
   const needsAuth = to.matched.some((r) => r.meta.requiresAuth)
   const needsAdmin = to.matched.some((r) => r.meta.requiresAdmin)
   const isGuest = to.matched.some((r) => r.meta.guest)
-  const hasToken = Boolean(getAccessToken())
   const auth = useAuthStore()
 
   if (!auth.bootstrapped) {
     await auth.bootstrap()
   }
 
-  if (needsAuth && !hasToken) {
-    return { path: '/auth/login', query: { redirect: to.fullPath } }
+  const authenticated = auth.isAuthenticated
+  if (needsAuth && !authenticated) {
+    const reason = auth.bootstrapError ? 'session-unavailable' : getAuthSession().reason === 'expired' ? 'session-expired' : undefined
+    return { path: '/auth/login', query: { redirect: authReturnPath(to.fullPath), reason } }
   }
   if (needsAdmin && auth.user?.role !== 'admin') {
     return '/app/overview'
   }
-  if (isGuest && hasToken && auth.isAuthenticated) {
-    return '/app/overview'
+  if (isGuest && authenticated) {
+    return authReturnPath(to.query.redirect)
   }
   return true
+})
+
+onAuthSessionChange((next, previous, source) => {
+  const current = router.currentRoute.value
+  // main.ts finishes bootstrap before installing the router. Until a protected
+  // route has actually mounted, its guard owns the initial redirect.
+  if (!current.matched.some((record) => record.meta.requiresAuth)) return
+  if (source === 'storage' && next.id !== previous.id && next.accessToken) {
+    // Another tab changed accounts. Reload private stores and re-check roles.
+    router.go(0)
+    return
+  }
+  if (!next.accessToken && (next.reason === 'expired' || next.reason === 'logout' || source === 'storage')) {
+    void router.replace({
+      path: '/auth/login',
+      query: source === 'local' && next.reason === 'logout' ? {} : {
+        redirect: authReturnPath(current.fullPath), reason: next.reason === 'expired' ? 'session-expired' : 'session-ended',
+      },
+    })
+  }
 })
 
 export default router

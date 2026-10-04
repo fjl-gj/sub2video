@@ -1,0 +1,6 @@
+.s2v-catalog table { min-width: 760px; border-collapse: collapse; }
+.s2v-catalog th { white-space: nowrap; }
+.s2v-catalog td { vertical-align: middle; }
+.s2v-catalog td:first-child { overflow-wrap: anywhere; }
+.s2v-catalog tbody tr:hover { background: rgb(var(--s2v-nav-hover) / .35); }
+.s2v-catalog .overflow-x-auto { scrollbar-width: thin; }

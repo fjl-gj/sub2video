@@ -20,7 +20,7 @@ test.describe('admin carrier catalog contracts', () => {
         }),
       })
     })
-    await page.route('**/api/v1/admin/carriers', async (route) => {
+    await page.route('**/api/v1/admin/carriers**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -30,13 +30,13 @@ test.describe('admin carrier catalog contracts', () => {
         }),
       })
     })
-    await page.route('**/api/v1/admin/creation-modes', async (route) => {
+    await page.route('**/api/v1/admin/creation-modes**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) })
     })
-    await page.route('**/api/v1/admin/model-configurations', async (route) => {
+    await page.route('**/api/v1/admin/model-configurations**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) })
     })
-    await page.route('**/api/v1/admin/retail-pricing', async (route) => {
+    await page.route('**/api/v1/admin/retail-pricing**', async (route) => {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',

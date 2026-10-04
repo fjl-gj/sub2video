@@ -57,34 +57,56 @@
 @tailwind utilities;
 
 :root {
-  --s2v-canvas: 248 250 252;
+  --s2v-canvas: 245 246 244;
   --s2v-surface: 255 255 255;
-  --s2v-ink: 15 23 42;
-  --s2v-body: 30 41 59;
-  --s2v-muted: 100 116 139;
-  --s2v-label: 148 163 184;
-  --s2v-nav: 71 85 105;
-  --s2v-nav-hover: 241 245 249;
-  --s2v-line: 226 232 240;
-  --s2v-line-strong: 203 213 225;
-  --s2v-primary: 79 70 229;
-  --s2v-primary-hover: 67 56 202;
-  --s2v-primary-soft: 238 242 255;
-  --s2v-primary-accent: 99 102 241;
+  --s2v-ink: 37 44 38;
+  --s2v-body: 54 63 56;
+  --s2v-muted: 100 112 103;
+  --s2v-label: 111 122 113;
+  --s2v-nav: 84 96 87;
+  --s2v-nav-hover: 235 239 233;
+  --s2v-line: 219 226 216;
+  --s2v-line-strong: 184 196 181;
+  --s2v-primary: 132 88 43;
+  --s2v-primary-hover: 104 66 28;
+  --s2v-primary-soft: 246 238 224;
+  --s2v-primary-accent: 159 111 62;
+  --s2v-primary-foreground: 255 255 255;
+  --s2v-media-overlay: 12 15 13;
   --s2v-success: 5 150 105;
   --s2v-warning: 180 83 9;
   --s2v-danger: 225 29 72;
-  --s2v-radius: 16px;
-  --s2v-radius-control: 12px;
+  --s2v-radius: 12px;
+  --s2v-radius-control: 8px;
   --s2v-radius-nav: 8px;
-  --s2v-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02);
+  --s2v-layout-max: 1760px;
+  --s2v-layout-gutter: clamp(24px, 2.25vw, 40px);
+  --s2v-layout-gutter-mobile: 16px;
+  --s2v-layout-gap: 24px;
+  --s2v-shadow: 0 1px 2px rgba(20, 30, 20, 0.025);
 }
 
-[data-surface='admin'] {
-  --s2v-primary: 5 150 105;
-  --s2v-primary-hover: 4 120 87;
-  --s2v-primary-soft: 236 253 245;
-  --s2v-primary-accent: 20 184 166;
+[data-surface='client'] {
+  color-scheme: dark;
+  --s2v-canvas: 20 22 22;
+  --s2v-surface: 27 30 28;
+  --s2v-ink: 244 244 240;
+  --s2v-body: 216 222 216;
+  --s2v-muted: 162 170 166;
+  --s2v-label: 147 158 149;
+  --s2v-nav: 180 189 182;
+  --s2v-nav-hover: 40 47 41;
+  --s2v-line: 50 56 50;
+  --s2v-line-strong: 77 90 78;
+  --s2v-primary: 232 185 129;
+  --s2v-primary-hover: 246 206 161;
+  --s2v-primary-soft: 54 47 37;
+  --s2v-primary-accent: 207 163 111;
+  --s2v-primary-foreground: 37 34 28;
+  --s2v-success: 142 195 155;
+  --s2v-warning: 230 187 115;
+  --s2v-danger: 245 152 147;
+  --s2v-shadow: none;
 }
 
 @layer base {

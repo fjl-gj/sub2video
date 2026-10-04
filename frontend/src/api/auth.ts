@@ -1,4 +1,6 @@
-import { clearTokens, http, setTokens } from '@/api/http'
+import { CanceledError } from 'axios'
+import { http } from '@/api/http'
+import { beginAuthentication, getAuthSession, invalidateAuthSession, updateAuthTokens } from '@/shared/lib/auth-session'
 
 export type AuthUser = {
   id: string
@@ -28,9 +30,10 @@ export type PublicSettings = {
 }
 
 export async function loginApi(email: string, password: string) {
+  const session = beginAuthentication()
   const { data } = await http.post<AuthResponse>('/auth/login', { email, password })
-  setTokens(data.token.accessToken, data.token.refreshToken)
-  return data
+  if (!updateAuthTokens(session, data.token, 'authenticated')) throw new CanceledError('登录会话已变化，请重试')
+  return { ...data, sessionId: session.id }
 }
 
 export async function fetchPublicSettings() {
@@ -44,9 +47,10 @@ export async function sendVerifyCode(email: string) {
 }
 
 export async function registerApi(email: string, password: string, displayName: string, verifyCode = '') {
+  const session = beginAuthentication()
   const { data } = await http.post<AuthResponse>('/auth/register', { email, password, displayName, verifyCode })
-  setTokens(data.token.accessToken, data.token.refreshToken)
-  return data
+  if (!updateAuthTokens(session, data.token, 'authenticated')) throw new CanceledError('登录会话已变化，请重试')
+  return { ...data, sessionId: session.id }
 }
 
 export async function forgotPassword(email: string) {
@@ -65,10 +69,9 @@ export async function meApi() {
 }
 
 export async function logoutApi() {
-  const refreshToken = localStorage.getItem('s2v_refresh_token') || ''
-  try {
-    await http.post('/auth/logout', { refreshToken })
-  } finally {
-    clearTokens()
-  }
+  const session = getAuthSession()
+  // End the local session before waiting for the server. A late refresh or
+  // logout response must never restore/clear a subsequent login.
+  invalidateAuthSession(session, 'logout')
+  if (session.refreshToken) await http.post('/auth/logout', { refreshToken: session.refreshToken })
 }

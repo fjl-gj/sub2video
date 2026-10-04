@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -21,6 +22,11 @@ import (
 )
 
 func main() {
+	migrateOnly := flag.Bool("migrate-only", false, "apply database migrations and exit without starting services or seeding data")
+	flag.Parse()
+	if flag.NArg() != 0 {
+		log.Fatal("unexpected positional arguments")
+	}
 	cfg := config.Load()
 	ctx := context.Background()
 
@@ -29,8 +35,20 @@ func main() {
 		log.Fatalf("postgres: %v", err)
 	}
 	defer pool.Close()
+	if *migrateOnly {
+		// Explicit release migrations must also work when the long-running
+		// service deliberately uses SkipBootstrap. Nothing below may run here:
+		// no seeds, Redis, upload directories, object storage, Worker, or HTTP.
+		if err := db.Migrate(ctx, pool); err != nil {
+			log.Fatalf("migrate: %v", err)
+		}
+		log.Print("database migrations complete; no services or seeds started")
+		return
+	}
 
-	if err := db.Migrate(ctx, pool); err != nil {
+	if cfg.SkipBootstrap {
+		log.Printf("database bootstrap skipped: using existing schema and configuration")
+	} else if err := db.Migrate(ctx, pool); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
 
@@ -45,18 +63,20 @@ func main() {
 	defer rdb.Close()
 
 	st := store.New(pool)
-	if err := st.SeedBasics(ctx); err != nil {
-		log.Fatalf("seed: %v", err)
-	}
-	if err := st.SeedCreationCatalog(ctx); err != nil {
-		log.Fatalf("seed creation catalog: %v", err)
-	}
-	if err := ensureDemoUser(ctx, st, cfg); err != nil {
-		log.Fatalf("seed user: %v", err)
-	}
-	if cfg.PromoteAdminEmail != "" {
-		if err := st.PromoteUserRole(ctx, cfg.PromoteAdminEmail, "admin"); err != nil {
-			log.Printf("promote admin %s: %v", cfg.PromoteAdminEmail, err)
+	if !cfg.SkipBootstrap {
+		if err := st.SeedBasics(ctx); err != nil {
+			log.Fatalf("seed: %v", err)
+		}
+		if err := st.SeedCreationCatalog(ctx); err != nil {
+			log.Fatalf("seed creation catalog: %v", err)
+		}
+		if err := ensureDemoUser(ctx, st, cfg); err != nil {
+			log.Fatalf("seed user: %v", err)
+		}
+		if cfg.PromoteAdminEmail != "" {
+			if err := st.PromoteUserRole(ctx, cfg.PromoteAdminEmail, "admin"); err != nil {
+				log.Printf("promote admin %s: %v", cfg.PromoteAdminEmail, err)
+			}
 		}
 	}
 
@@ -81,7 +101,7 @@ func main() {
 	go func() {
 		log.Printf("sub2video api listening on %s", cfg.Addr)
 		if cfg.AutoDLToken == "" {
-			log.Printf("autodl token empty: new tasks remain queued until an administrator configures a supplier credential")
+			log.Printf("autodl environment fallback is empty; supplier credentials are resolved from administrator configuration")
 		}
 		obj := st.LoadObjectStore(ctx, cfg)
 		if !obj.Configured() {
@@ -130,6 +150,6 @@ func ensureDemoUser(ctx context.Context, st *store.Store, cfg config.Config) err
 	if _, err = st.Pool.Exec(ctx, `UPDATE wallets SET balance = $1 WHERE user_id = $2`, initBal, user.ID); err != nil {
 		return err
 	}
-	log.Printf("seeded demo user %s / %s (balance %.2f)", cfg.SeedEmail, cfg.SeedPassword, initBal)
+	log.Printf("seeded demo user %s (balance %.2f)", cfg.SeedEmail, initBal)
 	return nil
 }

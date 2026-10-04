@@ -40,7 +40,7 @@ VALUES ($1, $2, $3, $4, $5, $6)`, publicID, userID, fileName, mimeType, sizeByte
 func (s *Store) GetUpload(ctx context.Context, userID int64, publicID string) (*Upload, error) {
 	var u Upload
 	var id int64
-	err := s.Pool.QueryRow(ctx, `
+	err := s.routeDB().QueryRow(ctx, `
 SELECT id, public_id, user_id, file_name, mime_type, size_bytes, storage_path, created_at
 FROM uploads WHERE public_id = $1 AND user_id = $2`, publicID, userID).Scan(
 		&id, &u.ID, &u.UserID, &u.FileName, &u.MimeType, &u.SizeBytes, &u.StoragePath, &u.CreatedAt,

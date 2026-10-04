@@ -172,6 +172,8 @@ async function saveCatalog() {
 }
 
 async function toggleCarrier(item: AdminCarrier) {
+  const action = item.enabled ? '停用' : '启用'
+  if (!window.confirm(`确认${action}承运商“${item.name}”？`)) return
   saving.value = true
   try {
     await updateAdminCarrier(item.id, { enabled: !item.enabled })
@@ -184,6 +186,8 @@ async function toggleCarrier(item: AdminCarrier) {
 }
 
 async function toggleModel(item: AdminModel) {
+  const action = item.enabled ? '停用' : '启用'
+  if (!window.confirm(`确认${action}模型“${item.name}”？`)) return
   saving.value = true
   try {
     await updateAdminModel(item.id, { enabled: !item.enabled })
@@ -196,6 +200,8 @@ async function toggleModel(item: AdminModel) {
 }
 
 async function toggleSupplier(item: AdminSupplier) {
+  const action = item.enabled ? '停用' : '启用'
+  if (!window.confirm(`确认${action}供应商“${item.name}”？`)) return
   saving.value = true
   try {
     await updateAdminSupplier(item.id, { enabled: !item.enabled })
@@ -250,7 +256,7 @@ async function saveOffering() {
     for (const resolution of payload.resolutions) {
       for (const generateAudio of payload.supportsGeneratedAudio ? [false, true] : [false]) {
         await upsertAdminSupplierCost({
-          offeringId: offering.id,
+          ...(offering.executionId ? { executionId: offering.executionId } : { offeringId: offering.id }),
           resolution,
           generateAudio,
           peakPerSecond: toNumber(offeringForm.value.peakPerSecond),
@@ -271,7 +277,8 @@ async function saveOffering() {
 }
 
 function costsFor(offeringId: string) {
-  return costs.value.filter((item) => item.offeringId === offeringId)
+  const offering = offerings.value.find((item) => item.id === offeringId)
+  return costs.value.filter((item) => (offering?.executionId && item.executionId === offering.executionId) || item.offeringId === offeringId)
 }
 
 onMounted(load)

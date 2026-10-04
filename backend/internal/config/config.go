@@ -18,12 +18,15 @@ type Config struct {
 	SeedEmail       string
 	SeedPassword    string
 	UploadDir       string
-	AutoDLToken     string
-	AutoDLBaseURL   string
-	COSSecretID     string
-	COSSecretKey    string
-	COSBucket       string
-	COSRegion       string
+	// SkipBootstrap is for an already initialized database during releases
+	// without schema changes. Migrations/seeds must then run separately.
+	SkipBootstrap     bool
+	AutoDLToken       string
+	AutoDLBaseURL     string
+	COSSecretID       string
+	COSSecretKey      string
+	COSBucket         string
+	COSRegion         string
 	PromoteAdminEmail string
 }
 
@@ -40,6 +43,7 @@ func Load() Config {
 		SeedEmail:         env("SUB2VIDEO_SEED_EMAIL", "demo@sub2video.local"),
 		SeedPassword:      env("SUB2VIDEO_SEED_PASSWORD", "Demo1234!"),
 		UploadDir:         env("SUB2VIDEO_UPLOAD_DIR", "./data/uploads"),
+		SkipBootstrap:     env("SUB2VIDEO_SKIP_BOOTSTRAP", "false") == "true",
 		AutoDLToken:       env("SUB2VIDEO_AUTODL_TOKEN", ""),
 		AutoDLBaseURL:     env("SUB2VIDEO_AUTODL_BASE_URL", "https://autodl.art"),
 		COSSecretID:       env("SUB2VIDEO_COS_SECRET_ID", ""),

@@ -42,9 +42,12 @@ export type AdminSettings = {
   storageQuotaGb: string
 }
 
-export async function fetchAdminSuppliers() {
-  const { data } = await http.get('/admin/suppliers')
-  return data as { items: AdminSupplier[] }
+export type AdminPageParams = { page?: number; pageSize?: number }
+export type AdminPage<T> = { items: T[]; total: number; page: number; pageSize: number }
+
+export async function fetchAdminSuppliers(params?: AdminPageParams) {
+  const { data } = await http.get('/admin/suppliers', { params })
+  return data as AdminPage<AdminSupplier>
 }
 
 export async function createAdminSupplier(payload: {
@@ -86,11 +89,14 @@ export type AdminCarrier = {
   enabled: boolean
 }
 
-export async function fetchAdminCarriers() {
-  const { data } = await http.get('/admin/carriers')
+export async function fetchAdminCarriers(params?: AdminPageParams & { keyword?: string }) {
+  const { data } = await http.get('/admin/carriers', { params })
   return data as {
     carriers: AdminCarrier[]
     models: AdminModel[]
+    total: number
+    page: number
+    pageSize: number
     cosConfigured: boolean
     autodlEnvToken: boolean
   }
@@ -184,6 +190,7 @@ export type AdminCreationMode = {
 
 export type AdminOffering = {
   id: string
+  executionId?: string
   supplierId: string
   supplierName: string
   modelId: string
@@ -200,6 +207,7 @@ export type AdminOffering = {
   adapterCode: string
   enabled: boolean
   healthStatus: string
+  quotaStatus?: string
   priority: number
   minDurationSec: number
   maxDurationSec: number
@@ -212,7 +220,7 @@ export type AdminOffering = {
 
 export type AdminSupplierCost = {
   id: string
-  offeringId: string
+  offeringId?: string
   executionId?: string
   resolution: string
   generateAudio: boolean
@@ -273,9 +281,9 @@ export async function upsertAdminModelConfiguration(payload: Pick<AdminModelConf
   return data as { ok: boolean }
 }
 
-export async function fetchAdminOfferings() {
-  const { data } = await http.get('/admin/offerings')
-  return data as { items: AdminOffering[] }
+export async function fetchAdminOfferings(params?: AdminPageParams & { executionType?: 'api' | 'workflow'; carrierId?: string; modelId?: string; supplierId?: string }) {
+  const { data } = await http.get('/admin/offerings', { params })
+  return data as AdminPage<AdminOffering>
 }
 
 export async function createAdminOffering(payload: Omit<AdminOffering, 'id' | 'supplierName' | 'modelName' | 'carrierName' | 'modeName'>) {
@@ -288,9 +296,9 @@ export async function updateAdminOffering(id: string, payload: Omit<AdminOfferin
   return data as AdminOffering
 }
 
-export async function fetchAdminSupplierCosts() {
-  const { data } = await http.get('/admin/supplier-costs')
-  return data as { items: AdminSupplierCost[] }
+export async function fetchAdminSupplierCosts(params?: AdminPageParams & { executionIds?: string }) {
+  const { data } = await http.get('/admin/supplier-costs', { params })
+  return data as AdminPage<AdminSupplierCost>
 }
 
 export async function upsertAdminSupplierCost(payload: Omit<AdminSupplierCost, 'id' | 'version'>) {
@@ -298,22 +306,23 @@ export async function upsertAdminSupplierCost(payload: Omit<AdminSupplierCost, '
   return data as AdminSupplierCost
 }
 
-export async function fetchAdminRetailPricing() {
-  const { data } = await http.get('/admin/retail-pricing')
-  return data as { items: AdminRetailPricing[] }
+export async function fetchAdminRetailPricing(params?: AdminPageParams) {
+  const { data } = await http.get('/admin/retail-pricing', { params })
+  return data as AdminPage<AdminRetailPricing>
 }
 
-export async function upsertAdminRetailPricing(payload: Pick<AdminRetailPricing, 'modeId' | 'modelId' | 'resolution' | 'generateAudio' | 'name' | 'pricePerSecond' | 'status'>) {
+export async function upsertAdminRetailPricing(payload: Pick<AdminRetailPricing, 'modeId' | 'resolution' | 'generateAudio' | 'name' | 'pricePerSecond' | 'status'>) {
   const { data } = await http.put('/admin/retail-pricing', payload)
   return data as Pick<AdminRetailPricing, 'id' | 'modeId' | 'modelId' | 'pricePerSecond' | 'version' | 'status'>
 }
 
-export async function fetchAdminTasks(params?: { status?: string; page?: number; pageSize?: number }) {
+export async function fetchAdminTasks(params?: { status?: string; keyword?: string; page?: number; pageSize?: number }) {
   const { data } = await http.get('/admin/tasks', { params })
   return data as { items: AdminTaskItem[]; total: number; page: number; pageSize: number }
 }
 
 export type AdminTaskDetail = AdminTaskItem & {
+  providerRequestId?: string
   pricePerSec: number
   costPerSec: number
   supplierCode: string
@@ -334,6 +343,22 @@ export async function fetchAdminTask(id: string) {
 export async function cancelAdminTask(id: string) {
   const { data } = await http.post(`/admin/tasks/${id}/cancel`)
   return data as { task: { id: string; status: string }; refund: number }
+}
+
+export type AdminTaskReconcileAction = 'resume' | 'refund'
+
+export async function reconcileAdminTask(id: string, payload: {
+  action: AdminTaskReconcileAction
+  upstreamTaskId?: string
+  evidence: string
+  confirmed: true
+}) {
+  const { data } = await http.post(`/admin/tasks/${id}/reconcile`, payload)
+  return data as {
+    task: { id: string; status: string; upstreamStatus: string }
+    refund: number
+    alreadyResolved: boolean
+  }
 }
 
 export type AdminTicketItem = {

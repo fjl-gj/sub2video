@@ -22,6 +22,8 @@ type Task struct {
 	Cost           float64
 	ThumbURL       string
 	SavedToProject bool
+	CanCancel      bool
+	ReviewRequired bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
@@ -32,13 +34,33 @@ type Task struct {
 // URL fields. The creator-facing precharged amount is retained on Task.
 type ClientTaskDetail struct {
 	Task
+	ModeID           string
+	CarrierID        string
+	ModelID          string
+	Prompt           string
+	SourceMeta       SourceMeta
 	AspectRatio      string
 	GenerateAudio    bool
 	FailureReason    string
+	RefundAmount     float64
+	RefundedAt       *time.Time
 	DeliveryStatus   string
 	DownloadURL      string
 	ExecutionWaiting bool
+	SavedDestination *TaskSavedDestination
 }
+
+type TaskSavedDestination struct {
+	ProjectID  string   `json:"projectId"`
+	FolderPath []string `json:"folderPath"`
+}
+
+// Keep creator actions aligned with the cancellation transaction. These
+// expressions expose only decisions, never the underlying execution details.
+const providerTaskInFlightSQL = `execution_mode='provider' AND (submit_started OR submit_uncertain OR upstream_task_id<>'')`
+const taskClientActionsSQL = `status IN ('queued','running') AND NOT (` + providerTaskInFlightSQL + `),
+status IN ('queued','running') AND (submit_uncertain OR upstream_status='SUBMIT_UNKNOWN')`
+
 type CreateTaskInput struct {
 	WorkflowID      string
 	Title           string
@@ -78,6 +100,62 @@ func (m SourceMeta) Empty() bool {
 
 func (m SourceMeta) VisualEmpty() bool {
 	return m.First == nil && m.Last == nil && len(m.Extras) == 0 && len(m.Refs) == 0
+}
+
+// ImageCount returns the number of occupied visual input slots.
+// It is intentionally derived from references only; reference audio is not an
+// image capability and must never affect execution routing. The same image in
+// the first and last slots still represents two required inputs. Count mixed
+// reference shapes too, so extra inputs cannot disappear during filtering.
+func (m SourceMeta) ImageCount() int {
+	count := len(m.Refs) + len(m.Extras)
+	if m.First != nil {
+		count++
+	}
+	if m.Last != nil {
+		count++
+	}
+	return count
+}
+
+func validateModeImageCount(modeCode string, count int) error {
+	switch modeCode {
+	case "text_to_video":
+		if count != 0 {
+			return errors.New("文生视频不支持图片素材")
+		}
+	case "first_last_frame_to_video":
+		if count != 2 {
+			return errors.New("首尾帧生成视频需要两张图片（首帧和尾帧）")
+		}
+	case "multi_image_to_video":
+		if count < 1 {
+			return errors.New("多图生成视频至少需要一张参考图片")
+		}
+	default:
+		return errors.New("不支持的创作模式")
+	}
+	return nil
+}
+
+// ValidateCreationSourceShape checks the public material structure without
+// reading uploads or assets. Estimates may use pending local references;
+// submission separately validates every actual reference's ownership.
+func ValidateCreationSourceShape(modeCode string, meta SourceMeta) error {
+	if err := validateModeImageCount(modeCode, meta.ImageCount()); err != nil {
+		return err
+	}
+	switch modeCode {
+	case "first_last_frame_to_video":
+		if meta.First == nil || meta.Last == nil || len(meta.Refs) != 0 || len(meta.Extras) != 0 {
+			return errors.New("首尾帧图片素材必须分别放入首帧和尾帧")
+		}
+	case "multi_image_to_video":
+		if meta.First != nil || meta.Last != nil || len(meta.Extras) != 0 || len(meta.Refs) == 0 {
+			return errors.New("多图参考图片必须放入参考素材列表")
+		}
+	}
+	return nil
 }
 
 func workflowLabel(id string) string {
@@ -287,7 +365,8 @@ func (s *Store) ListTasks(ctx context.Context, userID int64, statusCNFilter stri
 		pageSize = 10
 	}
 
-	query := `SELECT public_id, title, workflow, status, progress, duration_sec, resolution, cost::float8, thumb_url, saved_to_project, completed_at, created_at, updated_at
+	query := `SELECT public_id, title, workflow, status, progress, duration_sec, resolution, cost::float8, thumb_url, saved_to_project, completed_at, created_at, updated_at,
+` + taskClientActionsSQL + `
 FROM generation_tasks WHERE user_id = $1`
 	args := []any{userID}
 	if statusCNFilter != "" && statusCNFilter != "全部" {
@@ -316,35 +395,57 @@ FROM generation_tasks WHERE user_id = $1`
 
 	var items []Task
 	for rows.Next() {
-		t, err := scanTask(rows)
+		var canCancel, reviewRequired bool
+		t, err := scanTask(rows, &canCancel, &reviewRequired)
 		if err != nil {
 			return nil, 0, nil, err
 		}
+		t.CanCancel, t.ReviewRequired = canCancel, reviewRequired
 		items = append(items, *t)
 	}
-	return items, total, counts, nil
+	return items, total, counts, rows.Err()
 }
 
 func (s *Store) GetClientTaskDetail(ctx context.Context, userID int64, taskID string) (*ClientTaskDetail, error) {
 	var item ClientTaskDetail
-	var status, upstreamStatus, resultOSS string
+	var status, upstreamStatus, resultOSS, projectID string
+	var sourceMetaRaw []byte
 	var completed *time.Time
 	err := s.Pool.QueryRow(ctx, `
 SELECT public_id, title, workflow, status, progress, duration_sec, resolution, cost::float8,
        thumb_url, saved_to_project, completed_at, created_at, updated_at,
+       COALESCE(mode_public_id,''), COALESCE(model_public_id,''),
+       COALESCE((SELECT carrier.public_id FROM models model
+                 JOIN carriers carrier ON carrier.id=model.carrier_id
+                 WHERE model.public_id=task.model_public_id), ''),
+       COALESCE(prompt,''), COALESCE(source_meta,'{}'::jsonb),
        COALESCE(aspect_ratio,''), generate_audio, COALESCE(fail_reason,''),
-       COALESCE(upstream_status,''), COALESCE(result_oss_url,'')
-FROM generation_tasks
-WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
+       COALESCE((SELECT amount::float8 FROM wallet_ledger ledger
+                 WHERE ledger.user_id=task.user_id AND ledger.ref_type='task'
+                   AND ledger.ref_id=task.public_id AND ledger.type='task_refund'
+                 ORDER BY ledger.created_at DESC, ledger.id DESC LIMIT 1), 0),
+       (SELECT ledger.created_at FROM wallet_ledger ledger
+        WHERE ledger.user_id=task.user_id AND ledger.ref_type='task'
+          AND ledger.ref_id=task.public_id AND ledger.type='task_refund'
+        ORDER BY ledger.created_at DESC, ledger.id DESC LIMIT 1),
+       COALESCE(upstream_status,''), COALESCE(result_oss_url,''), COALESCE(project_public_id,''),
+`+taskClientActionsSQL+`
+FROM generation_tasks task
+WHERE task.public_id=$1 AND task.user_id=$2`, taskID, userID).Scan(
 		&item.ID, &item.Title, &item.Workflow, &status, &item.Progress, &item.DurationSec, &item.Resolution,
 		&item.Cost, &item.ThumbURL, &item.SavedToProject, &completed, &item.CreatedAt, &item.UpdatedAt,
-		&item.AspectRatio, &item.GenerateAudio, &item.FailureReason, &upstreamStatus, &resultOSS,
+		&item.ModeID, &item.ModelID, &item.CarrierID, &item.Prompt, &sourceMetaRaw,
+		&item.AspectRatio, &item.GenerateAudio, &item.FailureReason, &item.RefundAmount, &item.RefundedAt,
+		&upstreamStatus, &resultOSS, &projectID, &item.CanCancel, &item.ReviewRequired,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(sourceMetaRaw) > 0 {
+		_ = json.Unmarshal(sourceMetaRaw, &item.SourceMeta)
 	}
 	item.Status = statusCN(status)
 	item.CompletedAt = completed
@@ -358,15 +459,27 @@ WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
 	default:
 		item.DeliveryStatus = "not_ready"
 	}
+	if item.SavedToProject && projectID != "" {
+		project, err := s.GetProject(ctx, userID, projectID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
+		if err == nil && !project.Trashed {
+			if _, path, found := findSourceTaskInFolders(project.Folders, item.ID); found {
+				item.SavedDestination = &TaskSavedDestination{ProjectID: project.ID, FolderPath: path}
+			}
+		}
+	}
 	return &item, nil
 }
 
-func scanTask(scanner interface{ Scan(dest ...any) error }) (*Task, error) {
+func scanTask(scanner interface{ Scan(dest ...any) error }, extra ...any) (*Task, error) {
 	var t Task
 	var status string
 	var saved bool
 	var completed *time.Time
-	if err := scanner.Scan(&t.ID, &t.Title, &t.Workflow, &status, &t.Progress, &t.DurationSec, &t.Resolution, &t.Cost, &t.ThumbURL, &saved, &completed, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	fields := []any{&t.ID, &t.Title, &t.Workflow, &status, &t.Progress, &t.DurationSec, &t.Resolution, &t.Cost, &t.ThumbURL, &saved, &completed, &t.CreatedAt, &t.UpdatedAt}
+	if err := scanner.Scan(append(fields, extra...)...); err != nil {
 		return nil, err
 	}
 	t.Status = statusCN(status)
@@ -386,9 +499,10 @@ func (s *Store) CancelTask(ctx context.Context, userID int64, taskPublicID strin
 	var status string
 	var cost float64
 	var title string
+	var providerInFlight bool
 	err = tx.QueryRow(ctx, `
-SELECT id, status, cost::float8, title FROM generation_tasks WHERE public_id = $1 AND user_id = $2 FOR UPDATE`,
-		taskPublicID, userID).Scan(&id, &status, &cost, &title)
+SELECT id, status, cost::float8, title, `+providerTaskInFlightSQL+` FROM generation_tasks WHERE public_id = $1 AND user_id = $2 FOR UPDATE`,
+		taskPublicID, userID).Scan(&id, &status, &cost, &title, &providerInFlight)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, 0, 0, errors.New("任务不存在")
 	}
@@ -396,7 +510,32 @@ SELECT id, status, cost::float8, title FROM generation_tasks WHERE public_id = $
 		return nil, 0, 0, err
 	}
 	if status != "queued" && status != "running" {
+		// Cancellation is safe to retry. A client can lose the response after
+		// the transaction commits, so a second request must return the original
+		// refund instead of turning a successful cancellation into an error.
+		if status == "failed" {
+			var refunded float64
+			if err = tx.QueryRow(ctx, `
+SELECT COALESCE(SUM(amount::float8), 0)
+FROM wallet_ledger
+WHERE user_id=$1 AND ref_type='task' AND ref_id=$2 AND type='task_refund'`, userID, taskPublicID).Scan(&refunded); err != nil {
+				return nil, 0, 0, err
+			}
+			if refunded > 0 {
+				var balance float64
+				if err = tx.QueryRow(ctx, `SELECT balance::float8 FROM wallets WHERE user_id=$1`, userID).Scan(&balance); err != nil {
+					return nil, 0, 0, err
+				}
+				if err = tx.Commit(ctx); err != nil {
+					return nil, 0, 0, err
+				}
+				return &Task{ID: taskPublicID, Title: title, Status: "失败", Cost: cost}, refunded, balance, nil
+			}
+		}
 		return nil, 0, 0, errors.New("该任务无法终止")
+	}
+	if providerInFlight {
+		return nil, 0, 0, errors.New("任务已进入执行或结果核对阶段，暂不可取消，请等待结果或联系客服")
 	}
 	if _, err = tx.Exec(ctx, `
 UPDATE generation_tasks SET status='failed', progress=0, upstream_status='CANCELLED_BY_USER',
@@ -428,8 +567,8 @@ VALUES ($1, $2, 'task_refund', $3, $4, 'task', $5, $6)`,
 }
 
 func (s *Store) RetryTask(ctx context.Context, userID int64, taskPublicID string) (*Task, error) {
-	var status, quoteID string
-	err := s.Pool.QueryRow(ctx, `SELECT status, quote_public_id FROM generation_tasks WHERE public_id = $1 AND user_id = $2`, taskPublicID, userID).Scan(&status, &quoteID)
+	var status, quoteID, modeID string
+	err := s.Pool.QueryRow(ctx, `SELECT status, quote_public_id, mode_public_id FROM generation_tasks WHERE public_id = $1 AND user_id = $2`, taskPublicID, userID).Scan(&status, &quoteID, &modeID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errors.New("任务不存在")
 	}
@@ -439,8 +578,8 @@ func (s *Store) RetryTask(ctx context.Context, userID int64, taskPublicID string
 	if status != "failed" {
 		return nil, errors.New("仅失败任务可重试")
 	}
-	if quoteID != "" {
-		return nil, errors.New("请重新配置并获取新报价后再提交")
+	if quoteID != "" || modeID != "" {
+		return nil, errors.New("请按原参数重新开始创作并提交新任务")
 	}
 	_, err = s.Pool.Exec(ctx, `
 UPDATE generation_tasks SET
@@ -508,8 +647,14 @@ func (s *Store) validateSourceRefItem(ctx context.Context, userID int64, item *S
 	}
 	switch item.Type {
 	case "upload":
-		if _, err := s.GetUpload(ctx, userID, item.ID); err != nil {
+		upload, err := s.GetUpload(ctx, userID, item.ID)
+		if err != nil {
 			return errors.New("上传素材不存在")
+		}
+		switch strings.ToLower(strings.TrimSpace(upload.MimeType)) {
+		case "image/jpeg", "image/png", "image/webp", "image/gif":
+		default:
+			return errors.New("请选择图片素材，音频或视频不能作为参考图片")
 		}
 	case "asset":
 		ast, _, err := s.FindUserAsset(ctx, userID, item.ID)

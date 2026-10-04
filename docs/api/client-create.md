@@ -9,7 +9,7 @@
 | 前端路由 | `/app/create` |
 | 页面组件 | `frontend/src/pages/client/CreatePage.vue` |
 | 上游入口 | 首页概览、任务页新建、广场套用提示词 |
-| 下游 | 创建成功后跳转 `/app/works` |
+| 下游 | 创建成功后跳转 `/app/works/:id` |
 
 ## 输入合同
 
@@ -79,10 +79,13 @@ Content-Type: application/json
   "modeId": "mode_text_to_video",
   "carrierId": "car_minimax",
   "modelId": "mdl_h3",
-  "durationSeconds": 10,
+  "durationSec": 10,
   "resolution": "768P",
   "aspectRatio": "9:16",
-  "generateAudio": false
+  "generateAudio": false,
+  "sourceMeta": {
+    "refs": [{ "type": "asset", "id": "ast_1" }]
+  }
 }
 ```
 
@@ -97,13 +100,13 @@ Content-Type: application/json
     "basis": "按秒预估",
     "currency": "CNY",
     "pricePerSecond": 0.03,
-    "durationSeconds": 10,
+    "durationSec": 10,
     "estimatedTotal": 0.30
   }
 }
 ```
 
-预估只计算当前可用能力和平台售价，不创建报价、订单或任务，不扣费，也不锁定执行配置。响应不包含供应商、执行类型、工作流编码、成本、Token 或上游地址。
+预估只计算当前可用能力和平台售价，不创建报价、订单或任务，不扣费，也不锁定执行配置。`sourceMeta` 只用于计算视觉素材数量，服务端不会在预估阶段上传或读取素材内容；提交阶段仍会重新校验素材归属。响应不包含供应商、执行类型、工作流编码、成本、Token 或上游地址。
 
 ## 创建任务
 
@@ -116,7 +119,7 @@ Idempotency-Key: create_20260911_001
   "modeId": "mode_first_last",
   "carrierId": "car_minimax",
   "modelId": "mdl_h3",
-  "durationSeconds": 10,
+  "durationSec": 10,
   "resolution": "768P",
   "aspectRatio": "9:16",
   "generateAudio": false,

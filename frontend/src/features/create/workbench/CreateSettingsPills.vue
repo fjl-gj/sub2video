@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock, Layers, Paperclip, Ratio, Volume2, X } from 'lucide-vue-next'
+import { Paperclip, X } from 'lucide-vue-next'
 import { ref } from 'vue'
 
 withDefaults(defineProps<{
@@ -17,16 +17,9 @@ withDefaults(defineProps<{
   audioMode?: 'none' | 'generate' | 'reference'
   referenceAudioName?: string
 }>(), {
-  durationOptions: () => ['5', '10', '15'],
-  resolutionOptions: () => ['768P'],
-  aspectRatioOptions: () => ['16:9', '9:16', '1:1'],
-  carriers: () => [],
-  models: () => [],
-  carrierId: '',
-  modelId: '',
-  supportsGeneratedAudio: false,
-  audioMode: 'none',
-  referenceAudioName: '',
+  durationOptions: () => ['5', '10', '15'], resolutionOptions: () => ['768P'],
+  aspectRatioOptions: () => ['16:9', '9:16', '1:1'], carriers: () => [], models: () => [],
+  carrierId: '', modelId: '', supportsGeneratedAudio: false, audioMode: 'none', referenceAudioName: '',
 })
 
 const emit = defineEmits<{
@@ -39,13 +32,7 @@ const emit = defineEmits<{
   'reference-audio-upload': [file: File]
   'clear-reference-audio': []
 }>()
-
 const referenceAudioInput = ref<HTMLInputElement | null>(null)
-
-function chooseReferenceAudio() {
-  referenceAudioInput.value?.click()
-}
-
 function onReferenceAudioChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -55,67 +42,46 @@ function onReferenceAudioChange(event: Event) {
 </script>
 
 <template>
-  <div class="s2v-wb-panel-section">
-    <div class="s2v-wb-section-head">
-      <span>生成设置</span>
-    </div>
-    <div class="s2v-wb-settings-row">
-      <label class="s2v-wb-setting-pill">
-        <Layers class="h-3.5 w-3.5 text-s2v-muted" />
+  <section class="s2v-studio-section" aria-label="生成设置">
+    <div class="s2v-studio-field-heading"><h2>生成设置</h2></div>
+    <div class="s2v-studio-fields">
+      <label class="s2v-studio-field"><span>承运商</span>
         <select aria-label="承运商" :value="carrierId" @change="emit('update:carrierId', ($event.target as HTMLSelectElement).value)">
-          <option value="">智能推荐</option>
-          <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">{{ carrier.name }}</option>
+          <option value="">智能推荐</option><option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">{{ carrier.name }}</option>
         </select>
       </label>
-
-      <label class="s2v-wb-setting-pill">
-        <Layers class="h-3.5 w-3.5 text-s2v-muted" />
+      <label class="s2v-studio-field"><span>模型</span>
         <select aria-label="模型" :value="modelId" @change="emit('update:modelId', ($event.target as HTMLSelectElement).value)">
-          <option value="">智能推荐</option>
-          <option v-for="model in models" :key="model.id" :value="model.id">{{ model.name }}</option>
+          <option value="">智能推荐</option><option v-for="model in models" :key="model.id" :value="model.id">{{ model.name }}</option>
         </select>
       </label>
-
-      <label class="s2v-wb-setting-pill">
-        <Ratio class="h-3.5 w-3.5 text-s2v-muted" />
-        <select aria-label="画幅比例" :value="ratio" @change="emit('update:ratio', ($event.target as HTMLSelectElement).value)">
-          <option v-for="item in aspectRatioOptions" :key="item" :value="item">{{ item }}</option>
-        </select>
-      </label>
-
-      <label class="s2v-wb-setting-pill">
-        <Clock class="h-3.5 w-3.5 text-s2v-muted" />
+      <label class="s2v-studio-field"><span>视频时长</span>
         <select aria-label="视频时长" :value="durationSec" @change="emit('update:durationSec', ($event.target as HTMLSelectElement).value)">
           <option v-for="sec in durationOptions" :key="sec" :value="sec">{{ sec }} 秒</option>
         </select>
       </label>
-
-      <label class="s2v-wb-setting-pill">
-        <Layers class="h-3.5 w-3.5 text-s2v-muted" />
+      <label class="s2v-studio-field"><span>分辨率</span>
         <select aria-label="输出分辨率" :value="resolution" @change="emit('update:resolution', ($event.target as HTMLSelectElement).value)">
           <option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</option>
         </select>
       </label>
-
-      <label v-if="supportsGeneratedAudio" class="s2v-wb-setting-pill">
-        <Volume2 class="h-3.5 w-3.5 text-s2v-muted" />
-        <select aria-label="音频设置" :value="audioMode" @change="emit('update:audioMode', ($event.target as HTMLSelectElement).value as 'none' | 'generate' | 'reference')">
-          <option value="none">不使用音频</option>
-          <option value="generate">自动生成音频</option>
-          <option value="reference">上传参考音频</option>
+      <label class="s2v-studio-field"><span>画幅比例</span>
+        <select aria-label="画幅比例" :value="ratio" @change="emit('update:ratio', ($event.target as HTMLSelectElement).value)">
+          <option v-for="item in aspectRatioOptions" :key="item" :value="item">{{ item }}{{ item === '16:9' ? ' 横屏' : item === '9:16' ? ' 竖屏' : item === '1:1' ? ' 方形' : '' }}</option>
         </select>
       </label>
-
-      <template v-if="supportsGeneratedAudio && audioMode === 'reference'">
+      <label class="s2v-studio-field"><span>音频</span>
+        <select aria-label="音频设置" :value="audioMode" :disabled="!supportsGeneratedAudio" @change="emit('update:audioMode', ($event.target as HTMLSelectElement).value as 'none' | 'generate' | 'reference')">
+          <option value="none">不使用音频</option>
+          <option v-if="supportsGeneratedAudio" value="generate">自动生成音频</option>
+          <option v-if="supportsGeneratedAudio" value="reference">上传参考音频</option>
+        </select>
+      </label>
+      <div v-if="supportsGeneratedAudio && audioMode === 'reference'" class="s2v-studio-audio-upload">
         <input ref="referenceAudioInput" class="hidden" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/flac,audio/mp4,video/mp4,.mp3,.wav,.flac,.m4a,.mp4" aria-label="参考音频文件" @change="onReferenceAudioChange">
-        <button type="button" class="s2v-wb-setting-pill" title="上传参考音频" @click="chooseReferenceAudio">
-          <Paperclip class="h-3.5 w-3.5 text-s2v-muted" />
-          <span>{{ referenceAudioName || '选择音频文件' }}</span>
-        </button>
-        <button v-if="referenceAudioName" type="button" class="s2v-wb-setting-pill" title="移除参考音频" aria-label="移除参考音频" @click="emit('clear-reference-audio')">
-          <X class="h-3.5 w-3.5 text-s2v-muted" />
-        </button>
-      </template>
+        <button type="button" title="上传参考音频" @click="referenceAudioInput?.click()"><Paperclip class="h-4 w-4" /><span>{{ referenceAudioName || '选择参考音频' }}</span></button>
+        <button v-if="referenceAudioName" type="button" aria-label="移除参考音频" title="移除参考音频" @click="emit('clear-reference-audio')"><X class="h-4 w-4" /></button>
+      </div>
     </div>
-  </div>
+  </section>
 </template>

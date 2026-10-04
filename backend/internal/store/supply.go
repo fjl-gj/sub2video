@@ -108,7 +108,7 @@ FROM suppliers ORDER BY code`)
 
 func (s *Store) GetSupplierByCode(ctx context.Context, code string) (*Supplier, error) {
 	var sp Supplier
-	err := s.Pool.QueryRow(ctx, `
+	err := s.routeDB().QueryRow(ctx, `
 SELECT public_id, code, name, base_url, auth_header, token_encrypted, enabled, status, updated_at
 FROM suppliers WHERE code = $1`, code).Scan(
 		&sp.ID, &sp.Code, &sp.Name, &sp.BaseURL, &sp.AuthHeader, &sp.TokenEncrypted, &sp.Enabled, &sp.Status, &sp.UpdatedAt)

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowUpRight } from 'lucide-vue-next'
+import '@/features/create/workbench/studio.css'
 import AssetPickDialog from '@/features/create/AssetPickDialog.vue'
 import CreateFilmstrip from '@/features/create/workbench/CreateFilmstrip.vue'
 import CreatePromptSubmit from '@/features/create/workbench/CreatePromptSubmit.vue'
@@ -8,7 +10,11 @@ import CreateSettingsPills from '@/features/create/workbench/CreateSettingsPills
 import CreateSlotsTrack, { type SlotDescriptor } from '@/features/create/workbench/CreateSlotsTrack.vue'
 import CreateStagePlayer from '@/features/create/workbench/CreateStagePlayer.vue'
 import CreateWorkbenchToolbar from '@/features/create/workbench/CreateWorkbenchToolbar.vue'
+import CreateAvailabilityNotice from '@/features/create/workbench/CreateAvailabilityNotice.vue'
+import GuideCreationContext from '@/features/guides/GuideCreationContext.vue'
+import { useGuidedCreation } from '@/features/guides/useGuidedCreation'
 import { assetPreviewUrl } from '@/shared/lib/asset-preview'
+import { clearPendingCreation, loadPendingCreation, savePendingCreation, type PendingCreation } from '@/shared/lib/pending-creation'
 import {
   clearCreateDraft,
   emptySlot,
@@ -19,13 +25,14 @@ import {
   type ImageVariant,
   type WorkflowInputType,
 } from '@/shared/lib/create-draft'
-import S2VBadge from '@/shared/ui/S2VBadge.vue'
+import S2VButton from '@/shared/ui/S2VButton.vue'
 import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import {
   createTask,
   estimateTask,
   fetchCreationCatalog,
   fetchCreationOptions,
+  fetchTask,
   listTasks,
   uploadImage,
   uploadReferenceAudio,
@@ -47,6 +54,7 @@ interface ReferenceAudio {
 }
 
 const router = useRouter()
+const route = useRoute()
 const app = useAppStore()
 const auth = useAuthStore()
 
@@ -63,6 +71,8 @@ const generateAudio = computed(() => audioMode.value !== 'none')
 const referenceAudio = ref<ReferenceAudio | null>(null)
 const catalog = ref<CreationCatalog>({ modes: [], carriers: [], models: [] })
 const catalogLoaded = ref(false)
+const catalogError = ref('')
+const optionsError = ref('')
 const creationOptions = ref<CreationOptions>({
   durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false,
   minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P',
@@ -79,9 +89,15 @@ const activeSlotKey = ref<string | null>(null)
 const activeTaskId = ref<string | null>(null)
 const pickingSlotRef = ref<FrameSlot | null>(null)
 
-const stageTitle = ref('等待装填素材')
-const stageSubtitle = ref('768P · 24fps')
+const stageTitle = ref('预览与结果')
+const stageSubtitle = ref('上传素材后可在这里查看画面')
 const stagePreviewUrl = ref<string | undefined>(undefined)
+const stageVideoUrl = ref<string | undefined>(undefined)
+const stageLoading = ref(false)
+const stageError = ref('')
+let previewRequest = 0
+let estimateRequest = 0
+let optionsRequest = 0
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -104,16 +120,38 @@ const visibleCarriers = computed(() => catalog.value.carriers.filter((carrier) =
 const durationOptions = computed(() => creationOptions.value.durations.map(String))
 const maxReferenceImages = computed(() => creationOptions.value.maxImages || MAX_REF_IMAGES)
 const parsedDuration = computed(() => Number(durationSec.value))
+const materialSignature = computed(() => JSON.stringify({
+  first: firstFrame.value.uploadId || firstFrame.value.assetId || (firstFrame.value.file ? `local:${firstFrame.value.fileName || 'image'}` : ''),
+  last: lastFrame.value.uploadId || lastFrame.value.assetId || (lastFrame.value.file ? `local:${lastFrame.value.fileName || 'image'}` : ''),
+  extras: extraFrames.value.map((slot) => slot.uploadId || slot.assetId || (slot.file ? `local:${slot.fileName || 'image'}` : '')),
+  refs: multiFrames.value.map((slot) => slot.uploadId || slot.assetId || (slot.file ? `local:${slot.fileName || 'image'}` : '')),
+  audio: referenceAudio.value?.uploadId || (referenceAudio.value?.file ? `local:${referenceAudio.value.fileName}` : ''),
+}))
 const durationValid = computed(() => durationOptions.value.includes(durationSec.value))
 const generationUnavailable = computed(() => catalogLoaded.value && (!activeModeId.value || !visibleModels.value.length || !creationOptions.value.durations.length))
 const quotedCost = ref<number | null>(null)
-const cost = computed(() => quotedCost.value ?? 0)
 const recentTasks = ref<Task[]>([])
+const recentTasksLoading = ref(false)
+const recentTasksError = ref('')
 const estimateLoading = ref(false)
-const submissionRequestID = ref('')
+const estimateError = ref('')
+const optionsLoading = ref(false)
+const pendingCreation = ref<PendingCreation | null>(null)
+const submissionError = ref('')
+const recoveryError = ref('')
+const tutorial = useGuidedCreation({
+  mode: workflowInputType, prompt, duration: durationSec, resolution, ratio, catalog, catalogLoaded,
+  hasMaterials: () => [firstFrame.value, lastFrame.value, ...extraFrames.value, ...multiFrames.value].some(frameReady) || referenceAudio.value !== null,
+  disableAudio: () => { audioMode.value = 'none' },
+})
+
+async function applyTutorial() {
+  tutorial.apply()
+  await loadCreationOptions()
+}
 
 const canSubmit = computed(() => {
-  return !generationUnavailable.value && durationValid.value && prompt.value.trim().length > 0
+  return !pendingCreation.value && !recoveryError.value && quotedCost.value !== null && !estimateLoading.value && !estimateError.value && auth.balance >= quotedCost.value && catalogLoaded.value && !catalogError.value && !optionsError.value && !tutorial.invalid.value && !tutorial.unavailable.value && !generationUnavailable.value && !optionsLoading.value && durationValid.value && prompt.value.trim().length > 0
     && (workflowInputType.value === 'text' || hasRequiredImageInput.value)
     && (audioMode.value !== 'reference' || referenceAudio.value !== null)
 })
@@ -125,8 +163,21 @@ const hasRequiredImageInput = computed(() => {
 })
 
 function frameReady(slot: FrameSlot) {
-  return slot.uploaded || Boolean(slot.assetId)
+  return Boolean(slot.file || slot.uploadId || slot.assetId)
 }
+
+const preparationHint = computed(() => {
+  if (workflowInputType.value === 'first_last' && !hasRequiredImageInput.value) return '请先准备首帧与尾帧各一张图片，再查看费用。'
+  if (workflowInputType.value === 'multi_image' && !hasRequiredImageInput.value) return `请先准备至少 ${Math.max(creationOptions.value.minImages, 1)} 张参考图，再查看费用。`
+  if (audioMode.value === 'reference' && !referenceAudio.value) return '请先选择参考音频文件。'
+  return ''
+})
+const submitHint = computed(() => {
+  if (preparationHint.value) return preparationHint.value
+  if (quotedCost.value !== null && auth.balance < quotedCost.value) return '余额不足，请前往钱包查看余额或使用兑换码。在线充值暂未开放。'
+  if (!prompt.value.trim()) return '请填写这一镜的画面描述，再提交任务。'
+  return ''
+})
 
 function slotLabel(descriptor: SlotDescriptor) {
   if (descriptor.key === 'first') return '首帧关键图'
@@ -135,9 +186,11 @@ function slotLabel(descriptor: SlotDescriptor) {
 }
 
 function setStageFromSlot(slot: FrameSlot, descriptor: SlotDescriptor) {
+  resetStageMedia()
   activeTaskId.value = null
   activeSlotKey.value = descriptor.key
-  stagePreviewUrl.value = frameReady(slot) ? assetPreviewUrl(slot.assetId, slot.previewUrl) : undefined
+  const asset = app.assets.find((item) => item.id === slot.assetId)
+  stagePreviewUrl.value = frameReady(slot) ? assetPreviewUrl(slot.assetId, slot.previewUrl || asset?.url) : undefined
   if (frameReady(slot)) {
     const asset = app.assets.find((item) => item.id === slot.assetId)
     stageTitle.value = slot.fileName || asset?.name || '已选取素材'
@@ -145,22 +198,44 @@ function setStageFromSlot(slot: FrameSlot, descriptor: SlotDescriptor) {
   }
 }
 
-function setStageFromTask(taskId: string) {
+async function setStageFromTask(taskId: string) {
   const task = recentTasks.value.find((item) => item.id === taskId)
   if (!task) return
+  resetStageMedia()
+  const request = previewRequest
   activeTaskId.value = taskId
   activeSlotKey.value = null
   stagePreviewUrl.value = task.thumb
   stageTitle.value = task.title
   stageSubtitle.value = `${task.status} · ${task.duration}`
+  stageLoading.value = true
+  try {
+    const detail = await fetchTask(taskId)
+    if (request !== previewRequest) return
+    stagePreviewUrl.value = detail.thumbUrl || task.thumb
+    stageVideoUrl.value = detail.deliveryStatus === 'ready' ? detail.downloadUrl || undefined : undefined
+    stageSubtitle.value = `${detail.status} · ${detail.duration} · ${detail.resolution}`
+  } catch {
+    if (request === previewRequest) stageError.value = '暂时无法读取成片，请在任务详情查看最新状态'
+  } finally {
+    if (request === previewRequest) stageLoading.value = false
+  }
+}
+
+function resetStageMedia() {
+  previewRequest += 1
+  stageVideoUrl.value = undefined
+  stageLoading.value = false
+  stageError.value = ''
 }
 
 function resetStageIdle() {
+  resetStageMedia()
   activeTaskId.value = null
   activeSlotKey.value = null
   stagePreviewUrl.value = undefined
-  stageTitle.value = '等待装填素材'
-  stageSubtitle.value = `${resolution.value} · 24fps`
+  stageTitle.value = '预览与结果'
+  stageSubtitle.value = '上传素材后可在这里查看画面'
 }
 
 function fillSlot(slot: FrameSlot, payload: {
@@ -209,10 +284,11 @@ function handleClearSlot(descriptor: SlotDescriptor) {
 function confirmAssetPick(assetId: string) {
   if (!pickingSlotRef.value) return
   const asset = app.assets.find((item) => item.id === assetId)
-  fillSlot(pickingSlotRef.value, { assetId })
+  resetStageMedia()
+  fillSlot(pickingSlotRef.value, { assetId, previewUrl: asset?.url })
   stageTitle.value = asset?.name ?? '已选取素材'
   stageSubtitle.value = '素材预览就绪'
-  stagePreviewUrl.value = assetPreviewUrl(assetId)
+  stagePreviewUrl.value = assetPreviewUrl(assetId, asset?.url)
   activeTaskId.value = null
   pickingSlotRef.value = null
   app.notify(`已装入素材: ${asset?.name ?? '图片'}`)
@@ -220,6 +296,7 @@ function confirmAssetPick(assetId: string) {
 
 function confirmLocalUpload(payload: { file: File; fileName: string; previewUrl: string }) {
   if (!pickingSlotRef.value) return
+  resetStageMedia()
   fillSlot(pickingSlotRef.value, {
     file: payload.file,
     fileName: payload.fileName,
@@ -303,6 +380,25 @@ async function resolveSourcePayload(): Promise<Record<string, unknown> | undefin
   return Object.keys(sourceMeta).length ? sourceMeta : undefined
 }
 
+// Estimate the selected visual reference count without uploading local files.
+// Pending references are opaque placeholders used only for capability routing;
+// submission uploads and validates the actual source ownership.
+function estimateSourceMeta(): Record<string, unknown> | undefined {
+  if (workflowInputType.value === 'text') return undefined
+  const refFor = (slot: FrameSlot, index: number) => ({
+    type: slot.uploadId ? 'upload' : slot.assetId ? 'asset' : 'pending',
+    id: slot.uploadId || slot.assetId || `pending-image-${index + 1}`,
+  })
+  if (imageVariant.value === 'keyframes') {
+    const refs: Record<string, unknown> = {}
+    if (frameReady(firstFrame.value)) refs.first = refFor(firstFrame.value, 0)
+    if (frameReady(lastFrame.value)) refs.last = refFor(lastFrame.value, 1)
+    return Object.keys(refs).length ? refs : undefined
+  }
+  const refs = multiFrames.value.filter(frameReady).map(refFor)
+  return refs.length ? { refs } : undefined
+}
+
 function syncBalance(balance: number) {
   app.balance = balance
   auth.setBalance(balance)
@@ -314,70 +410,148 @@ function apiErrorMessage(error: unknown, fallback: string) {
 }
 
 async function submit() {
-  if (!canSubmit.value) {
-    if (!prompt.value.trim()) app.notify('请先填写画面描述')
-    else if (workflowInputType.value === 'first_last') app.notify('请先上传或选择首帧和尾帧图片')
-    else if (audioMode.value === 'reference') app.notify('请先上传参考音频')
-    else app.notify('请至少选择一张参考图')
-    return
-  }
-  if (loading.value) return
+  if (!canSubmit.value || loading.value) return
+  const userId = auth.user?.id
+  if (!userId) return
   loading.value = true
+  submissionError.value = ''
   try {
+    restorePendingCreation()
+    if (pendingCreation.value || recoveryError.value) return
     const sourceMeta = await resolveSourcePayload()
-    if (!submissionRequestID.value) submissionRequestID.value = `create_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const result = await createTask({
+    if (auth.user?.id !== userId) return
+    // Another tab may have submitted while these materials were uploading.
+    restorePendingCreation()
+    if (pendingCreation.value || recoveryError.value) return
+    const pending: PendingCreation = {
+      requestId: `create_${Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16)).join('_')}`,
+      payload: {
       modeId: activeModeId.value,
       carrierId: selectedCarrierId.value || undefined,
       modelId: selectedModelId.value || undefined,
-      durationSeconds: parsedDuration.value,
+      durationSec: parsedDuration.value,
       resolution: resolution.value,
       aspectRatio: ratio.value,
       generateAudio: generateAudio.value,
       title: buildTaskTitle(),
       prompt: prompt.value.trim(),
       sourceMeta,
-    }, submissionRequestID.value)
+      },
+    }
+    try { savePendingCreation(userId, pending) }
+    catch { throw new Error('浏览器无法保存提交记录，暂未提交任务。请允许本地存储后重试。') }
+    pendingCreation.value = pending
+    await sendPendingCreation(userId, pending)
+  }
+  catch (error) {
+    submissionError.value = apiErrorMessage(error, '素材准备失败，暂未提交任务，请重试。')
+  }
+  finally { loading.value = false }
+}
+
+function restorePendingCreation() {
+  recoveryError.value = ''
+  try { pendingCreation.value = auth.user?.id ? loadPendingCreation(auth.user.id) : null }
+  catch { recoveryError.value = '无法读取上次提交记录，请先在任务中核对结果，或联系支持。' }
+}
+
+async function recoverSubmission() {
+  if (loading.value || !auth.user?.id || !pendingCreation.value) return
+  const userId = auth.user.id
+  loading.value = true
+  submissionError.value = ''
+  try { await sendPendingCreation(userId, pendingCreation.value) }
+  finally { loading.value = false }
+}
+
+async function sendPendingCreation(userId: string, pending: PendingCreation) {
+  let accepted = false
+  try {
+    const result = await createTask(pending.payload, pending.requestId)
+    if (!result.task?.id || !result.order?.id || !Number.isFinite(result.order.amount) || !Number.isFinite(result.wallet?.balance)) {
+      throw new Error('提交响应不完整')
+    }
+    accepted = true
+    if (auth.user?.id !== userId) return
     syncBalance(result.wallet.balance)
     app.notify(`任务已提交，消费 ¥${result.order.amount.toFixed(2)}`)
+    draftReady.value = false
+    if (saveTimer) clearTimeout(saveTimer)
     app.draftPrompt = ''
     prompt.value = ''
     clearCreateDraft()
-    submissionRequestID.value = ''
-    router.push('/app/works')
+    await router.push(`/app/works/${result.task.id}`)
+    clearPendingCreation(userId, pending.requestId)
+    pendingCreation.value = null
   }
   catch (error) {
-    app.notify(apiErrorMessage(error, '提交失败，请稍后重试'))
-  }
-  finally {
-    loading.value = false
+    if (auth.user?.id !== userId) return
+    const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code
+    // Only explicit application rejections prove no task was committed. A
+    // timeout, proxy error or unknown response keeps the original request.
+    const rejected = !accepted && code && ['BAD_REQUEST', 'UNAVAILABLE_COMBINATION', 'INSUFFICIENT_BALANCE', 'SUPPLY_UNAVAILABLE', 'STORAGE_UNAVAILABLE'].includes(code)
+    if (rejected) {
+      clearPendingCreation(userId, pending.requestId)
+      pendingCreation.value = null
+      submissionError.value = creationErrorMessage(error, '当前参数无法提交，请检查素材和生成设置后重试。')
+    } else {
+      submissionError.value = '尚未确认提交结果，请核对原提交，不要另建相同任务。重试将使用原请求编号。'
+    }
   }
 }
 
+function creationErrorMessage(error: unknown, fallback: string) {
+  const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code
+  if (code === 'INSUFFICIENT_BALANCE') return '余额不足，无法预扣。请前往钱包查看余额或使用兑换码。'
+  if (code === 'STORAGE_UNAVAILABLE') return '素材与成片存储暂不可用，请稍后重试。本次未提交任务。'
+  if (code === 'SUPPLY_UNAVAILABLE' || code === 'UNAVAILABLE_COMBINATION') return '当前模型或参数组合暂不可用，请调整参数或稍后重试。'
+  return fallback
+}
+
 async function refreshEstimate() {
-  if (!activeModeId.value || !durationValid.value || !resolution.value || !ratio.value) {
-    quotedCost.value = null
+  const request = ++estimateRequest
+  quotedCost.value = null
+  estimateError.value = ''
+  if (optionsLoading.value) {
+    estimateLoading.value = true
+    return
+  }
+  if (!activeModeId.value || !durationValid.value || !resolution.value || !ratio.value || preparationHint.value) {
+    estimateLoading.value = false
     return
   }
   estimateLoading.value = true
   try {
-    const result = await estimateTask({ modeId: activeModeId.value, carrierId: selectedCarrierId.value || undefined, modelId: selectedModelId.value || undefined, durationSeconds: parsedDuration.value, resolution: resolution.value, aspectRatio: ratio.value, generateAudio: generateAudio.value })
+    const result = await estimateTask({ modeId: activeModeId.value, carrierId: selectedCarrierId.value || undefined, modelId: selectedModelId.value || undefined, durationSec: parsedDuration.value, resolution: resolution.value, aspectRatio: ratio.value, generateAudio: generateAudio.value, sourceMeta: estimateSourceMeta() })
+    if (request !== estimateRequest) return
     quotedCost.value = result.available ? result.billing.estimatedTotal : null
-  } catch {
-    quotedCost.value = null
+    if (!result.available) estimateError.value = '当前模型或参数组合暂不可用，请调整参数后重新估价。'
+  } catch (error) {
+    if (request === estimateRequest) estimateError.value = creationErrorMessage(error, '费用预估失败，请检查网络后重试。确认费用后才能提交。')
   } finally {
-    estimateLoading.value = false
+    if (request === estimateRequest) estimateLoading.value = false
   }
 }
 
 async function loadCreationOptions() {
+  const request = ++optionsRequest
+  optionsError.value = ''
+  estimateRequest += 1
+  quotedCost.value = null
+  estimateError.value = ''
   if (!activeModeId.value) {
+    optionsLoading.value = false
+    estimateLoading.value = false
     creationOptions.value = { durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false, minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P' }
     return
   }
+  optionsLoading.value = true
+  estimateLoading.value = true
   try {
     const next = await fetchCreationOptions(activeModeId.value, selectedModelId.value || undefined)
+    if (request !== optionsRequest) return
     creationOptions.value = next
+    tutorial.checkOptions(next)
     if (!next.durations.includes(parsedDuration.value)) durationSec.value = String(next.defaultDuration || next.durations[0] || 5)
     if (!next.resolutions.includes(resolution.value)) resolution.value = next.defaultResolution || next.resolutions[0] || '768P'
     if (!next.aspectRatios.includes(ratio.value)) ratio.value = next.aspectRatios[0] || '16:9'
@@ -386,20 +560,29 @@ async function loadCreationOptions() {
       clearReferenceAudio()
     }
   } catch {
+    if (request !== optionsRequest) return
+    optionsError.value = '生成选项加载失败，请检查网络后重新加载。'
     creationOptions.value = { durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false, minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P' }
+  } finally {
+    if (request === optionsRequest) {
+      optionsLoading.value = false
+      void refreshEstimate()
+    }
   }
 }
 
 async function loadCreationCatalog() {
   catalogLoaded.value = false
+  catalogError.value = ''
   try {
     catalog.value = await fetchCreationCatalog()
-    if (!creationModes.value.some((item) => item.inputType === workflowInputType.value)) {
+    if (!tutorial.requested.value && !creationModes.value.some((item) => item.inputType === workflowInputType.value)) {
       const fallback = creationModes.value[0]
       if (fallback) workflowInputType.value = fallback.inputType
     }
     await loadCreationOptions()
   } catch (error) {
+    catalogError.value = '创作目录加载失败，请检查网络后重新加载。'
     app.notify(apiErrorMessage(error, '加载创作目录失败'))
   } finally {
     catalogLoaded.value = true
@@ -407,11 +590,12 @@ async function loadCreationCatalog() {
 }
 
 function syncTextStage() {
+  resetStageMedia()
   activeTaskId.value = null
   activeSlotKey.value = null
   stagePreviewUrl.value = undefined
-  stageTitle.value = prompt.value.trim() ? '文生描述已就绪' : '等待输入描述'
-  stageSubtitle.value = `${resolution.value} · 文生视频`
+  stageTitle.value = '预览与结果'
+  stageSubtitle.value = '生成完成后，可在任务中预览和下载成片'
 }
 
 function applyDraftFromStorage() {
@@ -422,6 +606,12 @@ function applyDraftFromStorage() {
     ratio.value = saved.ratio
     durationSec.value = saved.durationSec
     resolution.value = saved.resolution
+    selectedCarrierId.value = saved.carrierId || ''
+    selectedModelId.value = saved.modelId || ''
+    audioMode.value = saved.audioMode || 'none'
+    referenceAudio.value = saved.referenceAudioId
+      ? { uploadId: saved.referenceAudioId, fileName: saved.referenceAudioName || '已保存参考音频' }
+      : null
     firstFrame.value = { ...saved.firstFrame, picking: false }
     lastFrame.value = { ...saved.lastFrame, picking: false }
     extraFrames.value = saved.extraFrames.map((slot) => ({ ...slot, picking: false }))
@@ -434,28 +624,43 @@ function applyDraftFromStorage() {
     prompt.value = plazaPrompt
   }
   if (plazaPrompt) app.draftPrompt = ''
-  stageSubtitle.value = `${resolution.value} · 24fps`
+  applyModeFromRoute()
+}
+
+function applyModeFromRoute() {
+  const mode = route.query.mode
+  if (mode === 'text' || mode === 'multi_image' || mode === 'first_last') workflowInputType.value = mode
+}
+
+function persistDraft() {
+  if (!draftReady.value) return
+  saveCreateDraft({
+    workflowInputType: workflowInputType.value,
+    prompt: prompt.value,
+    ratio: ratio.value,
+    durationSec: durationSec.value,
+    resolution: resolution.value,
+    carrierId: selectedCarrierId.value || undefined,
+    modelId: selectedModelId.value || undefined,
+    audioMode: audioMode.value,
+    referenceAudioId: referenceAudio.value?.uploadId,
+    referenceAudioName: referenceAudio.value?.fileName,
+    firstFrame: firstFrame.value,
+    lastFrame: lastFrame.value,
+    extraFrames: extraFrames.value,
+    multiFrames: multiFrames.value,
+  })
 }
 
 function scheduleDraftSave() {
   if (!draftReady.value) return
   if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    saveCreateDraft({
-      workflowInputType: workflowInputType.value,
-      prompt: prompt.value,
-      ratio: ratio.value,
-      durationSec: durationSec.value,
-      resolution: resolution.value,
-      firstFrame: firstFrame.value,
-      lastFrame: lastFrame.value,
-      extraFrames: extraFrames.value,
-      multiFrames: multiFrames.value,
-    })
-  }, 320)
+  saveTimer = setTimeout(persistDraft, 320)
 }
 
 async function loadRecentTasks() {
+  recentTasksLoading.value = true
+  recentTasksError.value = ''
   try {
     const result = await listTasks({ page: 1, pageSize: 3 })
     recentTasks.value = result.items.map((task) => ({
@@ -466,33 +671,46 @@ async function loadRecentTasks() {
     }))
   } catch {
     recentTasks.value = []
+    recentTasksError.value = '暂时无法加载最近任务'
+  } finally {
+    recentTasksLoading.value = false
   }
 }
 
 onMounted(() => {
+  restorePendingCreation()
   applyDraftFromStorage()
+  tutorial.initialize()
   if (workflowInputType.value === 'text') syncTextStage()
   draftReady.value = true
   void loadRecentTasks()
-	void loadCreationCatalog()
+  void loadCreationCatalog()
   void (async () => {
-    await app.loadProjects()
-    if (app.currentProjectId) await app.loadProjectTree(app.currentProjectId)
+    try {
+      await app.loadProjects()
+      if (app.currentProjectId) await app.loadProjectTree(app.currentProjectId)
+    } catch {
+      app.notify('暂时无法加载作品素材，你仍可上传本地文件')
+    }
   })()
 })
 
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
+  persistDraft()
+  estimateRequest += 1
+  optionsRequest += 1
+  previewRequest += 1
 })
 
-watch([workflowInputType, prompt, ratio, durationSec, resolution, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
+watch([workflowInputType, prompt, ratio, durationSec, resolution, selectedCarrierId, selectedModelId, audioMode, referenceAudio, firstFrame, lastFrame, extraFrames, multiFrames], scheduleDraftSave, { deep: true })
 
 watch([activeModeId, selectedModelId], () => {
   quotedCost.value = null
   void loadCreationOptions()
 })
 
-watch([activeModeId, selectedCarrierId, selectedModelId, durationSec, resolution, ratio, generateAudio], () => {
+watch([activeModeId, selectedCarrierId, selectedModelId, durationSec, resolution, ratio, generateAudio, materialSignature], () => {
   void refreshEstimate()
 })
 
@@ -504,70 +722,85 @@ watch(selectedCarrierId, () => {
   if (selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
 })
 
-watch([resolution, durationSec], () => {
-  if (stageTitle.value === '等待装填素材') stageSubtitle.value = `${resolution.value} · 24fps`
-})
+watch(() => route.query.mode, applyModeFromRoute)
+watch(() => auth.user?.id, restorePendingCreation)
 
 watch(workflowInputType, (next) => {
+  if (selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
   activeSlotKey.value = null
   if (next === 'text') syncTextStage()
   else resetStageIdle()
 })
 
-watch(prompt, () => {
-  if (workflowInputType.value !== 'text') return
-  stageTitle.value = prompt.value.trim() ? '文生描述已就绪' : '等待输入描述'
-})
 </script>
 
 <template>
-  <section class="s2v-page s2v-page-fill">
+  <section class="s2v-page s2v-studio">
     <S2VPageHeader title="创作">
+      <template #description>从一个画面出发，把想法变成下一段影片。</template>
       <template #actions>
-        <S2VBadge tone="success">钱包余额: ¥ {{ auth.balance.toFixed(2) }}</S2VBadge>
+        <div class="s2v-studio-page-actions">
+          <span class="s2v-studio-balance">钱包余额: ¥ {{ auth.balance.toFixed(2) }}</span>
+          <S2VButton size="sm" @click="router.push('/app/works')">查看任务<ArrowUpRight class="h-4 w-4" /></S2VButton>
+        </div>
       </template>
     </S2VPageHeader>
 
-    <div class="s2v-wb-card">
+    <GuideCreationContext
+      v-if="tutorial.requested.value"
+      :guide="tutorial.guide.value" :shot="tutorial.shot.value"
+      :invalid="tutorial.invalid.value" :unavailable="tutorial.unavailable.value"
+      :applied="tutorial.applied.value" :adjusted="tutorial.adjusted.value"
+      :loading="loading || optionsLoading"
+      @apply="applyTutorial"
+    />
+
+    <fieldset :disabled="loading" class="contents">
       <CreateWorkbenchToolbar
         :workflow-input-type="workflowInputType"
         :modes="creationModes"
         @update:workflow-input-type="workflowInputType = $event"
       />
+    </fieldset>
 
-      <div class="s2v-wb-body">
-        <div class="s2v-wb-stage-col">
-          <CreateStagePlayer
-            :ratio="ratio"
-            :duration-sec="parsedDuration"
-            :resolution="resolution"
-            :title="stageTitle"
-            :subtitle="stageSubtitle"
-            :preview-url="stagePreviewUrl"
-            @reset="resetStageIdle"
-          />
-          <CreateFilmstrip
-            :tasks="recentTasks"
-            :active-task-id="activeTaskId"
-            @select="setStageFromTask"
-            @view-all="router.push('/app/works')"
-          />
-        </div>
+    <CreateAvailabilityNotice
+      v-if="catalogError || optionsError"
+      :error="catalogError || optionsError"
+      :loading="!catalogLoaded || optionsLoading"
+      @retry="loadCreationCatalog"
+    />
 
-        <div class="s2v-wb-panel-col">
-          <CreateSlotsTrack
-            v-if="workflowInputType !== 'text'"
-            :variant="imageVariant"
-            :first-frame="firstFrame"
-            :last-frame="lastFrame"
-            :extra-frames="extraFrames"
-            :multi-frames="multiFrames"
-            :max-images="maxReferenceImages"
-            :active-slot-key="activeSlotKey"
-            @slot-click="handleSlotClick"
-            @clear-slot="handleClearSlot"
-            @add-multi="addMulti"
-          />
+    <div class="s2v-studio-layout">
+      <fieldset :disabled="loading" class="s2v-studio-form">
+        <CreateSlotsTrack
+          v-if="workflowInputType !== 'text'"
+          :variant="imageVariant"
+          :first-frame="firstFrame"
+          :last-frame="lastFrame"
+          :extra-frames="extraFrames"
+          :multi-frames="multiFrames"
+          :max-images="maxReferenceImages"
+          :active-slot-key="activeSlotKey"
+          @slot-click="handleSlotClick"
+          @clear-slot="handleClearSlot"
+          @add-multi="addMulti"
+        />
+        <CreatePromptSubmit
+          v-model:prompt="prompt"
+          :cost="quotedCost"
+          :loading="loading"
+          :estimate-loading="estimateLoading"
+          :estimate-error="estimateError"
+          :preparation-hint="preparationHint"
+          :submit-hint="submitHint"
+          :submission-error="recoveryError || submissionError"
+          :pending="pendingCreation"
+          :disabled="!canSubmit"
+          :unavailable="generationUnavailable"
+          @submit="submit"
+          @retry-estimate="refreshEstimate"
+          @recover="recoverSubmission"
+        >
           <CreateSettingsPills
             :ratio="ratio"
             :duration-sec="durationSec"
@@ -591,15 +824,29 @@ watch(prompt, () => {
             @reference-audio-upload="selectReferenceAudio"
             @clear-reference-audio="clearReferenceAudio"
           />
-          <CreatePromptSubmit
-            v-model:prompt="prompt"
-            :cost="cost"
-            :loading="loading"
-            :disabled="!canSubmit"
-            :unavailable="generationUnavailable"
-            @submit="submit"
-          />
-        </div>
+        </CreatePromptSubmit>
+      </fieldset>
+
+      <div class="s2v-studio-results">
+        <CreateStagePlayer
+          :title="stageTitle"
+          :subtitle="stageSubtitle"
+          :preview-url="stagePreviewUrl"
+          :video-url="stageVideoUrl"
+          :loading="stageLoading"
+          :error="stageError"
+          :task-id="activeTaskId"
+          @view-detail="router.push(`/app/works/${activeTaskId}`)"
+        />
+        <CreateFilmstrip
+          :tasks="recentTasks"
+          :active-task-id="activeTaskId"
+          :loading="recentTasksLoading"
+          :error="recentTasksError"
+          @select="setStageFromTask"
+          @view-all="router.push('/app/works')"
+          @retry="loadRecentTasks"
+        />
       </div>
     </div>
 

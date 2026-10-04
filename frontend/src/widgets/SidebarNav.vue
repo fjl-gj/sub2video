@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Settings2, Sparkles, Ticket, Trash2, WalletCards, Workflow } from 'lucide-vue-next'
+import { Activity, Bot, CircleHelp, Clapperboard, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Settings2, Ticket, Trash2, WalletCards, Workflow } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import S2VNavItem from '@/shared/ui/S2VNavItem.vue'
 import S2VProgress from '@/shared/ui/S2VProgress.vue'
@@ -12,12 +12,12 @@ interface NavGroup { label: string; items: NavItem[] }
 const props = defineProps<{ surface: 'client' | 'admin'; overlay?: boolean }>()
 const route = useRoute()
 const app = useAppStore()
-const iconMap = { Activity, Bot, CircleHelp, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Settings2, Sparkles, Ticket, Trash2, WalletCards, Workflow }
+const iconMap = { Activity, Bot, CircleHelp, Clapperboard, Coins, FileClock, FolderOpen, LayoutDashboard, Library, ListChecks, Settings2, Ticket, Trash2, WalletCards, Workflow }
 
 const clientGroups = computed<NavGroup[]>(() => [
   { label: '', items: [{ label: '首页概览', to: '/app/overview', icon: 'LayoutDashboard' }] },
   { label: '创作空间', items: [
-    { label: '创作', to: '/app/create', icon: 'Sparkles' },
+    { label: '创作', to: '/app/create', icon: 'Clapperboard' },
     { label: '广场', to: '/app/garden', icon: 'Library' },
     { label: '任务', to: '/app/works', icon: 'ListChecks', trailing: app.activeTasks.length ? `${app.activeTasks.length}` : undefined },
     { label: '资产', to: '/app/assets', icon: 'FolderOpen' },
@@ -57,21 +57,21 @@ function active(to: string) { return route.path === to }
 </script>
 
 <template>
-  <aside :class="cn(overlay ? 'fixed inset-y-14 left-0 z-40 flex h-auto w-60 flex-col border-r border-s2v-line/80 bg-s2v-surface shadow-subtle md:hidden' : 's2v-sidebar')">
-    <nav class="grid gap-5 overflow-y-auto p-3" aria-label="主导航">
+  <aside :class="cn(overlay ? 's2v-sidebar-overlay' : 's2v-sidebar')">
+    <nav class="s2v-sidebar-nav" aria-label="主导航">
       <div v-for="(group, index) in groups" :key="group.label || index" class="grid gap-1">
-        <div v-if="group.label" class="px-2.5 pb-1 text-[11px] font-bold uppercase tracking-wider text-s2v-label">{{ group.label }}</div>
+        <div v-if="group.label" class="s2v-sidebar-group">{{ group.label }}</div>
         <S2VNavItem v-for="item in group.items" :key="item.to" :to="item.to" :active="active(item.to)" :badge="item.badge" :badge-tone="item.badgeTone">
           <template #icon><component :is="iconMap[item.icon as keyof typeof iconMap]" class="h-4 w-4" /></template>
           {{ item.label }}
           <template v-if="item.trailing" #trailing>
-            <span :class="['s2v-mono shrink-0 text-[10px] leading-none', item.to === '/app/works' ? 'rounded border border-amber-200/60 bg-amber-50 px-1.5 py-0.5 font-bold text-amber-700' : 'text-s2v-label']">{{ item.trailing }}</span>
+            <span class="s2v-sidebar-count">{{ item.trailing }}</span>
           </template>
         </S2VNavItem>
       </div>
     </nav>
-    <div v-if="props.surface === 'client'" class="mt-auto space-y-2 border-t border-s2v-nav-hover bg-s2v-canvas/50 p-3">
-      <div class="flex items-center justify-between text-[11px]"><span class="font-medium text-s2v-muted">空间资源占用</span><span class="s2v-mono font-semibold text-s2v-ink">{{ app.storageUsed }} / {{ app.storageQuota }} GB</span></div>
+    <div v-if="props.surface === 'client'" class="s2v-sidebar-storage space-y-3">
+      <div class="flex items-center justify-between text-[11px]"><span class="text-s2v-muted">创作存储</span><span class="s2v-mono text-s2v-body">{{ app.storageUsed }} / {{ app.storageQuota }} GB</span></div>
       <S2VProgress :value="app.storagePercent" />
       <div class="s2v-mono flex justify-end text-[10px] text-s2v-label">
         <RouterLink to="/app/assets" class="text-s2v-primary hover:underline">管理 →</RouterLink>

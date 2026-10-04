@@ -23,7 +23,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
 
 const rootClass = computed(() => cn('grid w-full gap-1.5 text-xs font-semibold text-s2v-ink/70', props.class))
 const shell = computed(() => cn(
-  'flex w-full items-center gap-2 border border-s2v-line bg-s2v-canvas',
+  'flex w-full items-center gap-2 border border-s2v-line bg-s2v-canvas focus-within:border-s2v-primary focus-within:ring-1 focus-within:ring-s2v-primary',
   props.size === 'sm' ? 'h-9 rounded-nav px-2.5' : 'h-10 rounded-control px-3',
   props.disabled && 'opacity-55',
 ))
@@ -35,6 +35,7 @@ const shell = computed(() => cn(
     <span :class="shell">
       <slot name="prefix" />
       <input
+        v-bind="$attrs"
         :value="modelValue"
         :type="type"
         :min="min"

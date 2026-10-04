@@ -152,6 +152,26 @@ func findFileInFolders(folders map[string]FsFolder, fileID string) (*FsItem, []s
 	return walk(folders, nil)
 }
 
+func findSourceTaskInFolders(folders map[string]FsFolder, taskID string) (*FsItem, []string, bool) {
+	var walk func(map[string]FsFolder, []string) (*FsItem, []string, bool)
+	walk = func(fs map[string]FsFolder, prefix []string) (*FsItem, []string, bool) {
+		for name, folder := range fs {
+			path := append(append([]string{}, prefix...), name)
+			for i := range folder.Items {
+				if folder.Items[i].SourceTask == taskID {
+					item := folder.Items[i]
+					return &item, path, true
+				}
+			}
+			if item, p, ok := walk(folder.Folders, path); ok {
+				return item, p, true
+			}
+		}
+		return nil, nil, false
+	}
+	return walk(folders, nil)
+}
+
 func removeFileFromFolders(folders map[string]FsFolder, fileID string) (map[string]FsFolder, *FsItem, bool) {
 	var removed *FsItem
 	var walk func(map[string]FsFolder) map[string]FsFolder
@@ -489,15 +509,31 @@ func (s *Store) GetProjectFile(ctx context.Context, userID int64, publicID, file
 }
 
 func (s *Store) FindUserAsset(ctx context.Context, userID int64, assetID string) (*FsItem, string, error) {
-	items, err := s.ListProjects(ctx, userID, false)
+	// Validation is read-only and may run inside the submission transaction.
+	// Do not call ListProjects here: it can create a default project and borrow
+	// another pool connection while the submission already owns one.
+	rows, err := s.routeDB().Query(ctx, `SELECT public_id, folders_json FROM projects WHERE user_id=$1 AND trashed_at IS NULL ORDER BY is_default DESC, updated_at DESC`, userID)
 	if err != nil {
 		return nil, "", err
 	}
-	for i := range items {
-		item, _, ok := findFileInFolders(items[i].Folders, assetID)
-		if ok {
-			return item, items[i].ID, nil
+	defer rows.Close()
+	for rows.Next() {
+		var projectID string
+		var raw []byte
+		if err := rows.Scan(&projectID, &raw); err != nil {
+			return nil, "", err
 		}
+		folders, err := unmarshalFolders(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		item, _, ok := findFileInFolders(folders, assetID)
+		if ok {
+			return item, projectID, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
 	}
 	return nil, "", ErrNotFound
 }
@@ -609,12 +645,26 @@ func AssetStoragePath(root, projectID, assetID, fileName string) string {
 }
 
 func (s *Store) SaveTaskToProject(ctx context.Context, userID int64, taskID, projectID string) (*FsItem, []string, error) {
+	if projectID == "" {
+		var err error
+		projectID, err = s.ResolveCurrentProjectID(ctx, userID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, fmt.Sprintf("sub2video:save-task:%d:%s:%s", userID, taskID, projectID)); err != nil {
+		return nil, nil, err
+	}
 	var status, title, resultOSS string
 	var saved bool
-	err := s.Pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 SELECT status, title, COALESCE(result_oss_url,''), saved_to_project
-FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
-		&status, &title, &resultOSS, &saved)
+FROM generation_tasks WHERE public_id=$1 AND user_id=$2 FOR UPDATE`, taskID, userID).Scan(&status, &title, &resultOSS, &saved)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -625,16 +675,31 @@ FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
 		return nil, nil, errors.New("仅已完成任务可保存到作品")
 	}
 	if saved {
+		var raw []byte
+		var trashedAt *time.Time
+		if err := tx.QueryRow(ctx, `SELECT folders_json, trashed_at FROM projects WHERE public_id=$1 AND user_id=$2`, projectID, userID).Scan(&raw, &trashedAt); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, nil, ErrNotFound
+			}
+			return nil, nil, err
+		}
+		if trashedAt != nil {
+			return nil, nil, errors.New("回收站作品不可上传")
+		}
+		folders, err := unmarshalFolders(raw)
+		if err != nil {
+			return nil, nil, err
+		}
+		if item, path, ok := findSourceTaskInFolders(folders, taskID); ok {
+			if err := tx.Commit(ctx); err != nil {
+				return nil, nil, err
+			}
+			return item, path, nil
+		}
 		return nil, nil, errors.New("任务已保存到作品")
 	}
 	if resultOSS == "" {
 		return nil, nil, errors.New("成片尚未完成持久化交付")
-	}
-	if projectID == "" {
-		projectID, err = s.ResolveCurrentProjectID(ctx, userID)
-		if err != nil {
-			return nil, nil, err
-		}
 	}
 	name := strings.TrimSpace(title)
 	if name == "" {
@@ -654,14 +719,39 @@ FROM generation_tasks WHERE public_id=$1 AND user_id=$2`, taskID, userID).Scan(
 		RemoteURL:  resultOSS,
 	}
 	path := []string{"视频", "正片镜头"}
-	if _, _, err := s.AddProjectFile(ctx, userID, projectID, path, item); err != nil {
+	var raw []byte
+	var trashedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT folders_json, trashed_at FROM projects WHERE public_id=$1 AND user_id=$2 FOR UPDATE`, projectID, userID).Scan(&raw, &trashedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, ErrNotFound
+		}
 		return nil, nil, err
 	}
-	_, err = s.Pool.Exec(ctx, `
+	if trashedAt != nil {
+		return nil, nil, errors.New("回收站作品不可上传")
+	}
+	folders, err := unmarshalFolders(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	next, err := putFileInPath(folders, path, item)
+	if err != nil {
+		return nil, nil, err
+	}
+	nextRaw, err := marshalFolders(next)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projects SET folders_json=$1::jsonb, updated_at=NOW() WHERE public_id=$2 AND user_id=$3 AND trashed_at IS NULL`, string(nextRaw), projectID, userID); err != nil {
+		return nil, nil, err
+	}
+	if _, err = tx.Exec(ctx, `
 UPDATE generation_tasks
 SET saved_to_project=TRUE, project_public_id=$1, updated_at=NOW()
-WHERE public_id=$2 AND user_id=$3`, projectID, taskID, userID)
-	if err != nil {
+WHERE public_id=$2 AND user_id=$3`, projectID, taskID, userID); err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
 	return &item, path, nil

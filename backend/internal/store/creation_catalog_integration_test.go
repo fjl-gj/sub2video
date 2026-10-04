@@ -1,500 +1,581 @@
 package store
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net/url"
-	"os"
-	"strings"
+	"sync"
 	"testing"
 	"time"
-
-	"github.com/sbu2video/backend/internal/db"
-	"github.com/sbu2video/backend/internal/redisx"
 )
 
-// This test intentionally requires an explicitly named test database. It
-// exercises the real PostgreSQL transaction path rather than a mock, and is
-// skipped by default on developer machines and production deployments.
-func TestCreationQuoteChargeAndRefundIntegration(t *testing.T) {
-	if os.Getenv("SUB2VIDEO_RUN_INTEGRATION") != "1" {
-		t.Skip("set SUB2VIDEO_RUN_INTEGRATION=1 with SUB2VIDEO_TEST_DATABASE_URL and SUB2VIDEO_TEST_REDIS_URL to run integration tests")
-	}
-	databaseURL := os.Getenv("SUB2VIDEO_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Fatal("SUB2VIDEO_TEST_DATABASE_URL is required when integration tests are enabled")
-	}
-	redisURL := os.Getenv("SUB2VIDEO_TEST_REDIS_URL")
-	if redisURL == "" {
-		t.Fatal("SUB2VIDEO_TEST_REDIS_URL is required when integration tests are enabled")
-	}
-	parsed, err := url.Parse(databaseURL)
-	if err != nil || !strings.Contains(strings.ToLower(parsed.Path), "test") {
-		t.Fatal("SUB2VIDEO_TEST_DATABASE_URL must target a database whose name contains 'test'")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	pool, err := db.Connect(ctx, databaseURL)
+func testCatalogIDs(t *testing.T, env *integrationStore) (textMode, firstLastMode, multiMode, modelID string) {
+	t.Helper()
+	var err error
+	rows, err := env.pool.Query(env.ctx, `SELECT public_id, code FROM creation_modes ORDER BY sort_order`)
 	if err != nil {
-		t.Fatalf("connect test postgres: %v", err)
+		t.Fatalf("list creation modes: %v", err)
 	}
-	defer pool.Close()
-	rdb, err := redisx.Connect(ctx, redisURL)
-	if err != nil {
-		t.Fatalf("connect test redis: %v", err)
-	}
-	defer rdb.Close()
-	if err := db.Migrate(ctx, pool); err != nil {
-		t.Fatalf("first migrate: %v", err)
-	}
-	if err := db.Migrate(ctx, pool); err != nil {
-		t.Fatalf("second migrate must be idempotent: %v", err)
-	}
-
-	s := New(pool)
-	if err := s.SeedBasics(ctx); err != nil {
-		t.Fatalf("seed basics: %v", err)
-	}
-	if err := s.SeedCreationCatalog(ctx); err != nil {
-		t.Fatalf("seed catalog: %v", err)
-	}
-	// Platform retail prices are mode-level and therefore have a NULL model
-	// reference. The admin listing must normalize those nullable joins instead
-	// of failing the whole management page during its initial load.
-	if retailPrices, err := s.ListRetailPriceRules(ctx); err != nil {
-		t.Fatalf("list mode-level retail prices: %v", err)
-	} else if len(retailPrices) == 0 {
-		t.Fatal("seed catalog must expose at least one retail price rule")
-	}
-	legacySuffix := fmt.Sprintf("%d", time.Now().UnixNano())
-	legacyCarrierID := "car_legacy_" + legacySuffix
-	legacyModelID := "mdl_legacy_" + legacySuffix
-	legacyRouteID := "rte_legacy_" + legacySuffix
-	legacyCode := "legacy-workflow-" + legacySuffix
-	if _, err := pool.Exec(ctx, `
-INSERT INTO carriers (public_id, code, name, enabled, sort_order)
-VALUES ($1, $2, 'Legacy workflow carrier', TRUE, 9999)`, legacyCarrierID, legacyCode); err != nil {
-		t.Fatalf("seed legacy carrier: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `
-INSERT INTO models (public_id, carrier_id, code, name, client_workflow_id, enabled, sort_order)
-SELECT $1, id, 'legacy-mode', 'Legacy workflow model', 'wf_legacy', TRUE, 1
-FROM carriers WHERE public_id=$2`, legacyModelID, legacyCarrierID); err != nil {
-		t.Fatalf("seed legacy workflow-bound model: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `
-INSERT INTO supplier_routes (public_id, supplier_id, model_id, workflow_id, enabled)
-SELECT $1, supplier.id, model.id, $3, TRUE
-FROM suppliers supplier, models model
-WHERE supplier.public_id='sup_autodl' AND model.public_id=$2`, legacyRouteID, legacyModelID, "minimax_h3_legacy_"+legacySuffix); err != nil {
-		t.Fatalf("seed legacy supplier route: %v", err)
-	}
-	if err := db.Migrate(ctx, pool); err != nil {
-		t.Fatalf("legacy retirement migration: %v", err)
-	}
-	var legacyCarrierEnabled bool
-	if err := pool.QueryRow(ctx, `SELECT enabled FROM carriers WHERE public_id=$1`, legacyCarrierID).Scan(&legacyCarrierEnabled); err != nil || legacyCarrierEnabled {
-		t.Fatalf("legacy carrier must be retired: enabled=%t err=%v", legacyCarrierEnabled, err)
-	}
-	var legacyRouteCount int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM supplier_routes WHERE public_id=$1`, legacyRouteID).Scan(&legacyRouteCount); err != nil || legacyRouteCount != 0 {
-		t.Fatalf("legacy H3 supplier route must be deleted: count=%d err=%v", legacyRouteCount, err)
-	}
-	managedCarriers, managedModels, err := s.ListCarriersWithModels(ctx)
-	if err != nil {
-		t.Fatalf("list managed catalog: %v", err)
-	}
-	for _, item := range managedCarriers {
-		if item.Code == legacyCode {
-			t.Fatalf("legacy workflow carrier leaked into management catalog: %#v", item)
-		}
-	}
-	for _, item := range managedModels {
-		if item.CarrierCode == legacyCode {
-			t.Fatalf("legacy workflow model leaked into management catalog: %#v", item)
-		}
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM supplier_routes WHERE public_id=$1`, legacyRouteID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM models WHERE public_id=$1`, legacyModelID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM carriers WHERE public_id=$1`, legacyCarrierID)
-	})
-	if _, err := pool.Exec(ctx, `UPDATE suppliers SET token_encrypted='integration-configured-token' WHERE public_id='sup_autodl'`); err != nil {
-		t.Fatalf("configure integration supplier: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE supplier_offerings SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='off_h3_text_lightx'`); err != nil {
-		t.Fatalf("reset integration offering: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE supplier_executions SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='exec_off_h3_text_lightx'`); err != nil {
-		t.Fatalf("reset integration execution: %v", err)
-	}
-
-	email := fmt.Sprintf("catalog-it-%d@sub2video.test", time.Now().UnixNano())
-	user, err := s.CreateUserWithWallet(ctx, email, "not-used-by-store-test", "Integration", "Integration", 100)
-	if err != nil {
-		t.Fatalf("create integration user: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM admin_audit_logs WHERE actor_user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM generation_tasks WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM task_quotes WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM wallet_ledger WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM projects WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM user_drafts WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM workspaces WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM wallets WHERE user_id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, user.ID)
-		_, _ = pool.Exec(context.Background(), `UPDATE supplier_offerings SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='off_h3_text_lightx'`)
-		_, _ = pool.Exec(context.Background(), `UPDATE supplier_executions SET failure_count=0, last_failure_at=NULL, health_status='unknown', enabled=TRUE WHERE public_id='exec_off_h3_text_lightx'`)
-	})
-	if err := s.AppendAdminAudit(ctx, user.ID, "integration.audit", "test", "catalog", map[string]any{"verified": true}); err != nil {
-		t.Fatalf("append admin audit: %v", err)
-	}
-	auditRows, err := s.ListAdminAuditLogs(ctx, 10)
-	if err != nil || len(auditRows) == 0 || auditRows[0].Action != "integration.audit" {
-		t.Fatalf("list admin audit: rows=%d err=%v", len(auditRows), err)
-	}
-
-	catalog, err := s.ListClientCreationCatalog(ctx)
-	if err != nil {
-		t.Fatalf("list client catalog: %v", err)
-	}
-	rows, err := pool.Query(ctx, `
-SELECT workflow_code
-FROM supplier_executions
-WHERE enabled
-ORDER BY workflow_code`)
-	if err != nil {
-		t.Fatalf("list enabled H3 executions: %v", err)
-	}
-	var enabledWorkflows []string
+	defer rows.Close()
 	for rows.Next() {
-		var workflowCode string
-		if err := rows.Scan(&workflowCode); err != nil {
-			rows.Close()
-			t.Fatalf("scan enabled H3 execution: %v", err)
+		var id, code string
+		if err := rows.Scan(&id, &code); err != nil {
+			t.Fatalf("scan creation mode: %v", err)
 		}
-		enabledWorkflows = append(enabledWorkflows, workflowCode)
+		switch code {
+		case "text_to_video":
+			textMode = id
+		case "first_last_frame_to_video":
+			firstLastMode = id
+		case "multi_image_to_video":
+			multiMode = id
+		}
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
-		t.Fatalf("iterate enabled H3 executions: %v", err)
+		t.Fatalf("iterate creation modes: %v", err)
 	}
-	rows.Close()
-	wantEnabledWorkflows := []string{
-		"minimax_h3_lightx2v",
-		"minimax_h3_lightx2v_no_pic",
-		"minimax_h3_zm_u08",
-		"minimax_h3_zm_u24",
+	if err := env.pool.QueryRow(env.ctx, `SELECT public_id FROM models WHERE code='h3' ORDER BY id LIMIT 1`).Scan(&modelID); err != nil {
+		t.Fatalf("find H3 model: %v", err)
 	}
-	if len(enabledWorkflows) != len(wantEnabledWorkflows) {
-		t.Fatalf("enabled workflow count: got=%v want=%v", enabledWorkflows, wantEnabledWorkflows)
+	if textMode == "" || firstLastMode == "" || multiMode == "" || modelID == "" {
+		t.Fatalf("seed catalog missing expected IDs: text=%q firstLast=%q multi=%q model=%q", textMode, firstLastMode, multiMode, modelID)
 	}
-	for i := range wantEnabledWorkflows {
-		if enabledWorkflows[i] != wantEnabledWorkflows[i] {
-			t.Fatalf("enabled workflow %d: got=%s want=%s", i, enabledWorkflows[i], wantEnabledWorkflows[i])
+	return
+}
+
+func TestDirectCatalogMigrationAndSeedIsolationIntegration(t *testing.T) {
+	env := openIntegrationStore(t)
+	textMode, firstLastMode, _, modelID := testCatalogIDs(t, env)
+
+	var migrationCount, migrationVersionCount int
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
+		t.Fatalf("count applied migrations: %v", err)
+	}
+	if migrationCount < 21 {
+		t.Fatalf("expected all current migrations in isolated schema, got %d", migrationCount)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version='021_provider_execution_reliability'`).Scan(&migrationVersionCount); err != nil {
+		t.Fatalf("check migration version: %v", err)
+	}
+	if migrationVersionCount != 1 {
+		t.Fatalf("migration replay must not duplicate version rows: %d", migrationVersionCount)
+	}
+
+	var retailID string
+	if err := env.pool.QueryRow(env.ctx, `
+SELECT retail.public_id FROM retail_price_rules retail
+JOIN creation_modes mode ON mode.id=retail.mode_id
+WHERE mode.public_id=$1 AND retail.model_id IS NULL AND retail.resolution='480P' AND retail.generate_audio=FALSE
+ORDER BY retail.public_id LIMIT 1`, firstLastMode).Scan(&retailID); err != nil {
+		t.Fatalf("find mode-level retail price: %v", err)
+	}
+	if _, err := env.pool.Exec(env.ctx, `UPDATE retail_price_rules SET price_per_sec=0.0777 WHERE public_id=$1`, retailID); err != nil {
+		t.Fatalf("customize retail price: %v", err)
+	}
+	var costID string
+	if err := env.pool.QueryRow(env.ctx, `SELECT public_id FROM supplier_cost_rules ORDER BY public_id LIMIT 1`).Scan(&costID); err != nil {
+		t.Fatalf("find supplier cost rule: %v", err)
+	}
+	if _, err := env.pool.Exec(env.ctx, `UPDATE supplier_cost_rules SET price_per_sec_peak=0.0777, price_per_sec_offpeak=0.0666, status='disabled', version='admin-custom', effective_to='2001-01-01T00:00:00Z' WHERE public_id=$1`, costID); err != nil {
+		t.Fatalf("customize supplier cost: %v", err)
+	}
+	var offeringsBefore, executionBefore, costsBefore, retailBefore int
+	for query, destination := range map[string]*int{
+		`SELECT COUNT(*) FROM supplier_offerings`:  &offeringsBefore,
+		`SELECT COUNT(*) FROM supplier_executions`: &executionBefore,
+		`SELECT COUNT(*) FROM supplier_cost_rules`: &costsBefore,
+		`SELECT COUNT(*) FROM retail_price_rules`:  &retailBefore,
+	} {
+		if err := env.pool.QueryRow(env.ctx, query).Scan(destination); err != nil {
+			t.Fatalf("count seeded rows %q: %v", query, err)
 		}
 	}
-	offeringRows, err := pool.Query(ctx, `
-SELECT workflow_code
-FROM supplier_offerings
-ORDER BY workflow_code`)
-	if err != nil {
-		t.Fatalf("list retained H3 offerings: %v", err)
+	if err := env.store.SeedCreationCatalog(env.ctx); err != nil {
+		t.Fatalf("repeat seed catalog: %v", err)
 	}
-	var retainedOfferings []string
-	for offeringRows.Next() {
-		var workflowCode string
-		if err := offeringRows.Scan(&workflowCode); err != nil {
-			offeringRows.Close()
-			t.Fatalf("scan retained H3 offering: %v", err)
+	var retailPrice, peakPrice, offpeakPrice float64
+	var costStatus, costVersion string
+	var effectiveTo time.Time
+	if err := env.pool.QueryRow(env.ctx, `SELECT price_per_sec::float8 FROM retail_price_rules WHERE public_id=$1`, retailID).Scan(&retailPrice); err != nil {
+		t.Fatalf("read preserved retail price: %v", err)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT price_per_sec_peak::float8, price_per_sec_offpeak::float8, status, version, effective_to FROM supplier_cost_rules WHERE public_id=$1`, costID).Scan(&peakPrice, &offpeakPrice, &costStatus, &costVersion, &effectiveTo); err != nil {
+		t.Fatalf("read preserved supplier cost: %v", err)
+	}
+	if retailPrice != 0.0777 || peakPrice != 0.0777 || offpeakPrice != 0.0666 {
+		t.Fatalf("repeat seed reset configured price: retail=%v peak=%v offpeak=%v", retailPrice, peakPrice, offpeakPrice)
+	}
+	if costStatus != "disabled" || costVersion != "admin-custom" || !effectiveTo.Equal(time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("repeat seed changed administrator cost lifecycle: status=%s version=%s effectiveTo=%s", costStatus, costVersion, effectiveTo)
+	}
+	var got int
+	for query, want := range map[string]int{
+		`SELECT COUNT(*) FROM supplier_offerings`:  offeringsBefore,
+		`SELECT COUNT(*) FROM supplier_executions`: executionBefore,
+		`SELECT COUNT(*) FROM supplier_cost_rules`: costsBefore,
+		`SELECT COUNT(*) FROM retail_price_rules`:  retailBefore,
+	} {
+		if err := env.pool.QueryRow(env.ctx, query).Scan(&got); err != nil {
+			t.Fatalf("count repeat seeded rows %q: %v", query, err)
 		}
-		retainedOfferings = append(retainedOfferings, workflowCode)
-	}
-	if err := offeringRows.Err(); err != nil {
-		offeringRows.Close()
-		t.Fatalf("iterate retained H3 offerings: %v", err)
-	}
-	offeringRows.Close()
-	if len(retainedOfferings) != len(wantEnabledWorkflows) {
-		t.Fatalf("retained offering count: got=%v want=%v", retainedOfferings, wantEnabledWorkflows)
-	}
-	for i := range wantEnabledWorkflows {
-		if retainedOfferings[i] != wantEnabledWorkflows[i] {
-			t.Fatalf("retained offering %d: got=%s want=%s", i, retainedOfferings[i], wantEnabledWorkflows[i])
-		}
-	}
-	if price, available, err := s.CheapestAvailableRetailPrice(ctx); err != nil || !available || price <= 0 {
-		t.Fatalf("overview reference price must come from an executable catalog combination: price=%f available=%t err=%v", price, available, err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE suppliers SET token_encrypted='' WHERE public_id='sup_autodl'`); err != nil {
-		t.Fatalf("clear supplier token for capability filtering: %v", err)
-	}
-	hiddenCatalog, err := s.ListClientCreationCatalog(ctx)
-	if err != nil || len(hiddenCatalog.Carriers) != 0 || len(hiddenCatalog.Models) != 0 {
-		t.Fatalf("client catalog must hide unconfigured supplier capacity: carriers=%d models=%d err=%v", len(hiddenCatalog.Carriers), len(hiddenCatalog.Models), err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE suppliers SET token_encrypted='integration-configured-token' WHERE public_id='sup_autodl'`); err != nil {
-		t.Fatalf("restore supplier token after capability filtering: %v", err)
-	}
-	var textMode, multiImageMode, h3Model string
-	for _, mode := range catalog.Modes {
-		if mode.Code == "text_to_video" {
-			textMode = mode.ID
-		}
-		if mode.Code == "multi_image_to_video" {
-			multiImageMode = mode.ID
+		if got != want {
+			t.Fatalf("repeat seed changed row count %q: got=%d want=%d", query, got, want)
 		}
 	}
-	for _, model := range catalog.Models {
-		if model.Code == "h3" {
-			h3Model = model.ID
+
+	// Add a model-specific row with a deliberately different amount. Direct
+	// routing must use the mode-level retail rule and never fall back to this
+	// historical/model-specific path.
+	if _, err := env.pool.Exec(env.ctx, `
+INSERT INTO retail_price_rules (public_id, mode_id, model_id, resolution, generate_audio, name, price_per_sec, version, status)
+SELECT 'it_model_price', mode.id, model.id, '768P', FALSE, 'test model-specific legacy row', 9.99, 'it-v1', 'active'
+FROM creation_modes mode, models model WHERE mode.public_id=$1 AND model.public_id=$2
+ON CONFLICT (public_id) DO NOTHING`, textMode, modelID); err != nil {
+		t.Fatalf("insert historical model price row: %v", err)
+	}
+	route, err := env.store.ResolveDirectRoute(env.ctx, seededDirectRequest(textMode, modelID))
+	if err != nil {
+		t.Fatalf("resolve mode-level retail route: %v", err)
+	}
+	if route.Retail.ModelID != "" || route.Retail.PricePerSecond != 0.03 || route.Total != 0.15 {
+		t.Fatalf("direct route used model-specific or unexpected retail row: retail=%+v total=%v", route.Retail, route.Total)
+	}
+}
+
+func addTestAPIExecution(t *testing.T, env *integrationStore, modeID, modelID, publicID, apiCode string, priority int, cost float64) {
+	t.Helper()
+	if _, err := env.pool.Exec(env.ctx, `
+INSERT INTO supplier_executions (
+ public_id, binding_id, mode_id, execution_type, api_model_code, api_version, workflow_code,
+ adapter_code, enabled, health_status, quota_status, priority, min_duration_sec, max_duration_sec,
+ resolutions, aspect_ratios, min_images, max_images, supports_generated_audio, parameter_mapping, result_mapping
+)
+SELECT $1, binding.id, mode.id, 'api', $4, 'v1', '', 'autodl_h3_v1', TRUE, 'unknown', 'unknown', $5, 1, 15,
+ '["480P","768P"]'::jsonb, '["16:9","9:16","1:1"]'::jsonb, 0, 0, FALSE, '{}'::jsonb, '{}'::jsonb
+FROM supplier_model_bindings binding
+JOIN creation_modes mode ON mode.public_id=$2
+WHERE binding.model_id=(SELECT id FROM models WHERE public_id=$3)
+  AND binding.supplier_id=(SELECT id FROM suppliers WHERE public_id='sup_autodl')`, publicID, modeID, modelID, apiCode, priority); err != nil {
+		t.Fatalf("insert API test execution %s: %v", publicID, err)
+	}
+	if _, err := env.pool.Exec(env.ctx, `
+INSERT INTO supplier_cost_rules (public_id, offering_id, execution_id, resolution, generate_audio, price_per_sec_peak, price_per_sec_offpeak, currency, version, status)
+SELECT $1, NULL, execution.id, '768P', FALSE, $3, $3, 'CNY', 'it-v1', 'active'
+FROM supplier_executions execution WHERE execution.public_id=$2`, "cost_"+publicID, publicID, cost); err != nil {
+		t.Fatalf("insert API test cost %s: %v", publicID, err)
+	}
+}
+
+func addTestWorkflowExecution(t *testing.T, env *integrationStore, modeID, modelID, publicID string, priority int, cost float64) {
+	t.Helper()
+	addTestAPIExecution(t, env, modeID, modelID, publicID, "unused-api-code", priority, cost)
+	if _, err := env.pool.Exec(env.ctx, `UPDATE supplier_executions SET execution_type='workflow', api_model_code='', workflow_code='minimax_h3_lightx2v_no_pic' WHERE public_id=$1`, publicID); err != nil {
+		t.Fatalf("configure supported workflow %s: %v", publicID, err)
+	}
+}
+
+func TestDirectLowestCostSupportedExecutionAndCapabilityFilteringIntegration(t *testing.T) {
+	env := openIntegrationStore(t)
+	textMode, _, multiMode, modelID := testCatalogIDs(t, env)
+	// API is a valid configuration type, but no real API adapter is currently
+	// supported. Its lower price must never cause an unexecutable charge.
+	addTestAPIExecution(t, env, textMode, modelID, "it_api_cheap", "it-api-cheap", 1, 0.0001)
+	addTestWorkflowExecution(t, env, textMode, modelID, "it_unknown_adapter", 1, 0.0001)
+	if _, err := env.pool.Exec(env.ctx, `UPDATE supplier_executions SET adapter_code='not_implemented' WHERE public_id='it_unknown_adapter'`); err != nil {
+		t.Fatal(err)
+	}
+	addTestWorkflowExecution(t, env, textMode, modelID, "it_workflow_expensive", 1, 0.20)
+	addTestWorkflowExecution(t, env, textMode, modelID, "it_workflow_cheap", 50, 0.001)
+
+	route, err := env.store.ResolveDirectRoute(env.ctx, seededDirectRequest(textMode, modelID))
+	if err != nil {
+		t.Fatalf("resolve mixed API/workflow route: %v", err)
+	}
+	if route.Offering.ExecutionType != "workflow" || route.Offering.ID != "it_workflow_cheap" || route.CostPerSecond != 0.001 {
+		t.Fatalf("lowest-cost supported execution mismatch: %+v", route.Offering)
+	}
+	// Same cost and priority must be stable by public execution ID, regardless
+	// of insertion order or PostgreSQL plan choices.
+	addTestWorkflowExecution(t, env, textMode, modelID, "it_workflow_tie_b", 1, 0.001)
+	addTestWorkflowExecution(t, env, textMode, modelID, "it_workflow_tie_a", 1, 0.001)
+	// Public IDs tie-break after priority. The two tie IDs are lower than the
+	// original cheap execution's priority, so the stable winner is tie_a.
+	route, err = env.store.ResolveDirectRoute(env.ctx, seededDirectRequest(textMode, modelID))
+	if err != nil {
+		t.Fatalf("resolve tied cost routes: %v", err)
+	}
+	if route.Offering.ID != "it_workflow_tie_a" {
+		t.Fatalf("stable priority/ID route mismatch: selected=%+v", route.Offering)
+	}
+
+	// Multi-image executions advertise one to nine images. Zero and ten must
+	// fail capability filtering while a valid count must route normally.
+	zeroImages := seededDirectRequest(multiMode, modelID)
+	zeroImages.ImageCount = 0
+	if _, err := env.store.ResolveDirectRoute(env.ctx, zeroImages); err == nil {
+		t.Fatal("multi-image route accepted zero image references")
+	}
+	validImages := zeroImages
+	validImages.ImageCount = 1
+	if _, err := env.store.ResolveDirectRoute(env.ctx, validImages); err != nil {
+		t.Fatalf("multi-image route rejected one image reference: %v", err)
+	}
+	tooManyImages := zeroImages
+	tooManyImages.ImageCount = 10
+	if _, err := env.store.ResolveDirectRoute(env.ctx, tooManyImages); err == nil {
+		t.Fatal("multi-image route accepted more than execution max image count")
+	}
+
+	// All execution health and credential gates are server-side filters.
+	if _, err := env.pool.Exec(env.ctx, `UPDATE suppliers SET token_encrypted='' WHERE public_id='sup_autodl'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.ResolveDirectRoute(env.ctx, seededDirectRequest(textMode, modelID)); err == nil {
+		t.Fatal("route remained available with missing supplier credentials")
+	}
+	if _, err := env.pool.Exec(env.ctx, `UPDATE suppliers SET token_encrypted='integration-configured-token' WHERE public_id='sup_autodl'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, update := range []string{
+		`UPDATE supplier_executions SET health_status='unavailable' WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1)`,
+		`UPDATE supplier_executions SET health_status='degraded' WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1)`,
+		`UPDATE supplier_executions SET health_status='unknown', quota_status='exhausted' WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1)`,
+		`UPDATE supplier_executions SET quota_status='unknown', enabled=FALSE WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1)`,
+	} {
+		if _, err := env.pool.Exec(env.ctx, update, textMode); err != nil {
+			t.Fatalf("disable execution gate: %v", err)
+		}
+		if _, err := env.store.ResolveDirectRoute(env.ctx, seededDirectRequest(textMode, modelID)); err == nil {
+			t.Fatalf("route remained available after execution gate %q", update)
+		}
+		if _, err := env.pool.Exec(env.ctx, `UPDATE supplier_executions SET enabled=TRUE, health_status='unknown', quota_status='unknown' WHERE mode_id=(SELECT id FROM creation_modes WHERE public_id=$1)`, textMode); err != nil {
+			t.Fatalf("restore execution gate: %v", err)
 		}
 	}
-	if textMode == "" || multiImageMode == "" || h3Model == "" {
-		t.Fatalf("expected configured text mode and H3 model, got modes=%d models=%d", len(catalog.Modes), len(catalog.Models))
+}
+
+func TestDirectSubmissionBillingRefundAndSnapshotIntegration(t *testing.T) {
+	env := openIntegrationStore(t)
+	textMode, _, _, modelID := testCatalogIDs(t, env)
+	user := newIntegrationUser(t, env, 100)
+	in := DirectTaskInput{
+		DirectRouteRequest: seededDirectRequest(textMode, modelID),
+		ClientRequestID:    "direct-recovery-" + fmt.Sprint(time.Now().UnixNano()),
+		Title:              "直接提交测试",
+		Prompt:             "夜晚街道",
 	}
-	// Audio pricing is independent from the no-audio row. A valid multi-image
-	// audio request must route and price without exposing its chosen execution.
-	directRoute, err := s.ResolveDirectRoute(ctx, DirectRouteRequest{
-		ModeID: multiImageMode, ModelID: h3Model, DurationSeconds: 12,
-		Resolution: "768P", AspectRatio: "16:9", GenerateAudio: true,
-	})
+	first, err := env.store.CreateTaskDirect(env.ctx, user.ID, in)
 	if err != nil {
-		t.Fatalf("resolve multi-image audio route: %v", err)
+		t.Fatalf("direct submission: %v", err)
 	}
-	if directRoute.Retail.PricePerSecond != 0.03 || directRoute.Total != 0.36 {
-		t.Fatalf("multi-image audio retail price mismatch: rate=%f total=%f", directRoute.Retail.PricePerSecond, directRoute.Total)
+	if first.AlreadyDone || first.OrderID == "" || first.Task.ID == "" || first.Balance >= 100 {
+		t.Fatalf("direct submission did not charge atomically: %+v", first)
 	}
-	if directRoute.Offering.WorkflowCode != "minimax_h3_zm_u08" && directRoute.Offering.WorkflowCode != "minimax_h3_zm_u24" {
-		t.Fatalf("multi-image route selected retired workflow: %s", directRoute.Offering.WorkflowCode)
+	var orderCount, taskCount, ledgerCount int
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM consumption_orders WHERE user_id=$1 AND client_request_id=$2`, user.ID, in.ClientRequestID).Scan(&orderCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM generation_tasks WHERE user_id=$1 AND client_request_id=$2`, user.ID, in.ClientRequestID).Scan(&taskCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id=$1 AND ref_type='order' AND ref_id=$2 AND type='task_charge'`, user.ID, first.OrderID).Scan(&ledgerCount); err != nil {
+		t.Fatal(err)
+	}
+	if orderCount != 1 || taskCount != 1 || ledgerCount != 1 {
+		t.Fatalf("atomic charge counts mismatch: orders=%d tasks=%d ledgers=%d", orderCount, taskCount, ledgerCount)
 	}
 
-	options, err := s.ResolveCreationOptions(ctx, textMode, h3Model)
-	if err != nil || len(options.Durations) == 0 || len(options.Resolutions) == 0 || len(options.AspectRatios) == 0 {
-		t.Fatalf("resolve text options: options=%+v err=%v", options, err)
-	}
-	textRoute, err := s.ResolveDirectRoute(ctx, DirectRouteRequest{
-		ModeID: textMode, ModelID: h3Model, DurationSeconds: 5,
-		Resolution: "768P", AspectRatio: "16:9", GenerateAudio: false,
-	})
-	if err != nil || textRoute.Offering.WorkflowCode != "minimax_h3_lightx2v_no_pic" {
-		t.Fatalf("text route must use lightx no-pic workflow: route=%+v err=%v", textRoute, err)
-	}
-	request := QuoteInput{
-		ModeID: textMode, ModelID: h3Model, DurationSeconds: options.Durations[0],
-		Resolution: options.Resolutions[0], AspectRatio: options.AspectRatios[0], GenerateAudio: false,
-	}
-	recommended, err := s.CreateQuote(ctx, user.ID, QuoteInput{
-		ModeID: textMode, DurationSeconds: options.Durations[0], Resolution: options.Resolutions[0],
-		AspectRatio: options.AspectRatios[0], GenerateAudio: false,
-	})
+	pending, err := env.store.ListPendingProviderTasks(env.ctx, 20)
 	if err != nil {
-		t.Fatalf("create recommended quote: %v", err)
+		t.Fatal(err)
 	}
-	var recommendationAllowed bool
-	if err := pool.QueryRow(ctx, `
-SELECT EXISTS(
-  SELECT 1
-  FROM mode_model_policies p
-  JOIN creation_modes mode ON mode.id=p.mode_id
-  JOIN models model ON model.id=p.model_id
-  WHERE mode.public_id=$1 AND model.public_id=$2 AND p.enabled
-)`, textMode, recommended.ModelID).Scan(&recommendationAllowed); err != nil || !recommendationAllowed {
-		t.Fatalf("smart recommendation must select only a mode policy model: model=%s allowed=%t err=%v", recommended.ModelID, recommendationAllowed, err)
-	}
-
-	expired, err := s.CreateQuote(ctx, user.ID, request)
-	if err != nil {
-		t.Fatalf("create quote for expiry check: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE task_quotes SET expires_at=NOW()-INTERVAL '1 second' WHERE public_id=$1`, expired.ID); err != nil {
-		t.Fatalf("expire quote: %v", err)
-	}
-	if _, _, _, err := s.CreateTaskFromQuote(ctx, user.ID, expired.ID, "expired", "neon street", SourceMeta{}); err == nil || !strings.Contains(err.Error(), "报价已过期") {
-		t.Fatalf("expired quote must not create a task: %v", err)
-	}
-
-	offline, err := s.CreateQuote(ctx, user.ID, request)
-	if err != nil {
-		t.Fatalf("create quote for supply-offline check: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE supplier_offerings SET enabled=FALSE WHERE public_id=$1`, offline.OfferingID); err != nil {
-		t.Fatalf("disable offering: %v", err)
-	}
-	if _, _, _, err := s.CreateTaskFromQuote(ctx, user.ID, offline.ID, "offline", "neon street", SourceMeta{}); err == nil || !strings.Contains(err.Error(), "报价已过期或不可用") {
-		t.Fatalf("offline offering must invalidate the quote: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE supplier_offerings SET enabled=TRUE WHERE public_id=$1`, offline.OfferingID); err != nil {
-		t.Fatalf("restore offering after supply-offline check: %v", err)
-	}
-
-	insufficient, err := s.CreateQuote(ctx, user.ID, request)
-	if err != nil {
-		t.Fatalf("create quote for insufficient-balance check: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE wallets SET balance=0 WHERE user_id=$1`, user.ID); err != nil {
-		t.Fatalf("empty wallet: %v", err)
-	}
-	if _, _, _, err := s.CreateTaskFromQuote(ctx, user.ID, insufficient.ID, "insufficient", "neon street", SourceMeta{}); err == nil || !strings.Contains(err.Error(), "insufficient balance") {
-		t.Fatalf("insufficient balance must not consume the quote or create a task: %v", err)
-	}
-	var insufficientConsumedAt *time.Time
-	if err := pool.QueryRow(ctx, `SELECT consumed_at FROM task_quotes WHERE public_id=$1`, insufficient.ID).Scan(&insufficientConsumedAt); err != nil || insufficientConsumedAt != nil {
-		t.Fatalf("insufficient-balance quote must remain unconsumed: consumed_at=%v err=%v", insufficientConsumedAt, err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE wallets SET balance=100 WHERE user_id=$1`, user.ID); err != nil {
-		t.Fatalf("restore wallet after insufficient-balance check: %v", err)
-	}
-
-	quote, err := s.CreateQuote(ctx, user.ID, request)
-	if err != nil {
-		t.Fatalf("create explicit-model quote: %v", err)
-	}
-	if quote.ModelID != h3Model {
-		t.Fatalf("explicit model was substituted: got %s want %s", quote.ModelID, h3Model)
-	}
-	if quote.SupplierCode == "" || quote.OfferingID == "" || quote.CostRuleID == "" {
-		t.Fatal("server quote must lock an executable offering and procurement snapshot")
-	}
-	if _, err := s.CreateSupplierOffering(ctx, SupplierOffering{
-		SupplierID: "sup_autodl", ModelID: h3Model, ModeID: textMode, Name: "unsupported adapter",
-		UpstreamWorkflowID: "unsupported_adapter_test", AdapterCode: "not_deployed_v1", Enabled: true,
-		MinDurationSec: 1, MaxDurationSec: 5, Resolutions: []string{"768P"}, AspectRatios: []string{"16:9"},
-	}); err == nil {
-		t.Fatal("an unsupported provider adapter must not be configured or exposed to client quotes")
-	}
-
-	task, ledgerID, balance, err := s.CreateTaskFromQuote(ctx, user.ID, quote.ID, "integration text", "neon street", SourceMeta{})
-	if err != nil {
-		t.Fatalf("create task from quote: %v", err)
-	}
-	if ledgerID == "" || balance >= 100 {
-		t.Fatalf("task charge was not applied atomically: ledger=%q balance=%f", ledgerID, balance)
-	}
-	if _, _, _, err := s.CreateTaskFromQuote(ctx, user.ID, quote.ID, "duplicate", "neon street", SourceMeta{}); err == nil || !strings.Contains(err.Error(), "报价已使用") {
-		t.Fatalf("reusing a quote must fail with quote-used error, got %v", err)
-	}
-
-	var internalID int64
-	var quoteID, executionMode string
-	if err := pool.QueryRow(ctx, `SELECT id, quote_public_id, execution_mode FROM generation_tasks WHERE public_id=$1`, task.ID).Scan(&internalID, &quoteID, &executionMode); err != nil {
-		t.Fatalf("read task snapshot: %v", err)
-	}
-	if quoteID != quote.ID || executionMode != "provider" {
-		t.Fatalf("new task must retain quote and provider execution mode: quote=%s mode=%s", quoteID, executionMode)
-	}
-	pending, err := s.ListPendingProviderTasks(ctx, 100)
-	if err != nil {
-		t.Fatalf("list pending provider tasks: %v", err)
-	}
-	var workerTask *ProviderTask
+	var providerTask *ProviderTask
 	for i := range pending {
-		if pending[i].PublicID == task.ID {
-			workerTask = &pending[i]
+		if pending[i].PublicID == first.Task.ID {
+			providerTask = &pending[i]
 			break
 		}
 	}
-	if workerTask == nil {
-		t.Fatal("quote-backed task must be visible to the provider worker")
+	if providerTask == nil || providerTask.WorkflowCode != "minimax_h3_lightx2v_no_pic" || providerTask.AdapterCode != "autodl_h3_v1" {
+		t.Fatalf("worker did not read immutable task execution snapshot: %+v", providerTask)
 	}
-	if workerTask.QuotePublicID != quote.ID || workerTask.SupplierRouteID != quote.OfferingID ||
-		workerTask.UpstreamWorkflowID != quote.UpstreamWorkflow || workerTask.AdapterCode != quote.AdapterCode {
-		t.Fatalf("worker must consume the immutable quote snapshot: task=%+v quote=%+v", workerTask, quote)
+	if _, err := env.pool.Exec(env.ctx, `UPDATE supplier_executions SET workflow_code='tampered', adapter_code='tampered' WHERE public_id=$1`, providerTask.SupplierRouteID); err != nil {
+		t.Fatal(err)
 	}
-	claimed, err := s.ClaimTaskForDispatch(ctx, internalID)
-	if err != nil || !claimed {
-		t.Fatalf("first worker must claim quote-backed task: claimed=%t err=%v", claimed, err)
+	pending, err = env.store.ListPendingProviderTasks(env.ctx, 20)
+	if err != nil {
+		t.Fatal(err)
 	}
-	claimed, err = s.ClaimTaskForDispatch(ctx, internalID)
-	if err != nil || claimed {
-		t.Fatalf("a second worker must not claim the same submission: claimed=%t err=%v", claimed, err)
-	}
-	if err := s.MarkTaskWaitingForConfiguration(ctx, internalID, "integration configuration wait"); err != nil {
-		t.Fatalf("release claim while configuration is unavailable: %v", err)
-	}
-	claimed, err = s.ClaimTaskForDispatch(ctx, internalID)
-	if err != nil || !claimed {
-		t.Fatalf("released configuration wait must become dispatchable: claimed=%t err=%v", claimed, err)
-	}
-	if err := s.FailTaskUpstream(ctx, internalID, "integration upstream failure"); err != nil {
-		t.Fatalf("first failure refund: %v", err)
-	}
-	if err := s.FailTaskUpstream(ctx, internalID, "duplicate failure"); err != nil {
-		t.Fatalf("duplicate failure must remain idempotent: %v", err)
-	}
-	var refundCount int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id=$1 AND ref_type='task' AND ref_id=$2 AND type='task_refund'`, user.ID, task.ID).Scan(&refundCount); err != nil {
-		t.Fatalf("count refunds: %v", err)
-	}
-	if refundCount != 1 {
-		t.Fatalf("expected exactly one refund ledger entry, got %d", refundCount)
+	for i := range pending {
+		if pending[i].PublicID == first.Task.ID && (pending[i].WorkflowCode != "minimax_h3_lightx2v_no_pic" || pending[i].AdapterCode != "autodl_h3_v1") {
+			t.Fatalf("worker reread mutable execution data instead of snapshot: %+v", pending[i])
+		}
 	}
 
-	// A client cancellation is also a one-time refund. A late upstream write
-	// must never revive that terminal task after the refund has been issued.
-	cancelQuote, err := s.CreateQuote(ctx, user.ID, request)
-	if err != nil {
-		t.Fatalf("create quote for cancellation check: %v", err)
+	// A later retry must return the original order/task even after its supply is
+	// disabled, without attempting routing or charging again.
+	if _, err := env.pool.Exec(env.ctx, `UPDATE supplier_executions SET enabled=FALSE WHERE public_id=$1`, providerTask.SupplierRouteID); err != nil {
+		t.Fatal(err)
 	}
-	cancelTask, _, _, err := s.CreateTaskFromQuote(ctx, user.ID, cancelQuote.ID, "cancelled", "neon street", SourceMeta{})
-	if err != nil {
-		t.Fatalf("create cancellation task: %v", err)
+	replayed, err := env.store.CreateTaskDirect(env.ctx, user.ID, in)
+	if err != nil || !replayed.AlreadyDone || replayed.OrderID != first.OrderID || replayed.Task.ID != first.Task.ID || replayed.Balance != first.Balance {
+		t.Fatalf("idempotent replay after supply change failed: result=%+v err=%v", replayed, err)
 	}
-	var cancelTaskID int64
-	if err := pool.QueryRow(ctx, `SELECT id FROM generation_tasks WHERE public_id=$1`, cancelTask.ID).Scan(&cancelTaskID); err != nil {
-		t.Fatalf("read cancellation task: %v", err)
+
+	var taskInternalID int64
+	if err := env.pool.QueryRow(env.ctx, `SELECT id FROM generation_tasks WHERE public_id=$1`, first.Task.ID).Scan(&taskInternalID); err != nil {
+		t.Fatal(err)
 	}
-	_, cancelRefund, cancelBalance, err := s.CancelTask(ctx, user.ID, cancelTask.ID)
-	if err != nil || cancelRefund != cancelTask.Cost || cancelBalance != 100 {
-		t.Fatalf("cancel must refund once: refund=%f balance=%f err=%v", cancelRefund, cancelBalance, err)
+	if err := env.store.FailTaskUpstream(env.ctx, taskInternalID, "integration failure"); err != nil {
+		t.Fatal(err)
 	}
-	if _, _, _, err := s.CancelTask(ctx, user.ID, cancelTask.ID); err == nil {
-		t.Fatal("a cancelled task must not be refunded twice")
+	if err := env.store.FailTaskUpstream(env.ctx, taskInternalID, "duplicate integration failure"); err != nil {
+		t.Fatal(err)
 	}
-	if err := s.MarkTaskSubmitted(ctx, cancelTaskID, "late-upstream-id", "RUNNING"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("late upstream submission must not revive cancelled task: %v", err)
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id=$1 AND ref_type='task' AND ref_id=$2 AND type='task_refund'`, user.ID, first.Task.ID).Scan(&ledgerCount); err != nil {
+		t.Fatal(err)
 	}
-	if err := s.CompleteTaskUpstream(ctx, cancelTaskID, "https://upstream.invalid/result.mp4", "https://storage.invalid/result.mp4", 5); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("late upstream completion must not revive cancelled task: %v", err)
+	if ledgerCount != 1 {
+		t.Fatalf("refund must be idempotent, got %d entries", ledgerCount)
 	}
-	var cancelStatus, cancelUpstreamStatus, cancelReason string
-	if err := pool.QueryRow(ctx, `SELECT status, upstream_status, fail_reason FROM generation_tasks WHERE id=$1`, cancelTaskID).Scan(&cancelStatus, &cancelUpstreamStatus, &cancelReason); err != nil || cancelStatus != "failed" || cancelUpstreamStatus != "CANCELLED_BY_USER" || cancelReason != "用户终止并退款" {
-		t.Fatalf("cancelled task state changed after late upstream updates: status=%s upstream=%s reason=%s err=%v", cancelStatus, cancelUpstreamStatus, cancelReason, err)
+	var orderStatus string
+	if err := env.pool.QueryRow(env.ctx, `SELECT status FROM consumption_orders WHERE public_id=$1`, first.OrderID).Scan(&orderStatus); err != nil {
+		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id=$1 AND ref_type='task' AND ref_id=$2 AND type='task_refund'`, user.ID, cancelTask.ID).Scan(&refundCount); err != nil || refundCount != 1 {
-		t.Fatalf("cancel refund must remain idempotent: count=%d err=%v", refundCount, err)
+	if orderStatus != "refunded" {
+		t.Fatalf("failed task must refund consumption order, status=%s", orderStatus)
 	}
+}
+
+func TestDirectSubmissionRollbackAndConcurrentIdempotencyIntegration(t *testing.T) {
+	env := openIntegrationStore(t)
+	textMode, _, _, modelID := testCatalogIDs(t, env)
+	user := newIntegrationUser(t, env, 100)
+	requestID := "direct-concurrent-" + fmt.Sprint(time.Now().UnixNano())
+	in := DirectTaskInput{DirectRouteRequest: seededDirectRequest(textMode, modelID), ClientRequestID: requestID, Title: "并发提交", Prompt: "测试"}
+	var wg sync.WaitGroup
+	results := make(chan *DirectTaskResult, 2)
+	errs := make(chan error, 2)
 	for i := 0; i < 2; i++ {
-		healthQuote, err := s.CreateQuote(ctx, user.ID, request)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			result, err := env.store.CreateTaskDirect(env.ctx, user.ID, in)
+			results <- result
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errs)
+	var created, replayed int
+	var taskID, orderID string
+	for result := range results {
+		if result == nil {
+			continue
+		}
+		if result.AlreadyDone {
+			replayed++
+		} else {
+			created++
+		}
+		if taskID == "" {
+			taskID, orderID = result.Task.ID, result.OrderID
+		} else if result.Task.ID != taskID || result.OrderID != orderID {
+			t.Fatalf("concurrent same-key requests returned different identities: first=%s/%s got=%s/%s", taskID, orderID, result.Task.ID, result.OrderID)
+		}
+	}
+	for err := range errs {
 		if err != nil {
-			t.Fatalf("create health-check quote %d: %v", i, err)
-		}
-		healthTask, _, _, err := s.CreateTaskFromQuote(ctx, user.ID, healthQuote.ID, fmt.Sprintf("health-%d", i), "neon street", SourceMeta{})
-		if err != nil {
-			t.Fatalf("create health-check task %d: %v", i, err)
-		}
-		var healthTaskID int64
-		if err := pool.QueryRow(ctx, `SELECT id FROM generation_tasks WHERE public_id=$1`, healthTask.ID).Scan(&healthTaskID); err != nil {
-			t.Fatalf("read health-check task %d: %v", i, err)
-		}
-		if err := s.FailTaskUpstream(ctx, healthTaskID, "health threshold check"); err != nil {
-			t.Fatalf("fail health-check task %d: %v", i, err)
+			t.Fatalf("concurrent idempotent submission failed: %v", err)
 		}
 	}
-	var offeringEnabled bool
-	var offeringHealth string
-	var failureCount int
-	if err := pool.QueryRow(ctx, `SELECT enabled, health_status, failure_count FROM supplier_offerings WHERE public_id=$1`, quote.OfferingID).Scan(&offeringEnabled, &offeringHealth, &failureCount); err != nil {
-		t.Fatalf("read offering health: %v", err)
+	if created != 1 || replayed != 1 {
+		t.Fatalf("expected one creation and one replay, created=%d replayed=%d", created, replayed)
 	}
-	if offeringEnabled || offeringHealth != "unavailable" || failureCount != 3 {
-		t.Fatalf("three upstream failures must disable the offering: enabled=%t health=%s failures=%d", offeringEnabled, offeringHealth, failureCount)
+	var chargedCount int
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id=$1 AND type='task_charge'`, user.ID).Scan(&chargedCount); err != nil || chargedCount != 1 {
+		t.Fatalf("concurrent idempotency charged more than once: charges=%d err=%v", chargedCount, err)
 	}
-	refundedBalance, err := s.GetBalance(ctx, user.ID)
-	if err != nil || refundedBalance != 100 {
-		t.Fatalf("refund balance: got %f err=%v", refundedBalance, err)
+
+	// Fail the order insert after all preceding work has run. The trigger lives
+	// only in this disposable schema and proves the transaction rolls back task,
+	// ledger, and wallet changes together.
+	if _, err := env.pool.Exec(env.ctx, `
+CREATE FUNCTION it_fail_order_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'injected consumption order failure'; END; $$;
+CREATE TRIGGER it_fail_order_insert BEFORE INSERT ON consumption_orders
+FOR EACH ROW EXECUTE FUNCTION it_fail_order_insert();`); err != nil {
+		t.Fatalf("install rollback trigger: %v", err)
+	}
+	failingID := "direct-rollback-" + fmt.Sprint(time.Now().UnixNano())
+	failing := in
+	failing.ClientRequestID = failingID
+	before, err := env.store.GetBalance(env.ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.store.CreateTaskDirect(env.ctx, user.ID, failing); err == nil {
+		t.Fatal("injected order failure unexpectedly succeeded")
+	}
+	var count int
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM generation_tasks WHERE user_id=$1 AND client_request_id=$2`, user.ID, failingID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("failed transaction left a generation task: %d", count)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM consumption_orders WHERE user_id=$1 AND client_request_id=$2`, user.ID, failingID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("failed transaction left a consumption order: %d", count)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE user_id=$1 AND type='task_charge'`, user.ID).Scan(&count); err != nil || count != chargedCount {
+		t.Fatalf("failed transaction left a charge ledger: before=%d after=%d err=%v", chargedCount, count, err)
+	}
+	after, err := env.store.GetBalance(env.ctx, user.ID)
+	if err != nil || after != before {
+		t.Fatalf("failed transaction changed wallet balance: before=%v after=%v err=%v", before, after, err)
+	}
+	if _, err := env.pool.Exec(env.ctx, `DROP TRIGGER it_fail_order_insert ON consumption_orders; DROP FUNCTION it_fail_order_insert();`); err != nil {
+		t.Fatalf("remove rollback trigger: %v", err)
+	}
+	if retry, err := env.store.CreateTaskDirect(env.ctx, user.ID, failing); err != nil || retry.AlreadyDone {
+		t.Fatalf("rolled-back request should be retryable: result=%+v err=%v", retry, err)
+	}
+}
+
+func TestSaveCompletedTaskToProjectIsIdempotentIntegration(t *testing.T) {
+	env := openIntegrationStore(t)
+	textMode, _, _, modelID := testCatalogIDs(t, env)
+	user := newIntegrationUser(t, env, 100)
+	input := DirectTaskInput{DirectRouteRequest: seededDirectRequest(textMode, modelID), ClientRequestID: "direct-save-" + fmt.Sprint(time.Now().UnixNano()), Title: "保存测试", Prompt: "成片"}
+	result, err := env.store.CreateTaskDirect(env.ctx, user.ID, input)
+	if err != nil {
+		t.Fatalf("create save task: %v", err)
+	}
+	var internalID int64
+	if err := env.pool.QueryRow(env.ctx, `SELECT id FROM generation_tasks WHERE public_id=$1`, result.Task.ID).Scan(&internalID); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.store.CompleteTaskUpstream(env.ctx, internalID, "provider-result-id", "https://storage.test/results/save.mp4", 5); err != nil {
+		t.Fatalf("complete save task: %v", err)
+	}
+	projectID, err := env.store.ResolveCurrentProjectID(env.ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type saveResult struct {
+		item *FsItem
+		err  error
+	}
+	results := make(chan saveResult, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			item, _, err := env.store.SaveTaskToProject(env.ctx, user.ID, result.Task.ID, projectID)
+			results <- saveResult{item: item, err: err}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	var saved int
+	var savedID string
+	for item := range results {
+		if item.err != nil {
+			t.Fatalf("concurrent save failed: %v", item.err)
+		}
+		if item.item != nil {
+			saved++
+			if savedID == "" {
+				savedID = item.item.ID
+			} else if savedID != item.item.ID {
+				t.Fatalf("concurrent save returned different assets: %s vs %s", savedID, item.item.ID)
+			}
+		}
+	}
+	if saved != 2 {
+		t.Fatalf("both save calls should return the same saved asset, count=%d", saved)
+	}
+	var assetCount int
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM projects, jsonb_path_query(folders_json, '$.**.items[*]') item WHERE projects.user_id=$1 AND item->>'sourceTask'=$2`, user.ID, result.Task.ID).Scan(&assetCount); err != nil {
+		// PostgreSQL versions without jsonpath support should fail the test
+		// rather than silently accepting a duplicate asset.
+		t.Fatalf("count saved project assets: %v", err)
+	}
+	if assetCount != 1 {
+		t.Fatalf("save-to-project must be idempotent, assets=%d", assetCount)
+	}
+}
+
+func TestProviderLeaseAndRefundStateIntegration(t *testing.T) {
+	env := openIntegrationStore(t)
+	textMode, _, _, modelID := testCatalogIDs(t, env)
+	user := newIntegrationUser(t, env, 100)
+	input := DirectTaskInput{DirectRouteRequest: seededDirectRequest(textMode, modelID), ClientRequestID: "direct-lease-" + fmt.Sprint(time.Now().UnixNano()), Title: "租约", Prompt: "测试"}
+	result, err := env.store.CreateTaskDirect(env.ctx, user.ID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var taskID int64
+	if err := env.pool.QueryRow(env.ctx, `SELECT id FROM generation_tasks WHERE public_id=$1`, result.Task.ID).Scan(&taskID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := env.store.ClaimTaskForDispatch(env.ctx, taskID)
+	if err != nil || !claimed {
+		t.Fatalf("first dispatch claim failed: claimed=%v err=%v", claimed, err)
+	}
+	claimed, err = env.store.ClaimTaskForDispatch(env.ctx, taskID)
+	if err != nil || claimed {
+		t.Fatalf("second dispatch claim must be rejected: claimed=%v err=%v", claimed, err)
+	}
+	if err := env.store.MarkTaskSubmitted(env.ctx, taskID, "provider-request-1", "RUNNING"); err != nil {
+		t.Fatal(err)
+	}
+	var providerRequestID string
+	var eventCount int
+	if err := env.pool.QueryRow(env.ctx, `SELECT provider_request_id FROM generation_tasks WHERE id=$1`, taskID).Scan(&providerRequestID); err != nil {
+		t.Fatal(err)
+	}
+	if providerRequestID != "provider-request-1" {
+		t.Fatalf("provider request ID was not persisted: %q", providerRequestID)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM provider_task_events WHERE task_id=$1 AND event_type='submitted'`, taskID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("submit event count=%d", eventCount)
+	}
+	if err := env.store.RecordProviderPollFailure(env.ctx, taskID, "temporary poll failure", 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	var polls int
+	if err := env.pool.QueryRow(env.ctx, `SELECT poll_attempts FROM generation_tasks WHERE id=$1`, taskID).Scan(&polls); err != nil {
+		t.Fatal(err)
+	}
+	if polls != 1 {
+		t.Fatalf("poll attempt not incremented: %d", polls)
+	}
+	// Poll failure is recoverable and does not refund. A terminal failure then
+	// refunds exactly once, which is checked by the billing test as well.
+	var status string
+	if err := env.pool.QueryRow(env.ctx, `SELECT status FROM generation_tasks WHERE id=$1`, taskID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "running" {
+		t.Fatalf("poll failure unexpectedly terminated task: %s", status)
+	}
+	if err := env.store.FailTaskUpstream(env.ctx, taskID, "terminal provider failure"); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.store.FailTaskUpstream(env.ctx, taskID, "duplicate terminal provider failure"); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.pool.QueryRow(env.ctx, `SELECT COUNT(*) FROM wallet_ledger WHERE ref_type='task' AND ref_id=$1 AND type='task_refund'`, result.Task.ID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("terminal refund count=%d", eventCount)
 	}
 }

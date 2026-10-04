@@ -9,7 +9,7 @@ import (
 
 func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
 	var v string
-	err := s.Pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = $1`, key).Scan(&v)
+	err := s.routeDB().QueryRow(ctx, `SELECT value FROM settings WHERE key = $1`, key).Scan(&v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
@@ -21,7 +21,7 @@ func (s *Store) GetSettings(ctx context.Context, keys []string) (map[string]stri
 	if len(keys) == 0 {
 		return out, nil
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT key, value FROM settings WHERE key = ANY($1)`, keys)
+	rows, err := s.routeDB().Query(ctx, `SELECT key, value FROM settings WHERE key = ANY($1)`, keys)
 	if err != nil {
 		return nil, err
 	}

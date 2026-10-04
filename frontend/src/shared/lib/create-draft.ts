@@ -16,12 +16,17 @@ export interface CreateFrameSlot {
 }
 
 export interface CreateDraft {
-  version: 3
+  version: 4
   workflowInputType: WorkflowInputType
   prompt: string
   ratio: string
   durationSec: string
   resolution: string
+  carrierId?: string
+  modelId?: string
+  audioMode?: 'none' | 'generate' | 'reference'
+  referenceAudioId?: string
+  referenceAudioName?: string
   firstFrame: CreateFrameSlot
   lastFrame: CreateFrameSlot
   extraFrames: CreateFrameSlot[]
@@ -36,7 +41,7 @@ export function emptySlot(): CreateFrameSlot {
 
 export function emptyCreateDraft(): CreateDraft {
   return {
-    version: 3,
+    version: 4,
     workflowInputType: 'first_last',
     prompt: '',
     ratio: '9:16',
@@ -54,7 +59,7 @@ function sanitizeSlot(slot: CreateFrameSlot): CreateFrameSlot {
     ? slot.previewUrl
     : undefined
   return {
-    uploaded: slot.uploaded,
+    uploaded: Boolean(slot.assetId || slot.uploadId),
     assetId: slot.assetId,
     picking: false,
     previewUrl,
@@ -76,7 +81,7 @@ function parseSlot(value: unknown): CreateFrameSlot {
   if (!value || typeof value !== 'object') return emptySlot()
   const slot = value as Partial<CreateFrameSlot>
   return {
-    uploaded: Boolean(slot.uploaded),
+    uploaded: Boolean(slot.assetId || slot.uploadId),
     assetId: typeof slot.assetId === 'string' ? slot.assetId : '',
     picking: false,
     previewUrl: typeof slot.previewUrl === 'string' && !slot.previewUrl.startsWith('blob:')
@@ -93,7 +98,7 @@ function parseSlots(value: unknown, max: number, fallback: CreateFrameSlot[] = [
 }
 
 type LegacyCreateDraft = Partial<Omit<CreateDraft, 'version'>> & {
-  version?: 1 | 2 | 3
+  version?: 1 | 2 | 3 | 4
   mode?: 'image' | 'text' | 'video'
   imageVariant?: ImageVariant
   referenceVideoUploaded?: boolean
@@ -115,12 +120,17 @@ function migrateDraft(parsed: LegacyCreateDraft): CreateDraft | null {
   const legacyMulti = Array.isArray(parsed.multiFrames) ? parsed.multiFrames : []
 
   return {
-    version: 3,
+    version: 4,
     workflowInputType,
     prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
     ratio: typeof parsed.ratio === 'string' ? parsed.ratio : '9:16',
     durationSec: typeof parsed.durationSec === 'string' ? parsed.durationSec : '15',
     resolution: parseResolution(parsed.resolution),
+    carrierId: typeof parsed.carrierId === 'string' ? parsed.carrierId : undefined,
+    modelId: typeof parsed.modelId === 'string' ? parsed.modelId : undefined,
+    audioMode: parsed.audioMode === 'generate' || parsed.audioMode === 'reference' ? parsed.audioMode : 'none',
+    referenceAudioId: typeof parsed.referenceAudioId === 'string' ? parsed.referenceAudioId : undefined,
+    referenceAudioName: typeof parsed.referenceAudioName === 'string' ? parsed.referenceAudioName : undefined,
     firstFrame: parseSlot(parsed.firstFrame),
     lastFrame: parseSlot(parsed.lastFrame),
     extraFrames: parseSlots(parsed.extraFrames, MAX_REF_IMAGES),
@@ -136,7 +146,7 @@ export function loadCreateDraft(): CreateDraft | null {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as LegacyCreateDraft
-    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) return null
+    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) return null
     const draft = migrateDraft(parsed)
     if (!draft) return null
     if (draft.workflowInputType === 'multi_image' && !draft.multiFrames.length) draft.multiFrames = [emptySlot()]
@@ -150,12 +160,17 @@ export function loadCreateDraft(): CreateDraft | null {
 export function saveCreateDraft(draft: Omit<CreateDraft, 'version'>) {
   if (typeof window === 'undefined') return
   const payload: CreateDraft = {
-    version: 3,
+    version: 4,
     workflowInputType: draft.workflowInputType,
     prompt: draft.prompt,
     ratio: draft.ratio,
     durationSec: draft.durationSec,
     resolution: draft.resolution,
+    carrierId: draft.carrierId,
+    modelId: draft.modelId,
+    audioMode: draft.audioMode,
+    referenceAudioId: draft.referenceAudioId,
+    referenceAudioName: draft.referenceAudioName,
     firstFrame: sanitizeSlot(draft.firstFrame),
     lastFrame: sanitizeSlot(draft.lastFrame),
     extraFrames: draft.extraFrames.map(sanitizeSlot),

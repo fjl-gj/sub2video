@@ -55,16 +55,17 @@ export async function estimateTask(payload: {
 	modeId: string
 	carrierId?: string
 	modelId?: string
-	durationSeconds: number
+	durationSec: number
 	resolution: string
 	aspectRatio: string
 	generateAudio: boolean
+	sourceMeta?: Record<string, unknown>
 }) {
 	const { data } = await http.post('/client/tasks/estimate', payload)
 	return data as {
 		available: boolean
 		selection: { carrier: { id: string; name: string }; model: { id: string; name: string } }
-		billing: { basis: string; durationSeconds: number; resolution: string; generateAudio: boolean; pricePerSecond: number; estimatedTotal: number; currency: string }
+		billing: { basis: string; durationSec: number; resolution: string; generateAudio: boolean; pricePerSecond: number; estimatedTotal: number; currency: string }
 	}
 }
 
@@ -72,7 +73,7 @@ export async function createTask(payload: {
 	modeId: string
 	carrierId?: string
 	modelId?: string
-	durationSeconds: number
+	durationSec: number
 	resolution: string
 	aspectRatio: string
 	generateAudio: boolean
@@ -128,6 +129,8 @@ export async function listTasks(params?: { status?: string; page?: number; pageS
       time: string
       thumbUrl: string
       savedToProject?: boolean
+      canCancel?: boolean
+      reviewRequired?: boolean
     }>
     total: number
     page: number
@@ -140,6 +143,17 @@ export type ClientTaskDetail = {
   id: string
   title: string
   mode: string
+  modeId?: string
+  carrierId?: string
+  modelId?: string
+  prompt?: string
+  sourceMeta?: {
+    first?: { type: 'upload' | 'asset'; id: string }
+    last?: { type: 'upload' | 'asset'; id: string }
+    extras?: Array<{ type: 'upload' | 'asset'; id: string }>
+    refs?: Array<{ type: 'upload' | 'asset'; id: string }>
+    audio?: { type: 'upload' | 'asset'; id: string }
+  }
   status: string
   progress: number
   duration: string
@@ -148,8 +162,13 @@ export type ClientTaskDetail = {
   aspectRatio: string
   generateAudio: boolean
   cost: number
+  refundAmount: number
+  refundedAt?: string | null
   thumbUrl: string
   savedToProject: boolean
+  canCancel?: boolean
+  reviewRequired?: boolean
+  savedDestination?: { projectId: string; folderPath: string[] }
   failureReason: string
   executionWaiting: boolean
   deliveryStatus: 'ready' | 'pending_storage' | 'not_ready'
@@ -160,6 +179,11 @@ export type ClientTaskDetail = {
 
 export async function fetchTask(id: string) {
   const { data } = await http.get<ClientTaskDetail>(`/client/tasks/${id}`)
+  return data
+}
+
+export async function fetchTaskDownload(id: string) {
+  const { data } = await http.get<ClientTaskDetail>(`/client/tasks/${id}`, { params: { download: true } })
   return data
 }
 
@@ -179,6 +203,7 @@ export type ClientTicketItem = {
   status: string
   task: string
   updated: string
+  detail?: string
 }
 
 export async function fetchTickets(params?: { page?: number; pageSize?: number }) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2 } from 'lucide-vue-next'
+import { Info } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 
 const app = useAppStore()
@@ -7,8 +7,8 @@ const app = useAppStore()
 
 <template>
   <Transition name="toast">
-    <div v-if="app.toast" class="fixed bottom-20 right-4 z-50 flex max-w-xs items-center gap-2 rounded-control border border-emerald-200/80 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800 shadow-subtle md:bottom-5 md:right-5">
-      <CheckCircle2 class="h-4 w-4 shrink-0" />{{ app.toast }}
+    <div v-if="app.toast" role="status" class="fixed bottom-20 right-4 z-50 flex max-w-xs items-center gap-2 rounded-control border border-s2v-line-strong bg-s2v-surface px-3 py-2.5 text-xs text-s2v-body shadow-subtle md:bottom-5 md:right-5">
+      <Info class="h-4 w-4 shrink-0" />{{ app.toast }}
     </div>
   </Transition>
 </template>

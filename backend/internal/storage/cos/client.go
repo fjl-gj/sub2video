@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sbu2video/backend/internal/storage/blob"
 	"github.com/tencentyun/cos-go-sdk-v5"
 )
 
@@ -78,11 +79,7 @@ func (c *Client) PutFile(ctx context.Context, objectKey, filePath, contentType s
 		return "", err
 	}
 	// Prefer long-lived signed URL so private buckets still work for AutoDL fetch.
-	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
-	if err == nil && signed != "" {
-		return signed, nil
-	}
-	return c.ObjectURL(objectKey), nil
+	return c.SignGetURL(ctx, objectKey, 24*time.Hour)
 }
 
 func (c *Client) PutObject(ctx context.Context, objectKey string, body []byte, contentType string) error {
@@ -98,18 +95,47 @@ func (c *Client) PutObject(ctx context.Context, objectKey string, body []byte, c
 }
 
 func (c *Client) SignGetURL(ctx context.Context, objectKey string, ttl time.Duration) (string, error) {
-	_ = ctx
+	return c.signGetURL(ctx, objectKey, ttl, nil)
+}
+
+func (c *Client) signGetURL(ctx context.Context, objectKey string, ttl time.Duration, options *cos.ObjectGetOptions) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if !c.Configured() || c.cli == nil {
 		return "", fmt.Errorf("cos not configured")
 	}
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	u, err := c.cli.Object.GetPresignedURL(ctx, http.MethodGet, strings.TrimLeft(objectKey, "/"), c.Cfg.SecretID, c.Cfg.SecretKey, ttl, nil)
+	u, err := c.cli.Object.GetPresignedURL(ctx, http.MethodGet, strings.TrimLeft(objectKey, "/"), c.Cfg.SecretID, c.Cfg.SecretKey, ttl, options)
 	if err != nil {
 		return "", err
 	}
 	return u.String(), nil
+}
+
+func (c *Client) RefreshGetURL(ctx context.Context, storedURL string, ttl time.Duration) (string, error) {
+	return c.refreshGetURL(ctx, storedURL, ttl, nil)
+}
+
+func (c *Client) RefreshDownloadURL(ctx context.Context, storedURL, filename string, ttl time.Duration) (string, error) {
+	return c.refreshGetURL(ctx, storedURL, ttl, &cos.ObjectGetOptions{ResponseContentDisposition: blob.AttachmentDisposition(filename)})
+}
+
+func (c *Client) refreshGetURL(ctx context.Context, storedURL string, ttl time.Duration, options *cos.ObjectGetOptions) (string, error) {
+	if !c.Configured() || c.cli == nil {
+		return "", fmt.Errorf("cos not configured")
+	}
+	bases := []string{c.PublicBaseURL()}
+	if c.Cfg.UseIntranet {
+		bases = append(bases, fmt.Sprintf("https://%s.cos-internal.%s.myqcloud.com", c.Cfg.Bucket, c.Cfg.Region))
+	}
+	key, err := blob.TrustedObjectKey(storedURL, bases...)
+	if err != nil {
+		return "", err
+	}
+	return c.signGetURL(ctx, key, ttl, options)
 }
 
 // PullURL downloads remoteURL and stores under objectKey; returns a signed URL
@@ -140,9 +166,7 @@ func (c *Client) PullURL(ctx context.Context, remoteURL, objectKey, contentType 
 	if err := c.PutObject(ctx, objectKey, body, contentType); err != nil {
 		return "", err
 	}
-	signed, err := c.SignGetURL(ctx, objectKey, 24*time.Hour)
-	if err == nil && signed != "" {
-		return signed, nil
-	}
-	return c.ObjectURL(objectKey), nil
+	return c.SignGetURL(ctx, objectKey, 24*time.Hour)
 }
+
+var _ blob.Store = (*Client)(nil)

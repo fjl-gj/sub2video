@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { fetchWallet } from '@/api/client'
 import AppHeader from '@/widgets/AppHeader.vue'
 import MobileNav from '@/widgets/MobileNav.vue'
@@ -9,6 +10,8 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 
 const menuOpen = ref(false)
+const route = useRoute()
+watch(() => route.fullPath, () => { menuOpen.value = false })
 const app = useAppStore()
 const auth = useAuthStore()
 
@@ -28,10 +31,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="s2v-shell">
+  <div class="s2v-shell" @keydown.esc="menuOpen = false">
     <AppHeader surface="client" :on-menu="() => menuOpen = !menuOpen" />
     <div class="s2v-main">
       <SidebarNav surface="client" />
+      <button v-if="menuOpen" class="s2v-drawer-backdrop" aria-label="关闭菜单" @click="menuOpen = false" />
       <SidebarNav v-if="menuOpen" surface="client" overlay />
       <main class="s2v-content"><RouterView /></main>
     </div>

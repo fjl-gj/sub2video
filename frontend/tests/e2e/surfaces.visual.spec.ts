@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { seedSurfaceData } from './fixtures/surface-data'
 
 const cases = [
   { name: 'client-overview', path: '/app/overview', heading: '欢迎回来，李维工作室', auth: true },
@@ -18,6 +19,20 @@ const cases = [
   { name: 'admin-tasks', path: '/admin/tasks', heading: '任务中心', auth: true, role: 'admin' },
   { name: 'admin-tickets', path: '/admin/tickets', heading: '工单中心', auth: true, role: 'admin' },
 ]
+
+const populatedContent: Record<string, string> = {
+  'client-overview': '海岸清晨 · 镜头 03',
+  'client-create': '预估费用',
+  'client-works': '海岸清晨 · 镜头 03',
+  'client-assets': '海岸清晨',
+  'client-trash': '初版镜头草稿',
+  'client-wallet': '测试账本记录',
+  'client-tickets': '已完成任务的素材保存方式',
+  'client-profile': 'demo@sub2video.local',
+  'admin-overview': 'AutoDL',
+  'admin-tasks': 'tsk_visual_coast',
+  'admin-tickets': '已完成任务的素材保存方式',
+}
 
 async function seedClientAuth(page: Page, role = 'user') {
   await page.route('**/api/v1/auth/me', async (route) => {
@@ -58,43 +73,49 @@ async function seedCreationAndSupply(page: Page) {
       supportsGeneratedAudio: true, minImages: 0, maxImages: 9, defaultDuration: 5, defaultResolution: '768P',
     }) })
   })
-  await page.route('**/api/v1/admin/creation-modes', async (route) => {
+  await page.route('**/api/v1/admin/creation-modes**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
       { id: 'mode_text_to_video', code: 'text_to_video', name: '文生视频', description: '通过文字描述生成视频', status: 'published', sortOrder: 1 },
       { id: 'mode_first_last', code: 'first_last_frame_to_video', name: '首尾帧生成视频', description: '首帧、尾帧和提示词', status: 'published', sortOrder: 2 },
       { id: 'mode_multi_image', code: 'multi_image_to_video', name: '多图生成视频', description: '多张参考图和提示词', status: 'published', sortOrder: 3 },
     ] }) })
   })
-  await page.route('**/api/v1/admin/carriers', async (route) => {
+  await page.route('**/api/v1/admin/carriers**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ carriers: [{ id: 'car_minimax', code: 'minimax', name: 'MINMAX', enabled: true }], models: [{ id: 'mdl_h3', carrierId: 'car_minimax', code: 'h3', name: 'H3', carrierCode: 'minimax', enabled: true }], cosConfigured: false, autodlEnvToken: false }) })
   })
-  await page.route('**/api/v1/admin/model-configurations', async (route) => {
+  await page.route('**/api/v1/admin/model-configurations**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
       { modelId: 'mdl_h3', modelCode: 'h3', modelName: 'H3', carrierId: 'car_minimax', carrierName: 'MINMAX', workflowId: 'mode_text_to_video', workflowName: '文生视频', enabled: true, recommendationRank: 1, displayBadge: '', defaultDuration: 5, defaultResolution: '768P' },
     ] }) })
   })
-  await page.route('**/api/v1/admin/suppliers', async (route) => {
+  await page.route('**/api/v1/admin/suppliers**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'sup_autodl', code: 'autodl', name: 'AutoDL', baseUrl: 'https://autodl.art', enabled: true, hasToken: true, status: '就绪' }] }) })
   })
-  await page.route('**/api/v1/admin/offerings', async (route) => {
+  await page.route('**/api/v1/admin/offerings**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'off_h3_text_lightx', supplierId: 'sup_autodl', supplierName: 'AutoDL', modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', modeId: 'mode_text_to_video', modeName: '文生视频', name: 'H3 文生视频（无图）', upstreamWorkflowId: 'minimax_h3_lightx2v_no_pic', adapterCode: 'autodl_h3_v1', enabled: true, healthStatus: 'healthy', priority: 10, minDurationSec: 1, maxDurationSec: 15, resolutions: ['480P', '768P'], aspectRatios: ['16:9', '9:16', '1:1'], minImages: 0, maxImages: 0, supportsGeneratedAudio: false }] }) })
   })
-  await page.route('**/api/v1/admin/supplier-costs', async (route) => {
+  await page.route('**/api/v1/admin/supplier-costs**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'cost_h3_text', offeringId: 'off_h3_text_lightx', resolution: '768P', generateAudio: false, peakPerSecond: 0.03, offpeakPerSecond: 0.02, currency: 'CNY', version: 'v1', status: 'active' }] }) })
   })
-  await page.route('**/api/v1/admin/retail-pricing', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'ret_h3_text', modeId: 'mode_text_to_video', modeName: '文生视频', modelId: 'mdl_h3', modelName: 'H3', carrierName: 'MINMAX', resolution: '768P', generateAudio: false, name: 'H3 文生 / 768P', pricePerSecond: 0.5, version: 'v1', status: 'active' }] }) })
+  await page.route('**/api/v1/admin/retail-pricing**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ id: 'ret_h3_text', modeId: 'mode_text_to_video', modeName: '文生视频', modelId: '', modelName: '', carrierName: '', resolution: '768P', generateAudio: false, name: '文生视频 / 768P', pricePerSecond: 0.5, version: 'v1', status: 'active' }] }) })
   })
 }
 
 for (const item of cases) {
   test(`${item.name} matches the surface baseline`, async ({ page }) => {
+    const { unmatchedRequests } = await seedSurfaceData(page)
     if (item.auth) await seedClientAuth(page, item.role)
     await seedCreationAndSupply(page)
     await page.goto(item.path, { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: item.heading, exact: true })).toBeVisible({ timeout: 15_000 })
     if (item.name === 'client-create') await expect(page.getByRole('combobox', { name: '音频设置', exact: true })).toBeVisible()
     if (item.name === 'admin-carriers-models') await expect(page.getByText('H3', { exact: true })).toBeVisible()
+    const content = page.locator('main.s2v-content')
+    expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), 'Page content must scroll vertically; wide tables scroll in their own container').toBe(true)
+    if (populatedContent[item.name]) await expect(page.locator('main')).toContainText(populatedContent[item.name])
+    await page.evaluate(() => document.fonts.ready)
+    expect(unmatchedRequests, 'Every API call must have an explicit visual fixture; no live backend is used.').toEqual([])
     await expect(page).toHaveScreenshot(`${item.name}.png`, {
       fullPage: true,
       animations: 'disabled',
@@ -102,5 +123,26 @@ for (const item of cases) {
       scale: 'css',
       maxDiffPixelRatio: 0.02,
     })
+  })
+}
+
+for (const surface of ['client', 'admin'] as const) {
+  test(`${surface} dialog inherits its surface theme`, async ({ page }) => {
+    const { unmatchedRequests } = await seedSurfaceData(page)
+    await seedClientAuth(page, surface === 'admin' ? 'admin' : 'user')
+    await seedCreationAndSupply(page)
+    await page.goto(surface === 'admin' ? '/admin/carriers-models' : '/app/create?mode=first_last', { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: surface === 'admin' ? '新增承运商' : '选择首帧', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    const box = await dialog.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+    await page.evaluate(() => document.fonts.ready)
+    expect(unmatchedRequests).toEqual([])
+    await expect(page).toHaveScreenshot(`${surface}-dialog.png`, { fullPage: true, animations: 'disabled', caret: 'hide', scale: 'css', maxDiffPixelRatio: 0.02 })
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
   })
 }
