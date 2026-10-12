@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -282,8 +283,11 @@ RETURNING execution_type`, taskID, claimToken).Scan(&executionType)
 		}
 		return err
 	}
-	_, _ = s.Pool.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,upstream_status,detail,elapsed_ms)
-VALUES ($1,'submit_started',$2,'SUBMITTING','{}'::jsonb,0)`, taskID, executionType)
+	if _, err := s.Pool.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,upstream_status,detail,elapsed_ms)
+VALUES ($1,'submit_started',$2,'SUBMITTING','{}'::jsonb,0)`, taskID, executionType); err != nil {
+		// Best-effort telemetry; the submit fence itself is already committed.
+		log.Printf("provider event submit_started task=%d: %v", taskID, err)
+	}
 	return nil
 }
 
@@ -363,8 +367,12 @@ RETURNING task.execution_type, COALESCE(EXTRACT(EPOCH FROM (NOW()-claimed.claime
 		}
 		return err
 	}
-	_, _ = s.Pool.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,provider_request_id,upstream_status,detail,elapsed_ms)
-VALUES ($1,'submitted',$2,$3,$4,'{}'::jsonb,$5)`, taskID, executionType, upstreamTaskID, upstreamStatus, elapsedMs)
+	if _, err := s.Pool.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,provider_request_id,upstream_status,detail,elapsed_ms)
+VALUES ($1,'submitted',$2,$3,$4,'{}'::jsonb,$5)`, taskID, executionType, upstreamTaskID, upstreamStatus, elapsedMs); err != nil {
+		// Best-effort telemetry: the upstream task is already recorded, so
+		// log the miss instead of failing a submission that succeeded.
+		log.Printf("provider event submitted task=%d: %v", taskID, err)
+	}
 	return nil
 }
 
@@ -543,8 +551,12 @@ WHERE execution.public_id=$1 OR execution.legacy_offering_id=(SELECT offering.id
 			return err
 		}
 	}
-	_, _ = tx.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,provider_request_id,upstream_status,detail,elapsed_ms)
-VALUES ($1,'completed',$2,$3,'SUCCESS',$4::jsonb,$5)`, taskID, executionType, providerRequestID, `{"resultUrl":true}`, elapsedMs)
+	if _, err = tx.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,provider_request_id,upstream_status,detail,elapsed_ms)
+VALUES ($1,'completed',$2,$3,'SUCCESS',$4::jsonb,$5)`, taskID, executionType, providerRequestID, `{"resultUrl":true}`, elapsedMs); err != nil {
+		// The completion event is part of the audit trail; if it cannot be
+		// written, the completion must not commit silently.
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -634,8 +646,10 @@ WHERE execution.public_id=$1 OR execution.legacy_offering_id=(SELECT offering.id
 		}
 	}
 	failureDetail, _ := json.Marshal(map[string]any{"reason": reason})
-	_, _ = tx.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,provider_request_id,upstream_status,detail,elapsed_ms)
-VALUES ($1,'failed',$2,$3,'FAILED',$4::jsonb,$5)`, taskID, executionType, providerRequestID, string(failureDetail), elapsedMs)
+	if _, err = tx.Exec(ctx, `INSERT INTO provider_task_events (task_id,event_type,execution_type,provider_request_id,upstream_status,detail,elapsed_ms)
+VALUES ($1,'failed',$2,$3,'FAILED',$4::jsonb,$5)`, taskID, executionType, providerRequestID, string(failureDetail), elapsedMs); err != nil {
+		return err
+	}
 	return nil
 }
 

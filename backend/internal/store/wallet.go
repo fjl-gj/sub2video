@@ -129,7 +129,10 @@ WHERE code = $1 AND (expires_at IS NULL OR expires_at > NOW())`, normalized).Sca
 	}
 
 	var used int
-	_ = tx.QueryRow(ctx, `SELECT COUNT(*) FROM redeem_code_uses WHERE code_id = $1 AND user_id = $2`, codeID, userID).Scan(&used)
+	if err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM redeem_code_uses WHERE code_id = $1 AND user_id = $2`, codeID, userID).Scan(&used); err != nil {
+		// Fail closed: an unreadable usage record must never look like "unused".
+		return 0, 0, err
+	}
 	if used > 0 {
 		return 0, 0, errors.New("该兑换码已经使用过")
 	}
