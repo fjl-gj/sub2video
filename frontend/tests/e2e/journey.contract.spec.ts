@@ -92,7 +92,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
 
     await page.goto('/', { waitUntil: 'networkidle' })
     await expect(page).toHaveURL(/\/$/)
-    await page.locator('a[href="/guides/coast-letter"]').first().click()
+    await page.locator('.s2v-public-footer').getByRole('link', { name: '镜头教程', exact: true }).click()
     await expect(page).toHaveURL((url) => url.pathname === '/guides/coast-letter')
     await expect(page.getByRole('heading', { name: '海岸来信', level: 1, exact: true })).toBeVisible()
     await expect(page.locator('video')).toHaveCount(0)
@@ -257,12 +257,12 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     })
     await page.goto(createPath, { waitUntil: 'networkidle' })
     const submit = page.getByRole('button', { name: '提交生成任务', exact: true })
-    await expect(page.getByText('生成选项加载失败，请检查网络后重新加载。', { exact: true })).toBeVisible()
+    await expect(page.getByRole('alert')).toContainText('生成服务暂时异常，请稍后重新加载。')
     await expect(submit).toBeDisabled()
     recover = true
     await page.getByRole('button', { name: '重新加载生成能力', exact: true }).click()
     await expect(submit).toBeEnabled()
-    await expect(page.getByText('生成选项加载失败，请检查网络后重新加载。', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('alert')).toHaveCount(0)
     await expect(page.getByLabel('视频时长', { exact: true })).toHaveValue('5')
     expect(recoveredReads).toBeGreaterThan(0)
     expect(unmatchedRequests).toEqual([])

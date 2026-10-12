@@ -16,6 +16,7 @@ export default {
           'nav-hover': 'rgb(var(--s2v-nav-hover) / <alpha-value>)',
           line: 'rgb(var(--s2v-line) / <alpha-value>)',
           'line-strong': 'rgb(var(--s2v-line-strong) / <alpha-value>)',
+          'control-line': 'rgb(var(--s2v-control-line) / <alpha-value>)',
           primary: 'rgb(var(--s2v-primary) / <alpha-value>)',
           'primary-hover': 'rgb(var(--s2v-primary-hover) / <alpha-value>)',
           'primary-soft': 'rgb(var(--s2v-primary-soft) / <alpha-value>)',

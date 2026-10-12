@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { seedSurfaceData } from './fixtures/surface-data'
 
 const surfaces = [
-  { name: 'journey-product-home', path: '/', auth: false, content: '海岸来信' },
+  { name: 'journey-product-home', path: '/', auth: false, content: '从一个镜头开始。' },
   { name: 'journey-guide-detail', path: '/guides/coast-letter', auth: false, content: '海岸来信' },
   { name: 'journey-guided-create', path: '/app/create?guide=coast-letter&shot=arrival', auth: true, content: '海岸来信' },
   { name: 'journey-result-detail', path: '/app/works/tsk_visual_coast', auth: true, content: '海岸清晨 · 镜头 03' },
@@ -47,12 +47,17 @@ for (const surface of surfaces) {
     await expect(page.locator('main h1')).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
     expect(unmatchedRequests, 'Screenshots may not silently use a live backend or a missing fixture.').toEqual([])
-    // Public visual fixtures use reduced motion: the homepage shows its licensed
+    // Public visual fixtures use reduced motion: the homepage shows its authored
     // poster, while tutorial pages still contain no simulated video results.
     if (!surface.auth) await expect(page.locator('video')).toHaveCount(0)
     if (testInfo.project.name === 'mobile') {
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
     }
-    await expect(page).toHaveScreenshot(`${surface.name}.png`, { fullPage: true, animations: 'disabled', caret: 'hide', scale: 'css', maxDiffPixelRatio: 0.02 })
+    const projectFiles = surface.name === 'journey-project-files'
+    if (projectFiles) await expect(page.getByRole('button', { name: '导演台', exact: true })).toBeVisible()
+    // Typography/entrance changes occupy few pixels over large brand media.
+    // Compare public surfaces and the project entry exactly, so the old 2%
+    // allowance cannot silently accept a stale headline or action position.
+    await expect(page).toHaveScreenshot(`${surface.name}.png`, { fullPage: true, animations: 'disabled', caret: 'hide', scale: 'css', maxDiffPixelRatio: projectFiles || !surface.auth ? 0 : 0.02 })
   })
 }

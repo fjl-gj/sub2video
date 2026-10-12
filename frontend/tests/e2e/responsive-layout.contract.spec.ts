@@ -51,7 +51,7 @@ async function rect(locator: Locator) {
   await expect(locator).toBeVisible()
   return locator.evaluate((element) => {
     const box = element.getBoundingClientRect()
-    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width }
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height }
   })
 }
 
@@ -118,6 +118,31 @@ async function expectReachable(page: Page, control: Locator) {
   await control.click({ trial: true })
 }
 
+async function expectHomeWorkbench(page: Page, width: number) {
+  const [frame, inputs, preview] = await Promise.all([
+    rect(page.locator('.s2v-home-workbench:visible')),
+    rect(page.locator('.s2v-home-demo-inputs:visible')),
+    rect(page.locator('.s2v-home-demo-preview:visible')),
+  ])
+  for (const box of [inputs, preview]) {
+    expect(box.left, 'The product illustration must fit inside its workbench.').toBeGreaterThanOrEqual(frame.left - 1)
+    expect(box.right).toBeLessThanOrEqual(frame.right + 1)
+    expect(box.top).toBeGreaterThanOrEqual(frame.top - 1)
+    expect(box.bottom).toBeLessThanOrEqual(frame.bottom + 1)
+  }
+  if (width < 768) {
+    expect(inputs.height, 'A phone retains a useful material or description strip instead of hiding every input.').toBeGreaterThanOrEqual(44)
+    expect(inputs.bottom, 'Materials stay before the reference preview on phones.').toBeLessThanOrEqual(preview.top + 1)
+    await expect(page.locator('.s2v-home-demo-settings:visible')).toHaveCount(0)
+  } else {
+    expect(inputs.width, 'The approved input column is 280px on tablets and 340px on desktop.').toBeGreaterThanOrEqual(width < 1024 ? 279 : 319)
+    expect(inputs.width).toBeLessThanOrEqual(421)
+    expect(inputs.right, 'The reference image remains to the right of the desktop inputs.').toBeLessThanOrEqual(preview.left + 1)
+    expect(preview.width, 'The reference image cannot collapse into a narrow desktop sliver.').toBeGreaterThanOrEqual(240)
+  }
+  await expectNoHorizontalOverflow(page)
+}
+
 test.describe('Responsive geometry with mocked display data', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop', 'Custom viewport matrix runs once; the mobile project retains its separate visual tests.')
@@ -129,10 +154,12 @@ test.describe('Responsive geometry with mocked display data', () => {
       await page.setViewportSize({ width, height: 900 })
       const { unmatchedRequests } = await seedSurfaceData(page)
       await page.goto('/', { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await expect(page.getByRole('heading', { level: 1, name: /用文字与图片，\s*创作你的下一幕。/ })).toBeVisible()
+      await expect(page.getByRole('heading', { name: '从一个镜头开始。', exact: true })).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
 
       const hero = await rect(page.locator('.s2v-home-hero'))
+      const content = await rect(page.locator('.s2v-home-content'))
       const modesFrame = await rect(page.locator('#modes'))
       const footer = await page.locator('.s2v-public-footer').evaluate((element) => {
         const box = element.getBoundingClientRect()
@@ -140,18 +167,33 @@ test.describe('Responsive geometry with mocked display data', () => {
         return { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) }
       })
       for (const frame of [modesFrame, footer]) {
-        expect(Math.abs(hero.left - frame.left), 'Hero, creation modes and footer share the left content axis.').toBeLessThanOrEqual(2)
-        expect(Math.abs(hero.right - frame.right), 'Hero, creation modes and footer share the right content axis.').toBeLessThanOrEqual(2)
+        expect(Math.abs(content.left - frame.left), 'Creation modes and footer share the foreground left axis.').toBeLessThanOrEqual(2)
+        expect(Math.abs(content.right - frame.right), 'Creation modes and footer share the foreground right axis.').toBeLessThanOrEqual(2)
       }
       const documentWidth = await page.evaluate(() => document.documentElement.clientWidth)
-      expect(Math.abs(hero.left - (documentWidth - hero.right)), 'Public content has equal outer gutters.').toBeLessThanOrEqual(2)
+      expect(Math.abs(content.left - (documentWidth - content.right)), 'Public foreground has equal outer gutters.').toBeLessThanOrEqual(2)
+      expect(hero.left, 'The film background has no foreground gutter.').toBe(0)
+      expect(hero.right).toBe(documentWidth)
       if (width === 1920) expect(hero.width, 'The desktop presentation uses the wide screen.').toBeGreaterThanOrEqual(1600)
-      await expectReadableCards(page.locator('.s2v-home-modes'), page.locator('.s2v-home-mode'))
-      await expectNoHorizontalOverflow(page)
-      if (width <= 390) {
-        await expectReachable(page, page.getByRole('link', { name: '开始创作', exact: true }))
-        for (const mode of modes) await expectReachable(page, page.getByRole('link', { name: `尝试${mode.name}`, exact: true }))
+      const tabs = page.locator('.s2v-home-mode-tabs')
+      await expect(tabs).toHaveAttribute('role', 'tablist')
+      await expect(tabs.getByRole('tab')).toHaveCount(3)
+      await expectReachable(page, page.getByRole('link', { name: '开始创作', exact: true }))
+      for (const mode of modes) {
+        const tab = tabs.getByRole('tab', { name: mode.name, exact: true })
+        await expectReachable(page, tab)
+        expect((await rect(tab)).height, 'Every mode tab has a usable touch target.').toBeGreaterThanOrEqual(44)
+        await tab.click()
+        await expect(tab).toHaveAttribute('aria-selected', 'true')
+        await expect(page.locator('.s2v-home-workbench:visible')).toHaveCount(1)
+        await expect(page.locator('.s2v-home-mode-description:visible')).not.toBeEmpty()
+        await expectHomeWorkbench(page, width)
+        const entry = page.getByRole('link', { name: `尝试${mode.name}`, exact: true })
+        await expect(entry).toHaveAttribute('href', `/app/create?mode=${mode.inputType}`)
+        await expectReachable(page, entry)
       }
+      // Keep the visual baseline deterministic after exercising every mode.
+      await tabs.getByRole('tab', { name: '文生视频', exact: true }).click()
       expect(unmatchedRequests, 'Layout checks cannot silently call a live backend.').toEqual([])
       if (width === 390 || width === 1920) {
         // Reviewable viewport baseline with the deterministic display fixtures

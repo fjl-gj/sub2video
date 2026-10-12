@@ -8,14 +8,18 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: true,
-  retries: process.env.CI ? 2 : 0,
+  // Real writes are explicitly scoped by each suite; do not replay them in CI.
+  retries: 0,
   reporter: [['list'], ['html', { outputFolder: '.tmp_playwright_integration_report', open: 'never' }]],
   use: {
     baseURL,
     locale: 'zh-CN',
     colorScheme: 'light',
     reducedMotion: 'reduce',
-    trace: 'retain-on-failure',
+    // Authentication bodies and headers must not enter real-environment artifacts.
+    trace: 'off',
+    video: 'off',
+    screenshot: 'off',
   },
   ...(startFrontend ? {
     webServer: {

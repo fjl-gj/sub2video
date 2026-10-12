@@ -2,6 +2,16 @@ import { expect, test, type Page } from '@playwright/test'
 
 // UI contracts only: these fixtures do not send mail or create real accounts.
 const settings = { registrationEnabled: true, emailVerifyEnabled: true, passwordResetEnabled: true }
+const authPosterAlt = '动漫创作者在影像工作室调节镜头，镜头中映出山水风景'
+const authPosterUrl = '/brand/auth/creator-studio-poster.jpg'
+const authFilmUrl = '/brand/auth/creator-studio-loop.mp4'
+const removedAuthCopy = [
+  'Sub2Video · 品牌动漫影像',
+  '从静态画面，到流动镜头',
+  'Sub2Video · 创作者的视频工作台',
+  '从文字、参考图片或首尾帧开始。',
+  '准备好素材，让想法成为镜头。',
+]
 async function seedAuth(page: Page, config = settings) {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const unmatched: string[] = []
@@ -11,6 +21,18 @@ async function seedAuth(page: Page, config = settings) {
     await route.fulfill({ status: 500, json: { message: 'Missing test fixture' } })
   })
   return unmatched
+}
+
+for (const path of ['/auth/login', '/auth/register']) {
+  test(`${path} removes redundant promotional copy while retaining form and background controls`, async ({ page }) => {
+    const unmatched = await seedAuth(page)
+    await page.goto(path)
+    for (const copy of removedAuthCopy) await expect(page.locator('body')).not.toContainText(copy)
+    await expect(page.getByLabel('邮箱', { exact: true })).toBeEditable()
+    await expect(page.getByRole('button', { name: '播放背景影像', exact: true })).toBeVisible()
+    await expect(page.locator('.s2v-auth-footer').getByRole('link', { name: '隐私政策', exact: true })).toBeVisible()
+    expect(unmatched).toEqual([])
+  })
 }
 
 test('login uses real form semantics, reveals password and retries without clearing fields', async ({ page }) => {
@@ -110,37 +132,47 @@ test('verification, cooldown, consent and password requirements are real registr
 
 test('media failure leaves an informative poster and a usable login form', async ({ page }) => {
   await seedAuth(page)
-  await page.route('**/brand/auth/*.webm', async (route) => { await route.abort() })
+  await page.route(/\/brand\/auth\/[^/?]+\.(?:webm|mp4)(?:\?.*)?$/, async (route) => { await route.abort() })
   await page.goto('/auth/login')
   await page.getByRole('button', { name: '播放背景影像', exact: true }).click()
   await expect(page.getByRole('status')).toHaveText('正在展示影像封面')
   await expect(page.locator('video')).toHaveCount(0)
-  await expect(page.getByRole('img', { name: /冰岛黑沙海岸/ })).toBeVisible()
+  await expect(page.getByRole('img', { name: authPosterAlt, exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeEnabled()
 })
 
-test('local background film really plays and pauses on request', async ({ page }) => {
+test('local anime background really plays, loops across its end and pauses on request', async ({ page }) => {
   await seedAuth(page)
   await page.goto('/auth/login')
+  await expect(page.getByRole('img', { name: authPosterAlt, exact: true })).toHaveAttribute('src', authPosterUrl)
   const video = page.locator('video')
   await expect(video).toHaveCount(0)
   await page.getByRole('button', { name: '播放背景影像', exact: true }).click()
+  await expect(video).toHaveAttribute('src', authFilmUrl)
   await expect.poll(async () => video.evaluate((element: HTMLVideoElement) => !element.paused && element.readyState >= 2)).toBe(true)
   await expect.poll(async () => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0)
   await expect(video).toHaveJSProperty('muted', true)
+  await expect(video).toHaveJSProperty('loop', true)
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.duration)).toBeGreaterThan(1)
+  // Seek the real decoded MP4 near its end, then observe native playback
+  // wrapping and advancing. A loop attribute alone cannot prove it plays.
+  await video.evaluate((element: HTMLVideoElement) => { element.currentTime = element.duration - 0.2 })
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeLessThan(1)
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0.3)
+  await expect(video).toHaveJSProperty('paused', false)
   await page.getByRole('button', { name: '暂停背景影像', exact: true }).click()
   await expect(video).toHaveJSProperty('paused', true)
   await expect(video).toHaveCSS('opacity', '1')
 })
 
-test('a missing poster and video do not hide the login or brand copy', async ({ page }) => {
+test('a missing poster and video do not hide the login or entrance heading', async ({ page }) => {
   await seedAuth(page)
   await page.route('**/brand/auth/*', async (route) => { await route.abort() })
   await page.goto('/auth/login')
-  await expect(page.getByRole('img', { name: /冰岛黑沙海岸/ })).toHaveCount(0)
+  await expect(page.getByRole('img', { name: authPosterAlt, exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '播放背景影像', exact: true }).click()
   await expect(page.getByRole('heading', { name: '登录 Sub2Video', exact: true })).toBeVisible()
-  await expect(page.getByRole('heading', { name: /下一幕，\s*由你开场。/ })).toBeVisible()
+  if (page.viewportSize()!.width >= 1024) await expect(page.getByRole('heading', { name: /下一幕，\s*由你开场。/ })).toBeVisible()
   await expect(page.getByLabel('邮箱', { exact: true })).toBeEditable()
 })
 
@@ -150,8 +182,32 @@ test('login and registration fit 320px without overflow and preserve destination
   await page.setViewportSize({ width: 320, height: 844 })
   await page.goto('/auth/login?redirect=%2Fapp%2Fcreate%3Fmode%3Dtext')
   for (const destination of ['创建新账号', '返回登录']) {
+    await expect(page.getByRole('img', { name: authPosterAlt, exact: true })).toHaveAttribute('src', authPosterUrl)
+    await expect(page.locator('video')).toHaveCount(0)
+    await expect(page.getByText('实拍影像参考 · 冰岛海岸', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'CC BY 3.0', exact: true })).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
     await page.getByRole('button', { name: destination, exact: true }).click()
     expect(new URL(page.url()).searchParams.get('redirect')).toBe('/app/create?mode=text')
   }
+})
+
+test('switching between login and registration retains the authored media and destination', async ({ page }) => {
+  const unmatched = await seedAuth(page)
+  await page.goto('/auth/login?redirect=%2Fapp%2Fcreate%3Fmode%3Dtext')
+  await page.getByRole('button', { name: '播放背景影像', exact: true }).click()
+  for (const destination of ['创建新账号', '返回登录']) {
+    await expect(page.locator('video')).toHaveAttribute('src', authFilmUrl)
+    await expect.poll(() => page.locator('video').evaluate((element: HTMLVideoElement) => !element.paused && element.readyState >= 2)).toBe(true)
+    await expect(page.getByRole('img', { name: authPosterAlt, exact: true })).toHaveAttribute('src', authPosterUrl)
+    await expect(page.getByText('实拍影像参考 · 冰岛海岸', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Alexander Grebenkov', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'CC BY 3.0', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: destination, exact: true }).click()
+    expect(new URL(page.url()).searchParams.get('redirect')).toBe('/app/create?mode=text')
+  }
+  await expect(page).toHaveURL((url) => url.pathname === '/auth/login')
+  await expect(page.locator('video')).toHaveAttribute('src', authFilmUrl)
+  await expect(page.getByLabel('邮箱', { exact: true })).toBeEditable()
+  expect(unmatched).toEqual([])
 })

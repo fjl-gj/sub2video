@@ -18,6 +18,8 @@ export default defineConfig({
   },
   webServer: {
     command: 'pnpm dev --host 127.0.0.1 --port 4185',
+    // Unhandled fixture requests must never reach a developer's live backend.
+    env: { VITE_API_PROXY: 'http://127.0.0.1:9' },
     url: 'http://127.0.0.1:4185',
     reuseExistingServer: process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === '1',
     timeout: 120_000,
