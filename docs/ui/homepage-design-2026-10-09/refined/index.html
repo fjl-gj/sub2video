@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Sub2Video · 官网精简设计提案</title>
+  <style>
+    @font-face{font-family:Han;src:url('../assets/source-han-sans-sc-regular.woff2') format('woff2');font-weight:400;font-display:swap}
+    @font-face{font-family:Han;src:url('../assets/source-han-sans-sc-medium.woff2') format('woff2');font-weight:500 700;font-display:swap}
+    @font-face{font-family:Inter;src:url('../assets/inter-latin-variable.woff2') format('woff2');font-weight:100 900;font-display:swap}
+    :root{--canvas:#141616;--surface:#1b1e1c;--ink:#f4f4f0;--body:#d8ded8;--muted:#a2aaa6;--line:#323832;--brand:#e8b981;--gutter:32px;--max:1760px}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:400 18px/1.6 Han,'Microsoft YaHei',sans-serif}h1,h2,p{margin:0}a{color:inherit;text-decoration:none}button{font:inherit;cursor:pointer}img{display:block;width:100%}button,a{-webkit-tap-highlight-color:transparent}a:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offset:5px}.wrap{width:calc(100% - var(--gutter)*2);max-width:var(--max);margin-inline:auto}.wordmark{font:650 28px/1 Inter,sans-serif;letter-spacing:-1px}.wordmark span{color:var(--brand)}.brand{display:flex;align-items:center;min-height:48px}.header{position:absolute;top:0;left:0;right:0;z-index:2}.header-inner{height:88px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:32px}.nav{display:flex;gap:40px;align-items:center;font-size:18px}.nav a,.login{display:flex;align-items:center;min-height:48px}.login{justify-self:end;font-size:18px}a:hover{color:var(--brand)}.hero{position:relative;isolation:isolate;height:100svh;min-height:480px;display:flex;align-items:center;justify-content:center}.hero-art,.hero-shade{position:absolute;inset:0;z-index:-1;width:100%;height:100%}.hero-art{object-fit:cover;object-position:58% center}.hero-shade{background:linear-gradient(180deg,rgba(9,12,12,.3),rgba(9,12,12,.25) 32%,rgba(9,12,12,.5) 70%,rgba(9,12,12,.6))}.hero-copy{text-align:center;width:calc(100% - 32px);max-width:660px;padding-block:120px 80px;transform:translateY(42px)}.hero h1{font-size:64px;line-height:1.25;letter-spacing:-1px;font-weight:500;text-wrap:balance}.primary{display:inline-flex;justify-content:center;align-items:center;gap:28px;min-height:56px;padding:12px 32px;background:var(--brand);color:#25221c;border-radius:8px;border:0;font-size:18px;line-height:28px;font-weight:500}.primary:hover{color:#25221c;background:#f0c796}.hero .primary{margin-top:40px}.arrow{font-family:Inter,sans-serif;font-size:22px}.product{padding-block:96px 88px}.product h2{text-align:center;font-size:40px;line-height:52px;letter-spacing:-.5px;font-weight:500}.tabs{display:grid;grid-template-columns:repeat(3,1fr);width:min(100%,660px);margin:40px auto 0;border-bottom:1px solid var(--line)}.tab{display:block;width:100%;height:60px;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);font-size:20px;line-height:30px;padding:12px 8px}.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--brand)}.tab:hover{color:var(--ink)}.mode-description{font-size:20px;line-height:32px;text-align:center;color:var(--body);margin:24px 0 36px}.workbench{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}.bench-heading{padding:16px 24px;border-bottom:1px solid var(--line);font-size:16px;line-height:28px;color:var(--muted)}.bench-body{display:grid;grid-template-columns:340px minmax(0,1fr)}.inputs{padding:28px 24px;display:flex;flex-direction:column;gap:24px;border-right:1px solid var(--line)}.input-label{font-size:20px;line-height:30px;font-weight:500}.prompt{font-size:18px;line-height:30px;color:var(--body);margin-top:16px}.parameters{font-size:18px;line-height:28px;color:var(--body);margin-top:auto}.sample-action{min-height:52px;width:100%;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:18px;line-height:28px;cursor:default;display:flex;align-items:center;justify-content:center}.reference{position:relative;aspect-ratio:16/9;min-width:0;background:var(--canvas)}.reference>img{height:100%;object-fit:cover}.reference-label{position:absolute;left:24px;bottom:20px;font-size:16px;line-height:26px;color:var(--ink);background:rgba(9,12,12,.64);padding:4px 12px;border-radius:8px}.asset-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}.asset-pair img{aspect-ratio:4/3;object-fit:cover;border-radius:8px}.asset-name{font-size:16px;line-height:24px;color:var(--body);margin-top:8px}.materials[hidden],.mode-description[hidden]{display:none}.footer{border-top:1px solid var(--line);padding-block:40px}.footer-inner{display:flex;align-items:center;justify-content:space-between;gap:32px}.footer .wordmark{font-size:24px}.footer-links{display:flex;gap:32px;flex-wrap:wrap;font-size:16px;line-height:26px;color:var(--muted)}.footer-links a{display:flex;align-items:center;min-height:48px}.dialog{border:1px solid var(--line);border-radius:12px;color:var(--ink);background:var(--surface);padding:32px;max-width:440px;width:calc(100% - 32px)}.dialog::backdrop{background:rgba(9,12,12,.8)}.dialog h2{font-size:28px;line-height:38px;font-weight:500}.dialog p{font-size:18px;line-height:30px;color:var(--body);margin:16px 0 24px}.dialog .primary{font-size:18px}
+    @media(min-width:1920px){:root{--gutter:80px}.hero h1{font-size:72px}.hero-copy{max-width:760px}.product{padding-top:112px}}
+    @media(max-width:1023px) and (min-width:768px){:root{--gutter:24px}.header-inner{gap:20px}.nav{gap:24px;font-size:16px}.bench-body{grid-template-columns:280px minmax(0,1fr)}.inputs{padding:24px 20px}.reference{aspect-ratio:auto;min-height:380px}.prompt{font-size:16px;line-height:28px}.parameters{font-size:16px}}
+    @media(max-width:767px){:root{--gutter:16px}.header-inner{height:72px;display:flex;justify-content:space-between;gap:16px}.wordmark{font-size:24px}.nav{display:none}.login{font-size:16px}.hero-art{object-position:30% center}.hero-shade{background:linear-gradient(180deg,rgba(9,12,12,.26),rgba(9,12,12,.15) 38%,rgba(9,12,12,.7))}.hero-copy{align-self:flex-end;transform:none;max-width:380px;padding:100px 12px 96px}.hero h1{font-size:40px;line-height:52px;letter-spacing:-.5px}.hero .primary{margin-top:32px;min-height:52px;padding-inline:28px}.product{padding-block:56px}.product h2{font-size:28px;line-height:40px}.tabs{margin-top:24px}.tab{font-size:16px;line-height:26px;height:56px}.mode-description{font-size:18px;line-height:28px;margin:20px 0 28px}.bench-heading{padding:12px 16px;font-size:16px;line-height:26px}.bench-body{grid-template-columns:1fr}.inputs{display:none}.reference-label{left:12px;bottom:12px;padding:2px 8px}.reference{aspect-ratio:16/10}.footer{padding-block:28px}.footer-inner{align-items:flex-start;flex-direction:column;gap:16px}.footer-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px;font-size:16px}}
+    .mobile-prompt{display:none}
+    @media(max-width:767px){.inputs{display:block;padding:12px 16px;border-right:0;border-bottom:1px solid var(--line)}.inputs .input-label{font-size:18px;line-height:28px}.inputs .prompt,.inputs .parameters,.inputs .sample-action,.asset-name{display:none}.mobile-prompt{display:block;font-size:18px;line-height:28px;color:var(--body);margin-top:8px}.asset-pair{width:144px;gap:12px;margin-top:12px}}
+    @media(max-width:359px){.hero h1{font-size:34px;line-height:46px}.hero-copy{padding-inline:6px}.product h2{font-size:26px}.tab{padding-inline:4px}}
+    @media(max-height:700px) and (max-width:767px){.hero-copy{padding-bottom:56px;padding-top:88px}.hero h1{font-size:34px;line-height:46px}.hero .primary{margin-top:24px}}
+    @media(max-height:650px) and (min-width:768px){.hero h1{font-size:48px;line-height:60px}.hero-copy{transform:none;padding-block:100px 64px}.hero .primary{margin-top:28px}}
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <img class="hero-art" src="../assets/creator-studio-poster.jpg" alt="动漫创作者在影像工作室调节镜头">
+    <div class="hero-shade" aria-hidden="true"></div>
+    <header class="header"><div class="wrap header-inner"><a class="brand" href="#" aria-label="Sub2Video 首页"><span class="wordmark">Sub<span>2</span>Video</span></a><nav class="nav" aria-label="官网导航"><a href="#product">创作方式</a><a href="#" data-design-link>镜头教程</a><a href="#" data-design-link>帮助</a></nav><a class="login" href="#" data-design-link>登录</a></div></header>
+    <div class="hero-copy"><h1>用文字与图片，创作你的下一幕。</h1><a class="primary" href="#" data-design-link>开始创作 <span class="arrow" aria-hidden="true">↗</span></a></div>
+  </section>
+  <main class="wrap product" id="product">
+    <h2>从一个镜头开始。</h2>
+    <div class="tabs" role="tablist" aria-label="选择创作方式">
+      <button class="tab" id="text-tab" role="tab" aria-controls="mode-preview" aria-selected="true" data-mode="text">文生视频</button>
+      <button class="tab" id="frames-tab" role="tab" aria-controls="mode-preview" aria-selected="false" tabindex="-1" data-mode="frames">首尾帧</button>
+      <button class="tab" id="images-tab" role="tab" aria-controls="mode-preview" aria-selected="false" tabindex="-1" data-mode="images">多图</button>
+    </div>
+    <section id="mode-preview" role="tabpanel" aria-labelledby="text-tab" tabindex="0">
+      <p class="mode-description" id="description">描述画面，让故事动起来。</p>
+      <div class="workbench"><div class="bench-heading">创作界面示意</div><div class="bench-body">
+        <div class="inputs">
+          <div class="materials" id="text-material"><p class="input-label">画面描述</p><p class="prompt">暮色中的城市工作室。人物缓缓调节镜头，镜头向前推进。</p><p class="mobile-prompt">描述人物、场景与镜头运动。</p></div>
+          <div class="materials" id="frames-material" hidden><p class="input-label">首帧与尾帧</p><div class="asset-pair"><div><img src="../assets/creator-studio-poster.jpg" alt="首帧构图"><p class="asset-name">首帧</p></div><div><img src="../assets/creator-studio-last.jpg" alt="尾帧构图"><p class="asset-name">尾帧</p></div></div><p class="prompt">从冷色夜景，过渡到温暖的镜头光影。</p></div>
+          <div class="materials" id="images-material" hidden><p class="input-label">参考图片</p><div class="asset-pair"><img src="../assets/creator-studio-poster.jpg" alt="工作室人物参考"><img src="../assets/creator-studio-last.jpg" alt="镜头光影参考"></div><p class="prompt">保持人物与工作室构图，探索不同光影。</p></div>
+          <p class="parameters">5 秒 · 16:9 · 768P</p><div class="sample-action">查看估价</div>
+        </div>
+        <div class="reference"><img id="reference-image" src="../assets/creator-studio-poster.jpg" alt="品牌影像参考画面，不是生成结果"><span class="reference-label">参考画面</span></div>
+      </div></div>
+    </section>
+  </main>
+  <footer class="footer"><div class="wrap footer-inner"><a class="brand" href="#" aria-label="Sub2Video 首页"><span class="wordmark">Sub<span>2</span>Video</span></a><nav class="footer-links" aria-label="网站信息"><a href="#" data-design-link>镜头教程</a><a href="#" data-design-link>帮助</a><a href="#" data-design-link>服务条款</a><a href="#" data-design-link>隐私政策</a></nav></div></footer>
+  <dialog class="dialog" id="design-dialog"><h2>官网设计提案</h2><p>此处用于审阅视觉与内容。创作、教程和登录入口未连接产品服务。</p><form method="dialog"><button class="primary">返回设计稿</button></form></dialog>
+  <script>
+    const tabs = [...document.querySelectorAll('[data-mode]')];
+    const descriptions = {text:'描述画面，让故事动起来。',frames:'给出起点与终点，连接画面变化。',images:'带上参考图片，探索动态表达。'};
+    function selectMode(tab) {
+      tabs.forEach(item => { item.setAttribute('aria-selected',String(item===tab)); item.tabIndex=item===tab?0:-1; });
+      const mode=tab.dataset.mode;
+      document.querySelectorAll('.materials').forEach(item => { item.hidden=item.id!==mode+'-material'; });
+      document.getElementById('description').textContent=descriptions[mode];
+      document.getElementById('reference-image').src='../assets/'+(mode==='text'?'creator-studio-poster.jpg':'creator-studio-last.jpg');
+      document.getElementById('mode-preview').setAttribute('aria-labelledby',tab.id);
+    }
+    tabs.forEach((tab,index) => {
+      tab.addEventListener('click',() => selectMode(tab));
+      tab.addEventListener('keydown',event => {
+        const keys=['ArrowLeft','ArrowRight','Home','End'];
+        if (!keys.includes(event.key)) return;
+        event.preventDefault();
+        let target=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+        selectMode(tabs[target]); tabs[target].focus();
+      });
+    });
+    document.querySelectorAll('[data-design-link]').forEach(link => link.addEventListener('click',event => { event.preventDefault(); document.getElementById('design-dialog').showModal(); }));
+  </script>
+</body>
+</html>

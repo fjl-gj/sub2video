@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Sub2Video · 创作工作台设计稿</title>
+  <link rel="stylesheet" href="./prototype-v2.css">
+  <script src="./prototype-v2.js" defer></script>
+</head>
+<body>
+  <div class="review-bar"><p><strong>创作工作台设计稿</strong><span>参考内容型创作平台的层级 · 示例状态 · 未连接业务接口</span></p><label>查看状态<select id="scenario"><option value="ready">准备创作</option><option value="chat">整理镜头</option><option value="estimate">费用确认</option><option value="unavailable">服务未就绪</option><option value="running">执行中</option><option value="review">提交待核对</option><option value="failed">失败并退款</option><option value="delivered">交付完成</option></select></label></div>
+  <div class="application">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="wordmark" href="#">Sub2Video<span></span></a>
+      <nav>
+        <button data-nav="首页概览">首页概览</button><button class="selected" data-nav="创作">创作</button><button data-nav="任务">任务</button><button data-nav="资产">资产</button><button data-nav="广场">广场</button><button data-nav="回收站">回收站</button>
+        <hr><p>账户服务</p><button data-nav="钱包">钱包</button><button data-nav="帮助与工单">帮助与工单</button>
+      </nav>
+      <div class="project-area"><div class="project-heading"><span>我的作品</span><button aria-label="更多作品">···</button></div><button class="project-row"><span class="folder-icon">□</span><span>未命名作品</span></button><button class="project-row"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="作品封面"><span>工作室片段</span></button></div>
+      <div class="sidebar-foot"><span class="profile-circle">C</span><div>创作者<span>演示工作区</span></div></div>
+    </aside>
+    <div class="workspace">
+      <header class="app-header"><button id="nav-toggle" class="text-control" aria-label="打开主导航" aria-expanded="false">菜单</button><span class="mobile-wordmark">Sub2Video</span><div class="header-tabs" role="tablist" aria-label="创作类型"><button class="active" role="tab" aria-selected="true">创作</button><button role="tab" aria-selected="false">导演台</button></div><div class="header-account"><span>余额示例 <b>¥20.00</b></span><button class="profile-circle" aria-label="查看个人资料">C</button></div></header>
+      <main>
+        <section class="hero-heading"><div><p class="eyebrow">创作空间</p><h1>从一个镜头开始</h1><p class="hero-copy">把你的想法、画面和素材，整理成下一幕。</p></div><button class="text-control" id="save-draft">保留草稿</button></section>
+        <section class="creation-card" aria-label="开始创作">
+          <div class="creation-tabs" role="tablist" aria-label="创作模式"><button class="active" data-mode="text" role="tab" aria-selected="true">文生视频</button><button data-mode="frames" role="tab" aria-selected="false">首尾帧</button><button data-mode="multi" role="tab" aria-selected="false">多图</button></div>
+          <div class="creation-body">
+            <div class="prompt-side"><div class="prompt-heading"><h2 id="prompt-title">你想做什么镜头？</h2><span id="mode-note">从一句描述开始</span></div><label class="sr-only" for="prompt">描述你的镜头</label><textarea id="prompt" rows="5" placeholder="例如：女孩在窗边抬头，镜头缓慢推进，保持人物与画风一致…"></textarea><div class="prompt-suggestions"><button data-example="人物轻轻抬头，镜头慢慢靠近。">人物动作</button><button data-example="一件商品在柔和侧光下缓慢旋转。">商品展示</button><button data-example="清晨海边薄雾散开，镜头向前移动。">氛围场景</button></div></div>
+            <div class="material-side"><div class="material-heading"><h3 id="material-title">准备参考画面</h3><span id="material-note">首尾帧需要两张图片</span></div><div id="material-drop" class="material-drop"><div class="drop-visual"><span>＋</span></div><div><strong id="drop-title">上传首帧与尾帧</strong><p id="drop-copy">拖入图片，或从资产中选择。图片只用于准备这一镜。</p></div><button class="secondary" id="manage-materials">选择素材</button></div></div>
+          </div>
+          <div class="creation-footer"><div class="quick-settings"><label>承运商<select id="carrier"><option value="minimax">MiniMax</option></select></label><label>模型<select id="model"><option value="h3-text">H3 文字镜头</option></select></label><label>画幅<select id="ratio"><option value="16:9">16:9 横屏</option><option value="9:16">9:16 竖屏</option></select></label><label>时长<select disabled><option>5 秒</option></select></label><span class="settings-hint">768P · 自动音频关闭</span></div><div class="primary-actions"><button class="text-control" id="organize">整理镜头</button><button class="primary" id="start">开始创作</button></div></div>
+          <div id="availability" class="availability" role="status" hidden></div>
+          <div id="task-status" class="task-status" role="status" hidden></div>
+        </section>
+        <section id="chat-panel" class="chat-panel" hidden aria-label="对话整理镜头"><div class="chat-heading"><div><p class="eyebrow">镜头草稿</p><h2>把这一幕再说清楚一点</h2></div><button class="text-control" id="back-to-canvas">返回创作入口</button></div><div id="chat-messages" class="chat-messages"></div><div class="chat-composer"><label class="sr-only" for="chat-input">修改镜头</label><textarea id="chat-input" rows="2" placeholder="告诉我想怎么改，例如：动作更克制、镜头更近…"></textarea><div><span>整理描述不会生成视频</span><button class="secondary" id="apply-chat">应用修改</button></div></div></section>
+        <section class="content-section"><div class="section-title"><div><p class="eyebrow">灵感参考</p><h2>从一个画面开始</h2><p class="section-note">这里只是构图参考，不代表 Sub2Video 已生成的作品。</p></div><button class="text-control" data-nav="灵感参考">查看全部</button></div><div class="inspiration-grid"><button class="inspiration-card" data-example="暗色房间里，一束光落在桌面，镜头从静物慢慢推向人物。"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="人物与光线参考画面"><span>人物与光线</span><small>参考构图 · 点击带入描述</small></button><button class="inspiration-card" data-example="一只白色香水瓶置于石台上，镜头环绕展示玻璃质感。"><img src="../../../frontend/public/brand/auth/creator-studio-last.jpg" alt="产品展示参考画面"><span>产品展示</span><small>参考构图 · 点击带入描述</small></button><button class="inspiration-card" data-example="清晨海边薄雾散开，低机位镜头向前移动。"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="场景运动参考画面"><span>场景运动</span><small>参考构图 · 点击带入描述</small></button></div></section>
+        <section class="content-section projects-section"><div class="section-title"><div><p class="eyebrow">作品</p><h2>继续你的创作</h2><p class="section-note">示例项目仅用于审阅信息层级，不是用户真实资产。</p></div><button class="text-control" data-nav="作品">查看全部</button></div><div class="project-grid"><button class="project-card"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="示例项目封面"><div><strong>示例项目 · 工作室片段</strong><span>参考封面 · 1 个镜头</span></div></button><button class="project-card empty-project"><span class="plus">＋</span><div><strong>新建作品</strong><span>从一个新镜头开始</span></div></button></div></section>
+        <p class="workspace-note">当前为设计示例。图片、金额、状态与助手回复均未连接真实业务。</p>
+      </main>
+      <nav class="bottom-nav" aria-label="移动端主导航"><button class="selected">创作</button><button>任务</button><button>资产</button><button>钱包</button></nav>
+    </div>
+  </div>
+  <dialog id="materials-dialog"><div class="dialog-heading"><h2>准备参考画面</h2><button class="text-control" data-close="materials-dialog">关闭</button></div><p id="dialog-copy">本稿只模拟本地图片选择，不上传到服务器。</p><div class="material-editors"><label>选择图片<input type="file" accept="image/png,image/jpeg,image/webp" multiple></label></div><div class="dialog-actions"><button class="secondary" id="sample-materials">使用示例图片</button><button class="primary" data-close="materials-dialog">完成</button></div></dialog>
+</body>
+</html>

@@ -1,0 +1,594 @@
+{
+  "capturedAt": "2026-10-08T12:42:43.257Z",
+  "baseUrl": "http://192.168.0.107:12000",
+  "candidateIndexSHA256": "4cf17a1008c0219ce1dca9e0313fa8561670bf3bed18aa14985f078a573b9dbf",
+  "api": "/api/v1/settings/public",
+  "desktopViewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "mobileViewport": {
+    "width": 390,
+    "height": 844
+  },
+  "cacheDisabled": true,
+  "slowNetwork": {
+    "latencyMs": 150,
+    "downloadBytesPerSec": 125000,
+    "uploadBytesPerSec": 62500
+  },
+  "posterOnlyControl": "prefers-reduced-motion: reduce",
+  "activeControl": "prefers-reduced-motion: no-preference",
+  "sampleScope": "GET public settings, media requests and route departure only; no credential, registration or task submissions",
+  "rounds": [
+    {
+      "name": "1Mbps-autoplay-valid-1",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3172,
+          "responseMs": 3349,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 177,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3173,
+          "responseMs": 3350,
+          "endMs": 3351,
+          "durationMs": 178,
+          "ttfbMs": 177,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 3179,
+          "responseMs": 3395,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 216,
+          "status": 206,
+          "protocol": "http/1.1",
+          "cache": false,
+          "contentRange": "bytes 0-2064806/2064807"
+        }
+      ],
+      "video": {
+        "duration": null,
+        "paused": false,
+        "readyState": 0
+      }
+    },
+    {
+      "name": "1Mbps-poster-only-valid-1",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3269,
+          "responseMs": 3441,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 172,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3270,
+          "responseMs": 3456,
+          "endMs": 3457,
+          "durationMs": 187,
+          "ttfbMs": 186,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    },
+    {
+      "name": "1Mbps-autoplay-valid-2",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3241,
+          "responseMs": 3430,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 189,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3243,
+          "responseMs": 3478,
+          "endMs": 3478,
+          "durationMs": 235,
+          "ttfbMs": 235,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 3251,
+          "responseMs": null,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": null
+        }
+      ],
+      "video": {
+        "duration": null,
+        "paused": false,
+        "readyState": 0
+      }
+    },
+    {
+      "name": "1Mbps-autoplay-valid-3",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3423,
+          "responseMs": 3616,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 193,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3423,
+          "responseMs": 3632,
+          "endMs": 3632,
+          "durationMs": 209,
+          "ttfbMs": 208,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 3428,
+          "responseMs": 3671,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 244,
+          "status": 206,
+          "protocol": "http/1.1",
+          "cache": false,
+          "contentRange": "bytes 0-2064806/2064807"
+        }
+      ],
+      "video": {
+        "duration": null,
+        "paused": false,
+        "readyState": 0
+      }
+    },
+    {
+      "name": "1Mbps-poster-only-valid-3",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3239,
+          "responseMs": 3413,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 174,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3240,
+          "responseMs": 3414,
+          "endMs": 3415,
+          "durationMs": 175,
+          "ttfbMs": 174,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    },
+    {
+      "name": "1Mbps-poster-only-replacement-2",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3210,
+          "responseMs": 3413,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 203,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3211,
+          "responseMs": 3444,
+          "endMs": 3445,
+          "durationMs": 233,
+          "ttfbMs": 233,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    },
+    {
+      "name": "LAN-autoplay-complete-1",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 121,
+          "responseMs": 127,
+          "endMs": 138,
+          "durationMs": 16,
+          "ttfbMs": 6,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 123,
+          "responseMs": 132,
+          "endMs": 136,
+          "durationMs": 14,
+          "ttfbMs": 9,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 127,
+          "responseMs": 149,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 22,
+          "status": 206,
+          "protocol": "http/1.1",
+          "cache": false,
+          "contentRange": "bytes 0-2064806/2064807"
+        }
+      ],
+      "video": {
+        "duration": 9.625,
+        "paused": false,
+        "readyState": 4
+      }
+    },
+    {
+      "name": "LAN-poster-only-complete-1",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 127,
+          "responseMs": 144,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 17,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 128,
+          "responseMs": 153,
+          "endMs": 154,
+          "durationMs": 26,
+          "ttfbMs": 25,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    },
+    {
+      "name": "LAN-autoplay-complete-2",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 107,
+          "responseMs": 124,
+          "endMs": 127,
+          "durationMs": 20,
+          "ttfbMs": 17,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 108,
+          "responseMs": 124,
+          "endMs": 126,
+          "durationMs": 18,
+          "ttfbMs": 16,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 114,
+          "responseMs": 148,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 34,
+          "status": 206,
+          "protocol": "http/1.1",
+          "cache": false,
+          "contentRange": "bytes 0-2064806/2064807"
+        }
+      ],
+      "video": {
+        "duration": 9.625,
+        "paused": false,
+        "readyState": 4
+      }
+    },
+    {
+      "name": "LAN-poster-only-complete-2",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 128,
+          "responseMs": 140,
+          "endMs": 149,
+          "durationMs": 21,
+          "ttfbMs": 12,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 129,
+          "responseMs": 140,
+          "endMs": 144,
+          "durationMs": 15,
+          "ttfbMs": 11,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    },
+    {
+      "name": "LAN-autoplay-complete-3",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 103,
+          "responseMs": 126,
+          "endMs": 143,
+          "durationMs": 40,
+          "ttfbMs": 23,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 103,
+          "responseMs": 129,
+          "endMs": 129,
+          "durationMs": 26,
+          "ttfbMs": 25,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 108,
+          "responseMs": 131,
+          "endMs": null,
+          "durationMs": null,
+          "ttfbMs": 23,
+          "status": 206,
+          "protocol": "http/1.1",
+          "cache": false,
+          "contentRange": "bytes 0-2064806/2064807"
+        }
+      ],
+      "video": {
+        "duration": 9.625,
+        "paused": false,
+        "readyState": 4
+      }
+    },
+    {
+      "name": "LAN-poster-only-complete-3",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 131,
+          "responseMs": 144,
+          "endMs": 148,
+          "durationMs": 17,
+          "ttfbMs": 13,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 132,
+          "responseMs": 148,
+          "endMs": 153,
+          "durationMs": 21,
+          "ttfbMs": 16,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    },
+    {
+      "name": "left-auth-confirmed",
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 3296,
+          "responseMs": 3478,
+          "endMs": 4767,
+          "durationMs": 1471,
+          "ttfbMs": 182,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 3298,
+          "responseMs": 3494,
+          "endMs": 3495,
+          "durationMs": 196,
+          "ttfbMs": 196,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        },
+        {
+          "path": "/brand/auth/creator-studio-loop.mp4",
+          "method": "GET",
+          "startMs": 3309,
+          "responseMs": 3540,
+          "endMs": 4869,
+          "durationMs": 1559,
+          "ttfbMs": 231,
+          "status": 206,
+          "protocol": "http/1.1",
+          "cache": false,
+          "contentRange": "bytes 0-2064806/2064807",
+          "failure": "net::ERR_ABORTED",
+          "canceled": true
+        }
+      ],
+      "videoCount": 0,
+      "url": "http://192.168.0.107:12000/auth/privacy"
+    },
+    {
+      "name": "mobile-390-no-autoplay",
+      "truncated": false,
+      "rows": [
+        {
+          "path": "/brand/auth/creator-studio-poster.jpg",
+          "method": "GET",
+          "startMs": 273,
+          "responseMs": 289,
+          "endMs": 296,
+          "durationMs": 22,
+          "ttfbMs": 16,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 218564
+        },
+        {
+          "path": "/api/v1/settings/public",
+          "method": "GET",
+          "startMs": 275,
+          "responseMs": 290,
+          "endMs": 291,
+          "durationMs": 16,
+          "ttfbMs": 15,
+          "status": 200,
+          "protocol": "http/1.1",
+          "cache": false,
+          "encodedBytes": 453
+        }
+      ],
+      "video": null
+    }
+  ],
+  "discardedDiagnostics": "Incomplete early snapshots and one buffer-overflow diagnostic were excluded; final samples require status 200 and loadingFinished for the current document loader."
+}

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Sub2Video · 聊天式创作设计稿</title>
+  <link rel="stylesheet" href="./prototype.css">
+  <script src="./prototype.js" defer></script>
+</head>
+<body>
+  <div class="review-bar">
+    <p><strong>交互设计稿</strong><span>示例对话、金额与结果 · 未连接业务接口</span></p>
+    <label>查看状态
+      <select id="scenario">
+        <option value="draft">镜头准备</option><option value="empty">首次创作</option>
+        <option value="estimate">费用确认</option><option value="running">执行中</option>
+        <option value="delivered">交付示意</option><option value="unavailable">服务未就绪</option>
+        <option value="refunded">失败与退款</option><option value="review">提交待核对</option>
+      </select>
+    </label>
+  </div>
+  <div class="application">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="wordmark" href="#" data-action="home">Sub2Video<span class="brand-point"></span></a>
+      <nav>
+        <button data-action="home">首页概览</button>
+        <p class="nav-heading">创作空间</p>
+        <button class="selected" data-action="creation" aria-current="page">创作</button>
+        <button data-action="navigation" data-destination="广场">广场</button>
+        <button data-action="navigation" data-destination="任务">任务</button>
+        <button data-action="navigation" data-destination="资产">资产</button>
+        <button data-action="navigation" data-destination="回收站">回收站</button>
+        <p class="nav-heading">账户服务</p>
+        <button data-action="navigation" data-destination="钱包">钱包</button>
+        <button data-action="help">帮助与工单</button>
+      </nav>
+      <div class="sidebar-foot"><span class="profile-circle">C</span><div>创作者<span>演示工作区</span></div></div>
+    </aside>
+    <div class="workspace">
+      <header class="app-header">
+        <button id="nav-toggle" class="text-control" aria-label="打开主导航" aria-expanded="false">菜单</button>
+        <span class="mobile-wordmark">Sub2Video</span>
+        <span class="header-path">创作空间 <span>/</span> 创作</span>
+        <div class="header-account"><span>余额示例 <b id="wallet">¥20.00</b></span><button class="profile-circle" data-action="navigation" data-destination="个人资料" aria-label="查看个人资料">C</button></div>
+      </header>
+      <main>
+        <div class="page-heading"><div><p id="context" class="eyebrow">单镜头创作</p><h1 id="project-title">工作室里的下一幕</h1></div><div class="heading-actions"><button class="text-control" id="save-draft">保留草稿</button><button class="secondary" id="new-draft">新建创作</button></div></div>
+        <div class="view-switch" role="group" aria-label="工作区视图"><button class="active" data-view="chat" aria-pressed="true">对话与创作</button><button data-view="shot" aria-pressed="false">画面与设置</button></div>
+        <div class="workbench" data-view="chat">
+          <section class="chat-pane" aria-label="对话与创作">
+            <div class="creation-head"><h2>从一个想法开始</h2><div class="mode-switch" role="group" aria-label="创作模式"><button data-mode="text">文生视频</button><button data-mode="frames" class="active" aria-pressed="true">首尾帧</button><button data-mode="multi">多图</button></div><p id="mode-requirement" class="supporting">首帧决定起点，尾帧决定落点。两张图片都需要准备。</p></div>
+            <div id="conversation" class="conversation" aria-live="polite"></div>
+            <div class="composer-area">
+              <div id="chat-task-status" class="chat-task-status" role="status" hidden></div>
+              <div id="inline-feedback" class="inline-feedback" role="status" hidden></div>
+              <div class="composer">
+                <label class="sr-only" for="message">描述或修改镜头</label>
+                <textarea id="message" rows="3" placeholder="描述画面、人物动作，或继续修改这一镜…"></textarea>
+                <div class="composer-tools"><button class="text-control" id="open-materials">添加素材</button><button class="text-control mobile-draft-save" id="save-mobile" aria-label="保留创作草稿">存草稿</button><button class="secondary" id="send-message">整理镜头</button></div>
+              </div>
+              <p class="composer-note">整理描述不会生成视频。费用确认后，才提交生成。</p>
+            </div>
+          </section>
+          <section class="shot-pane" aria-label="镜头画面与设置">
+            <div class="pane-title"><h2 id="preview-title">镜头预览</h2><span id="preview-caption">参考画面</span></div>
+            <div class="preview-stage" id="preview-stage"><img id="preview-image" src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="示例参考画面：动漫创作者坐在工作室内"><video id="preview-video" controls playsinline muted preload="none" poster="../../../frontend/public/brand/auth/creator-studio-poster.jpg" hidden><source src="../../../frontend/public/brand/auth/creator-studio-loop.mp4" type="video/mp4"></video><div class="stage-empty" id="stage-empty" hidden><h3>画面从这里开始</h3><p>写下描述，或添加你的参考图片。</p></div><span id="media-label" class="media-label">示例参考画面</span></div>
+            <div id="delivery-actions" class="delivery-actions" hidden><a class="primary" href="../../../frontend/public/brand/auth/creator-studio-loop.mp4" download="sub2video-reference-only.mp4">下载示例视频</a><button class="secondary" id="save-work">保存位置示意</button><button class="text-control" id="recreate">按原参数创作</button></div>
+            <section id="material-section" class="detail-section"><div class="section-heading"><h3>素材</h3><button class="text-control" id="manage-materials">管理素材</button></div><div class="material-grid" id="materials"></div><p class="supporting" id="material-hint">示例图片只用于审阅设计。可换成你的本地图片。</p></section>
+            <section class="detail-section settings-section"><div class="section-heading"><h3>生成设置</h3><button class="text-control" id="edit-settings">调整参数</button></div><dl class="settings-grid"><div><dt>承运商 / 模型</dt><dd>MiniMax / H3 <span>示例</span></dd></div><div><dt>时长</dt><dd id="duration-display">5 秒</dd></div><div><dt>分辨率</dt><dd>768P</dd></div><div><dt>画幅</dt><dd id="ratio-display">16:9</dd></div><div><dt>自动音频</dt><dd>关闭</dd></div></dl></section>
+            <section id="next-action" class="next-action" aria-live="polite"></section>
+          </section>
+        </div>
+        <p class="workspace-note" id="draft-note">当前为设计示例。对话与画面始终围绕同一个镜头。</p>
+      </main>
+      <nav class="bottom-nav" aria-label="移动端主导航"><button data-action="home">首页</button><button class="selected" data-action="creation" aria-current="page">创作</button><button data-action="navigation" data-destination="任务">任务</button><button data-action="navigation" data-destination="资产">资产</button></nav>
+    </div>
+  </div>
+  <dialog id="settings-dialog"><div class="dialog-heading"><h2>生成设置</h2><button class="text-control" data-close="settings-dialog">关闭</button></div><p class="supporting">此设计稿展示 H3 参数。正式选项以可用能力为准。</p><form id="settings-form"><div class="form-grid"><label>承运商<select disabled><option>MiniMax（示例）</option></select></label><label>模型<select disabled><option>H3（示例）</option></select></label><label>视频时长<select id="duration-input"><option value="5">5 秒</option></select></label><label>分辨率<select disabled><option>768P</option></select></label><label>画幅比例<select id="ratio-input"><option value="16:9">16:9 · 横屏</option><option value="9:16">9:16 · 竖屏</option></select></label><label>自动音频<select disabled><option>关闭 · 示例能力</option></select></label></div><p>修改参数后，需要重新查看费用。</p><div class="dialog-actions"><button class="primary" type="submit">应用参数</button></div></form></dialog>
+  <dialog id="materials-dialog"><div class="dialog-heading"><h2>准备素材</h2><button class="text-control" data-close="materials-dialog">关闭</button></div><p id="material-dialog-hint">选择首帧与尾帧，定义镜头起止画面。</p><div id="material-editors" class="material-editors"></div><div class="dialog-actions"><button class="secondary" id="sample-materials">使用示例图片</button><button class="primary" data-close="materials-dialog">完成</button></div><p class="supporting">本地预览，不上传。刷新后本地图片需重新选择。</p></dialog>
+  <dialog id="save-dialog"><div class="dialog-heading"><h2>保存到作品</h2><button class="text-control" data-close="save-dialog">关闭</button></div><p>展示生成结果的保存入口，当前不写入真实资产。</p><label class="form-label">作品<select id="destination"><option>我的第一部短片（示例）</option><option>产品展示（示例）</option></select></label><div id="save-location" class="save-location" hidden></div><div class="dialog-actions"><button class="primary" id="confirm-save">预览保存位置</button></div></dialog>
+  <dialog id="help-dialog"><div class="dialog-heading"><h2 id="help-title">帮助与工单</h2><button class="text-control" data-close="help-dialog">关闭</button></div><div id="help-body"></div></dialog>
+</body>
+</html>

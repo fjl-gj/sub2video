@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1320" viewBox="0 0 1600 1320" role="img" aria-labelledby="title desc">
+  <title id="title">Sub2Video 全背景视频布局修订示意</title>
+  <desc id="desc">四个方形边界均代表浏览器可用视口，背景影像到达边界，没有内缩媒体卡片。官网文字居中叠加，认证表单叠在同一连续背景右侧，手机保留全幅背景。风景是结构示意，不是应用截图或生成成片。</desc>
+  <defs>
+    <style>
+      text{font-family:'Source Han Sans SC','Microsoft YaHei','PingFang SC',sans-serif;fill:#F4F4F0}
+      .title{font-size:32px;font-weight:500}.section{font-size:23px;font-weight:500}
+      .body{font-size:18px;fill:#D8DED8}.note{font-size:16px;fill:#A2AAA6}
+      .accent{fill:#E8B981}.dark{fill:#25221C}.small{font-size:14px;fill:#D8DED8}
+      .ui{font-size:28px}.ui-small{font-size:24px;fill:#D8DED8}
+    </style>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#4B666A"/><stop offset=".6" stop-color="#98A397"/><stop offset="1" stop-color="#B6B6A1"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#6B9692"/><stop offset="1" stop-color="#29494B"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#101818" stop-opacity=".6"/><stop offset=".48" stop-color="#101818" stop-opacity=".2"/><stop offset="1" stop-color="#101818" stop-opacity=".7"/>
+    </linearGradient>
+    <linearGradient id="formShade" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#101818" stop-opacity=".16"/><stop offset=".48" stop-color="#101818" stop-opacity=".24"/><stop offset="1" stop-color="#101818" stop-opacity=".77"/>
+    </linearGradient>
+    <symbol id="landscape" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice">
+      <rect width="1440" height="810" fill="url(#sky)"/>
+      <path d="M0 320 210 232 385 324 570 245 734 346 908 286 1080 349 1280 263 1440 318V515H0Z" fill="#5B7371"/>
+      <path d="M0 375 222 332 398 390 582 350 742 409 1010 373 1240 337 1440 378V590H0Z" fill="#658784"/>
+      <path d="M0 420C295 391 594 417 838 420S1183 398 1440 430V810H0Z" fill="url(#sea)"/>
+      <path d="M0 423 140 456 270 488 332 545 459 611 494 688 692 810H0Z" fill="#485D4D"/>
+      <path d="M0 555 101 529 164 554 210 626 331 677 389 810H0Z" fill="#32483D"/>
+      <path d="M1440 581 1312 616 1246 674 1098 710 1020 810H1440Z" fill="#537067"/>
+      <path d="M300 534C450 593 414 637 556 710S650 780 690 810M1237 679C1140 734 1098 739 1030 806" fill="none" stroke="#BAC1AC" stroke-opacity=".7" stroke-width="9"/>
+      <path d="M630 516H962M740 570H1190M750 655H1060M843 743H1010" stroke="#ADBFAD" stroke-opacity=".3" stroke-width="3"/>
+      <rect width="1440" height="810" fill="url(#shade)"/>
+    </symbol>
+  </defs>
+  <rect width="1600" height="1320" fill="#141616"/>
+  <text x="48" y="57" class="title">视频就是背景，直接铺到屏幕两端。</text>
+  <text x="48" y="92" class="note">修订示意 · UI 1.1 / 2026-10-08 · 影像为矢量示意，非实际页面 · 应用尚未修改</text>
+  <line x1="48" y1="117" x2="1552" y2="117" stroke="#323832"/>
+  <text x="48" y="154" class="section">01 官网首屏 · 导航、标题、按钮叠在视频上</text>
+  <text x="832" y="154" class="section">02 登录 / 注册 · 视频延续到表单背后</text>
+  <!-- Each nested SVG is a browser viewport, not an inset media card. -->
+  <svg x="48" y="176" width="720" height="405" viewBox="0 0 1440 810">
+    <use href="#landscape" width="1440" height="810"/>
+    <text x="64" y="74" font-size="36" font-weight="500">Sub2Video</text>
+    <text x="780" y="72" class="ui">创作方式　教程　如何开始</text>
+    <text x="1304" y="72" class="ui">登录</text>
+    <text x="720" y="267" text-anchor="middle" class="ui-small">创作者的短视频工作台</text>
+    <text x="720" y="358" text-anchor="middle" font-size="60" font-weight="500">把想法，做成一个好镜头。</text>
+    <text x="720" y="417" text-anchor="middle" font-size="30">从文字、参考图片或首尾帧开始。</text>
+    <text x="720" y="465" text-anchor="middle" font-size="30">查看估价，完成后下载或保存到作品。</text>
+    <rect x="461" y="519" width="244" height="80" rx="8" fill="#E8B981"/>
+    <text x="583" y="570" text-anchor="middle" font-size="30" class="dark">开始创作</text>
+    <text x="870" y="570" text-anchor="middle" font-size="30">查看教程 →</text>
+    <text x="64" y="762" class="ui-small">背景影像示意 · 实际素材需标注来源</text>
+    <text x="1250" y="762" class="ui-small">Ⅱ 暂停</text>
+  </svg>
+  <svg x="832" y="176" width="720" height="405" viewBox="0 0 1440 810">
+    <use href="#landscape" width="1440" height="810"/>
+    <rect width="1440" height="810" fill="url(#formShade)"/>
+    <text x="64" y="74" font-size="36" font-weight="500">Sub2Video</text>
+    <text x="1215" y="72" class="ui">返回官网</text>
+    <text x="80" y="367" font-size="52" font-weight="500">你的下一幕，从这里开始。</text>
+    <text x="80" y="420" class="ui">准备好素材，让想法成为镜头。</text>
+    <text x="906" y="211" font-size="42" font-weight="500">登录 Sub2Video</text>
+    <text x="906" y="255" class="ui-small">进入你的创作空间</text>
+    <text x="906" y="310" class="ui">邮箱</text>
+    <rect x="906" y="326" width="430" height="66" rx="8" fill="#141616" fill-opacity=".86" stroke="#78857C"/>
+    <text x="926" y="368" class="ui-small">name@example.com</text>
+    <text x="906" y="443" class="ui">密码</text>
+    <rect x="906" y="460" width="430" height="66" rx="8" fill="#141616" fill-opacity=".86" stroke="#78857C"/>
+    <text x="926" y="503" class="ui-small">输入密码</text>
+    <rect x="906" y="564" width="430" height="68" rx="8" fill="#E8B981"/>
+    <text x="1121" y="609" text-anchor="middle" font-size="30" class="dark">登录</text>
+    <text x="1121" y="678" text-anchor="middle" class="ui-small">还没有账号？ 注册</text>
+    <text x="64" y="762" class="ui-small">背景影像示意 · 实际素材需标注来源</text>
+    <text x="1250" y="762" class="ui-small">Ⅱ 暂停</text>
+  </svg>
+  <text x="48" y="615" class="note">↑ 画面矩形就是视口：视频四边贴齐，无圆角、无外围黑边。</text>
+  <text x="832" y="615" class="note">↑ 右侧仅有渐变遮罩，没有切断影像的整块黑色面板。</text>
+  <text x="48" y="682" class="section">03 手机也保留整屏背景 / 封面</text>
+  <svg x="48" y="705" width="300" height="520" viewBox="0 0 390 676">
+    <use href="#landscape" width="390" height="676"/>
+    <rect width="390" height="676" fill="#101818" fill-opacity=".2"/>
+    <text x="24" y="46" font-size="23" font-weight="500">Sub2Video</text>
+    <text x="322" y="46" font-size="18">登录</text>
+    <text x="24" y="216" font-size="19">创作者的短视频工作台</text>
+    <text x="24" y="282" font-size="39" font-weight="500">把想法，</text>
+    <text x="24" y="337" font-size="39" font-weight="500">做成一个好镜头。</text>
+    <text x="24" y="387" font-size="21">从文字、参考图片或首尾帧开始。</text>
+    <text x="24" y="423" font-size="21">查看估价，完成后下载或保存。</text>
+    <rect x="24" y="467" width="342" height="58" rx="8" fill="#E8B981"/>
+    <text x="195" y="505" text-anchor="middle" font-size="22" class="dark">开始创作</text>
+    <text x="195" y="572" text-anchor="middle" font-size="21">查看教程 →</text>
+    <text x="24" y="644" font-size="16">背景封面示意</text>
+    <text x="270" y="644" font-size="16">播放背景</text>
+  </svg>
+  <svg x="380" y="705" width="300" height="520" viewBox="0 0 390 676">
+    <use href="#landscape" width="390" height="676"/>
+    <rect width="390" height="676" fill="#101818" fill-opacity=".55"/>
+    <text x="24" y="46" font-size="23" font-weight="500">Sub2Video</text>
+    <text x="24" y="169" font-size="32" font-weight="500">登录 Sub2Video</text>
+    <text x="24" y="208" font-size="20">进入你的创作空间</text>
+    <text x="24" y="264" font-size="20">邮箱</text>
+    <rect x="24" y="281" width="342" height="58" rx="8" fill="#141616" fill-opacity=".85" stroke="#78857C"/>
+    <text x="42" y="318" font-size="20">name@example.com</text>
+    <text x="24" y="381" font-size="20">密码</text>
+    <rect x="24" y="398" width="342" height="58" rx="8" fill="#141616" fill-opacity=".85" stroke="#78857C"/>
+    <text x="42" y="435" font-size="20">输入密码</text>
+    <rect x="24" y="491" width="342" height="58" rx="8" fill="#E8B981"/>
+    <text x="195" y="529" text-anchor="middle" font-size="22" class="dark">登录</text>
+    <text x="195" y="592" text-anchor="middle" font-size="18">还没有账号？ 注册</text>
+    <text x="24" y="644" font-size="16">背景封面示意</text>
+    <text x="270" y="644" font-size="16">播放背景</text>
+  </svg>
+  <text x="728" y="743" class="section">背景铺满，不等于文字贴边。</text>
+  <text x="728" y="791" class="body">背景层：宽度 100%，无最大宽度、外边距、圆角。</text>
+  <text x="728" y="827" class="body">视频和封面使用 cover，允许等比裁切，禁止拉伸。</text>
+  <text x="728" y="863" class="body">前景层：只约束标题、导航和表单的阅读宽度。</text>
+  <text x="728" y="899" class="body">手机前景保留 16px 安全边距，影像仍然到达屏幕两端。</text>
+  <line x1="728" y1="931" x2="1552" y2="931" stroke="#323832"/>
+  <text x="728" y="975" class="section">规范分清三个边界</text>
+  <text x="728" y="1023" class="body">官网：全幅视频覆盖首屏，下方章节正常滚动。</text>
+  <text x="728" y="1059" class="body">认证：整屏背景包含表单背后；长注册表单自然滚动。</text>
+  <text x="728" y="1095" class="body">成片：播放器用 contain，保留完整画幅，不强行裁切。</text>
+  <text x="728" y="1151" class="note">字体/控件尺寸按配套规范；此图用于确认背景与前景关系。</text>
+  <text x="728" y="1185" class="note">注册沿用同一背景壳层；不增加全高右栏或第二套视觉风格。</text>
+  <text x="48" y="1276" class="note">本轮仅修订规范与示意图；没有修改页面代码、业务数据或部署。外侧画板用于展示多个视口，不属于页面留白。</text>
+</svg>
