@@ -13,6 +13,9 @@ import CreateWorkbenchToolbar from '@/features/create/workbench/CreateWorkbenchT
 import CreateAvailabilityNotice from '@/features/create/workbench/CreateAvailabilityNotice.vue'
 import GuideCreationContext from '@/features/guides/GuideCreationContext.vue'
 import { useGuidedCreation } from '@/features/guides/useGuidedCreation'
+import DirectorCreationContext from '@/features/director/DirectorCreationContext.vue'
+import { directorDraftScope, useDirectorCreation } from '@/features/director/useDirectorCreation'
+import type { DirectorShotInput } from '@/api/director'
 import { assetPreviewUrl } from '@/shared/lib/asset-preview'
 import { clearPendingCreation, loadPendingCreation, savePendingCreation, type PendingCreation } from '@/shared/lib/pending-creation'
 import {
@@ -22,6 +25,7 @@ import {
   MAX_REF_IMAGES,
   saveCreateDraft,
   type CreateFrameSlot,
+  type CreateDraft,
   type ImageVariant,
   type WorkflowInputType,
 } from '@/shared/lib/create-draft'
@@ -130,7 +134,7 @@ const materialSignature = computed(() => JSON.stringify({
   audio: referenceAudio.value?.uploadId || (referenceAudio.value?.file ? `local:${referenceAudio.value.fileName}` : ''),
 }))
 const durationValid = computed(() => durationOptions.value.includes(durationSec.value))
-const generationUnavailable = computed(() => catalogLoaded.value && (!activeModeId.value || !visibleModels.value.length || !creationOptions.value.durations.length))
+const generationUnavailable = computed(() => catalogLoaded.value && !catalogError.value && !optionsError.value && !optionsLoading.value && (!activeModeId.value || !visibleModels.value.length || !creationOptions.value.durations.length))
 const quotedCost = ref<number | null>(null)
 const recentTasks = ref<Task[]>([])
 const recentTasksLoading = ref(false)
@@ -146,6 +150,16 @@ const tutorial = useGuidedCreation({
   hasMaterials: () => [firstFrame.value, lastFrame.value, ...extraFrames.value, ...multiFrames.value].some(frameReady) || referenceAudio.value !== null,
   disableAudio: () => { audioMode.value = 'none' },
 })
+const director = useDirectorCreation({
+  ownerId: draftOwnerId, catalog, pending: pendingCreation,
+  blocked: () => loading.value || !!recoveryError.value || !catalogLoaded.value || !!catalogError.value,
+  persist: persistDraft,
+  refreshPending: restorePendingCreation,
+  apply: (draft) => { applyCreationDraft(draft); resetStageIdle(); void loadCreationOptions() },
+  reset: applyDraftFromStorage,
+  prepareShot: prepareDirectorShot,
+})
+const availableAssets = computed(() => director.context.value ? director.referenceAssets.value : app.assets)
 
 async function applyTutorial() {
   tutorial.apply()
@@ -156,6 +170,9 @@ const canSubmit = computed(() => {
   return !pendingCreation.value && !recoveryError.value && quotedCost.value !== null && !estimateLoading.value && !estimateError.value && auth.balance >= quotedCost.value && catalogLoaded.value && !catalogError.value && !optionsError.value && !tutorial.invalid.value && !tutorial.unavailable.value && !generationUnavailable.value && !optionsLoading.value && durationValid.value && prompt.value.trim().length > 0
     && (workflowInputType.value === 'text' || hasRequiredImageInput.value)
     && (audioMode.value !== 'reference' || referenceAudio.value !== null)
+    && (!director.requested.value || !!director.context.value)
+    && (!director.context.value || audioMode.value !== 'reference')
+    && !director.saving.value && !director.needsReapply.value
 })
 
 const hasRequiredImageInput = computed(() => {
@@ -175,6 +192,10 @@ const preparationHint = computed(() => {
   return ''
 })
 const submitHint = computed(() => {
+  if (director.saving.value) return '正在保存镜头素材与参数，请稍候再提交生成。'
+  if (director.needsReapply.value) return '请先重新读取并应用镜头，核对后再保存或生成。'
+  if (director.requested.value && !director.context.value) return '请先应用镜头到创作，再确认素材与费用。'
+  if (director.context.value && audioMode.value === 'reference') return '导演台暂不支持参考音频，请选择不使用音频或自动生成音频。'
   if (preparationHint.value) return preparationHint.value
   if (quotedCost.value !== null && auth.balance < quotedCost.value) return '余额不足，请前往钱包查看余额或使用兑换码。在线充值暂未开放。'
   if (!prompt.value.trim()) return '请填写这一镜的画面描述，再提交任务。'
@@ -191,10 +212,10 @@ function setStageFromSlot(slot: FrameSlot, descriptor: SlotDescriptor) {
   resetStageMedia()
   activeTaskId.value = null
   activeSlotKey.value = descriptor.key
-  const asset = app.assets.find((item) => item.id === slot.assetId)
+  const asset = availableAssets.value.find((item) => item.id === slot.assetId)
   stagePreviewUrl.value = frameReady(slot) ? assetPreviewUrl(slot.assetId, slot.previewUrl || asset?.url) : undefined
   if (frameReady(slot)) {
-    const asset = app.assets.find((item) => item.id === slot.assetId)
+    const asset = availableAssets.value.find((item) => item.id === slot.assetId)
     stageTitle.value = slot.fileName || asset?.name || '已选取素材'
     stageSubtitle.value = slotLabel(descriptor)
   }
@@ -285,7 +306,7 @@ function handleClearSlot(descriptor: SlotDescriptor) {
 
 function confirmAssetPick(assetId: string) {
   if (!pickingSlotRef.value) return
-  const asset = app.assets.find((item) => item.id === assetId)
+  const asset = availableAssets.value.find((item) => item.id === assetId)
   resetStageMedia()
   fillSlot(pickingSlotRef.value, { assetId, previewUrl: asset?.url })
   stageTitle.value = asset?.name ?? '已选取素材'
@@ -329,16 +350,51 @@ function buildTaskTitle() {
   return `${titles[workflowInputType.value]} ${taskStamp()} #${seq}`
 }
 
-async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: string; id: string }> {
+async function ensureSlotUpload(slot: FrameSlot): Promise<{ type: 'upload' | 'asset'; id: string }> {
   if (slot.uploadId) return { type: 'upload', id: slot.uploadId }
   if (slot.file) {
     const uploaded = await uploadImage(slot.file)
     slot.uploadId = uploaded.id
+    slot.previewUrl = uploaded.url
     slot.file = undefined
     return { type: 'upload', id: uploaded.id }
   }
   if (slot.assetId) return { type: 'asset', id: slot.assetId }
   throw new Error('请先上传或选择图片')
+}
+
+async function prepareDirectorShot(isCurrent: () => boolean): Promise<DirectorShotInput> {
+  if (audioMode.value === 'reference') throw new Error('导演台暂不支持参考音频')
+  // Freeze public settings before uploads. Incomplete references are valid
+  // planning data; submission still validates the full creation capabilities.
+  const input: DirectorShotInput = {
+    prompt: prompt.value.trim(), modeId: activeModeId.value, carrierId: selectedCarrierId.value,
+    modelId: selectedModelId.value, durationSec: Number.isFinite(parsedDuration.value) ? parsedDuration.value : 0,
+    resolution: resolution.value, aspectRatio: ratio.value, generateAudio: generateAudio.value, sourceMeta: {},
+  }
+  const inputType = workflowInputType.value
+  const first = firstFrame.value
+  const last = lastFrame.value
+  const extras = [...extraFrames.value]
+  const refs = [...multiFrames.value]
+  async function resolve(slot: FrameSlot) {
+    if (!isCurrent()) throw new Error('镜头上下文已变化')
+    const source = await ensureSlotUpload(slot)
+    if (!isCurrent()) throw new Error('镜头上下文已变化')
+    return source
+  }
+  if (inputType === 'first_last') {
+    if (frameReady(first)) input.sourceMeta.first = await resolve(first)
+    if (frameReady(last)) input.sourceMeta.last = await resolve(last)
+    if (extras.some(frameReady)) {
+      input.sourceMeta.extras = []
+      for (const slot of extras.filter(frameReady)) input.sourceMeta.extras.push(await resolve(slot))
+    }
+  } else if (inputType === 'multi_image') {
+    input.sourceMeta.refs = []
+    for (const slot of refs.filter(frameReady)) input.sourceMeta.refs.push(await resolve(slot))
+  }
+  return input
 }
 
 function selectReferenceAudio(file: File) {
@@ -433,6 +489,7 @@ async function submit() {
       title: buildTaskTitle(),
       prompt: prompt.value.trim(),
       sourceMeta,
+      ...(director.context.value ? { directorContext: { ...director.context.value } } : {}),
       },
     }
     persistDraft()
@@ -454,7 +511,7 @@ function restorePendingCreation() {
 }
 
 async function recoverSubmission() {
-  if (loading.value || !auth.user?.id || !pendingCreation.value) return
+  if (loading.value || director.saving.value || !auth.user?.id || !pendingCreation.value) return
   const userId = auth.user.id
   loading.value = true
   submissionError.value = ''
@@ -478,21 +535,30 @@ async function sendPendingCreation(userId: string, pending: PendingCreation) {
     if (saveTimer) clearTimeout(saveTimer)
     app.draftPrompt = ''
     prompt.value = ''
-    clearCreateDraft(userId)
-    await router.push(`/app/works/${result.task.id}`)
+    clearCreateDraft(userId, directorDraftScope(pending.payload.directorContext))
+    await router.push({ path: `/app/works/${result.task.id}`, query: pending.payload.directorContext ? { directorProject: pending.payload.directorContext.projectId, directorShot: pending.payload.directorContext.shotId } : undefined })
     clearPendingCreation(userId, pending.requestId)
     pendingCreation.value = null
   }
   catch (error) {
     if (auth.user?.id !== userId) return
-    const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code
+    const response = (error as { response?: { status?: number; data?: { code?: string } } }).response
+    const code = response?.data?.code
     // Only explicit application rejections prove no task was committed. A
     // timeout, proxy error or unknown response keeps the original request.
-    const rejected = !accepted && code && ['BAD_REQUEST', 'PROMPT_REQUIRED', 'UNAVAILABLE_COMBINATION', 'INSUFFICIENT_BALANCE', 'SUPPLY_UNAVAILABLE', 'STORAGE_UNAVAILABLE'].includes(code)
+    const directorNotFound = !!pending.payload.directorContext && response?.status === 404 && code === 'NOT_FOUND'
+    const rejected = !accepted && ((code && ['BAD_REQUEST', 'PROMPT_REQUIRED', 'UNAVAILABLE_COMBINATION', 'INSUFFICIENT_BALANCE', 'SUPPLY_UNAVAILABLE', 'STORAGE_UNAVAILABLE', 'DIRECTOR_BOARD_CONFLICT', 'DIRECTOR_SHOT_MISSING', 'DIRECTOR_BOARD_INVALID', 'DIRECTOR_REFERENCE_INVALID', 'DIRECTOR_TASK_INVALID', 'DIRECTOR_SELECTION_NOT_READY'].includes(code)) || directorNotFound)
     if (rejected) {
       clearPendingCreation(userId, pending.requestId)
       pendingCreation.value = null
       submissionError.value = creationErrorMessage(error, '当前参数无法提交，请检查素材和生成设置后重试。')
+      if (code === 'DIRECTOR_BOARD_CONFLICT' || code === 'DIRECTOR_SHOT_MISSING' || directorNotFound) {
+        if (directorNotFound) submissionError.value = '作品或镜头已不可用，本次未提交。镜头草稿仍保留，请返回资产核对作品。'
+        persistDraft()
+        director.context.value = null
+        draftReady.value = false
+        void director.load()
+      }
     } else {
       submissionError.value = '尚未确认提交结果，请核对原提交，不要另建相同任务。重试将使用原请求编号。'
     }
@@ -503,10 +569,22 @@ async function sendPendingCreation(userId: string, pending: PendingCreation) {
 function creationErrorMessage(error: unknown, fallback: string) {
   const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code
   if (code === 'PROMPT_REQUIRED') return '请先填写画面描述，再提交任务。'
+  if (code?.startsWith('DIRECTOR_')) return '镜头板或引用内容已变化，本次未提交。请重新读取并应用镜头后核对参数，或返回导演台。'
   if (code === 'INSUFFICIENT_BALANCE') return '余额不足，无法预扣。请前往钱包查看余额或使用兑换码。'
   if (code === 'STORAGE_UNAVAILABLE') return '素材与成片存储暂不可用，请稍后重试。本次未提交任务。'
   if (code === 'SUPPLY_UNAVAILABLE' || code === 'UNAVAILABLE_COMBINATION') return '当前模型或参数组合暂不可用，请调整参数或稍后重试。'
   return fallback
+}
+
+function creationOptionsErrorMessage(error: unknown) {
+  const response = (error as { response?: { status?: number; data?: { code?: string } } }).response
+  const code = response?.data?.code
+  if (code === 'SUPPLY_UNAVAILABLE') return '当前生成能力暂不可用，请稍后重新加载，或联系帮助与工单。'
+  if (code === 'UNAVAILABLE_COMBINATION') return '当前模型或参数组合暂不可用，请调整选择或稍后重新加载。'
+  if (code === 'STORAGE_UNAVAILABLE') return '素材与成片存储暂不可用，请稍后重新加载。'
+  if (!response) return '无法连接生成服务，请检查网络后重新加载。'
+  if (response.status && response.status >= 500) return '生成服务暂时异常，请稍后重新加载。'
+  return '生成选项暂不可用，请重新加载后再试。'
 }
 
 async function refreshEstimate() {
@@ -560,9 +638,9 @@ async function loadCreationOptions() {
       audioMode.value = 'none'
       clearReferenceAudio()
     }
-  } catch {
+  } catch (error) {
     if (request !== optionsRequest) return
-    optionsError.value = '生成选项加载失败，请检查网络后重新加载。'
+    optionsError.value = creationOptionsErrorMessage(error)
     creationOptions.value = { durations: [], resolutions: [], aspectRatios: [], supportsGeneratedAudio: false, minImages: 0, maxImages: 0, defaultDuration: 5, defaultResolution: '768P' }
   } finally {
     if (request === optionsRequest) {
@@ -601,24 +679,9 @@ function syncTextStage() {
 
 function applyDraftFromStorage() {
   const plazaPrompt = app.draftPrompt.trim()
-  const saved = loadCreateDraft(draftOwnerId)
+  const saved = loadCreateDraft(draftOwnerId, director.scope.value)
   if (saved) {
-    workflowInputType.value = saved.workflowInputType
-    ratio.value = saved.ratio
-    durationSec.value = saved.durationSec
-    resolution.value = saved.resolution
-    selectedCarrierId.value = saved.carrierId || ''
-    selectedModelId.value = saved.modelId || ''
-    audioMode.value = saved.audioMode || 'none'
-    referenceAudio.value = saved.referenceAudioId
-      ? { uploadId: saved.referenceAudioId, fileName: saved.referenceAudioName || '已保存参考音频' }
-      : null
-    firstFrame.value = { ...saved.firstFrame, picking: false }
-    lastFrame.value = { ...saved.lastFrame, picking: false }
-    extraFrames.value = saved.extraFrames.map((slot) => ({ ...slot, picking: false }))
-    multiFrames.value = saved.multiFrames.length
-      ? saved.multiFrames.map((slot) => ({ ...slot, picking: false }))
-      : [emptySlot()]
+    applyCreationDraft(saved)
     prompt.value = plazaPrompt || saved.prompt
   }
   else {
@@ -628,7 +691,25 @@ function applyDraftFromStorage() {
   applyModeFromRoute()
 }
 
+function applyCreationDraft(saved: CreateDraft) {
+  workflowInputType.value = saved.workflowInputType
+  ratio.value = saved.ratio
+  durationSec.value = saved.durationSec
+  resolution.value = saved.resolution
+  selectedCarrierId.value = saved.carrierId || ''
+  selectedModelId.value = saved.modelId || ''
+  audioMode.value = saved.audioMode || 'none'
+  referenceAudio.value = saved.referenceAudioId ? { uploadId: saved.referenceAudioId, fileName: saved.referenceAudioName || '已保存参考音频' } : null
+  firstFrame.value = { ...saved.firstFrame, picking: false }
+  lastFrame.value = { ...saved.lastFrame, picking: false }
+  extraFrames.value = saved.extraFrames.map((slot) => ({ ...slot, picking: false }))
+  multiFrames.value = saved.multiFrames.length ? saved.multiFrames.map((slot) => ({ ...slot, picking: false })) : [emptySlot()]
+  prompt.value = saved.prompt
+  draftReady.value = true
+}
+
 function applyModeFromRoute() {
+  if (director.context.value) return
   const mode = route.query.mode
   if (mode === 'text' || mode === 'multi_image' || mode === 'first_last') workflowInputType.value = mode
 }
@@ -650,7 +731,7 @@ function persistDraft() {
     lastFrame: lastFrame.value,
     extraFrames: extraFrames.value,
     multiFrames: multiFrames.value,
-  })
+  }, director.scope.value)
 }
 
 function scheduleDraftSave() {
@@ -681,8 +762,9 @@ async function loadRecentTasks() {
 onMounted(() => {
   window.addEventListener('pagehide', persistDraft)
   restorePendingCreation()
+  director.restorePending()
   applyDraftFromStorage()
-  tutorial.initialize()
+  if (!director.requested.value) tutorial.initialize()
   if (workflowInputType.value === 'text') syncTextStage()
   draftReady.value = true
   void loadRecentTasks()
@@ -722,14 +804,16 @@ watch(audioMode, (next) => {
 })
 
 watch(selectedCarrierId, () => {
-  if (selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
+  // Draft restoration precedes the catalog request. An empty, not-yet-loaded
+  // catalog must not clear an explicitly selected model.
+  if (catalogLoaded.value && selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
 })
 
 watch(() => route.query.mode, applyModeFromRoute)
 watch(() => auth.user?.id, restorePendingCreation)
 
 watch(workflowInputType, (next) => {
-  if (selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
+  if (catalogLoaded.value && selectedModelId.value && !visibleModels.value.some((item) => item.id === selectedModelId.value)) selectedModelId.value = ''
   activeSlotKey.value = null
   if (next === 'text') syncTextStage()
   else resetStageIdle()
@@ -749,8 +833,10 @@ watch(workflowInputType, (next) => {
       </template>
     </S2VPageHeader>
 
+    <DirectorCreationContext v-if="director.requested.value" :title="director.title.value" :applied="!!director.context.value" :loading="director.loading.value || !catalogLoaded" :blocked="loading || !!pendingCreation || !!recoveryError" :saving="director.saving.value" :can-save="director.canSave.value && audioMode !== 'reference'" :needs-reapply="director.needsReapply.value" :error="director.error.value" :notice="director.notice.value" :return-route="director.returnRoute.value" @apply="director.apply" @reload="director.load" @save="director.save" />
+
     <GuideCreationContext
-      v-if="tutorial.requested.value"
+      v-if="tutorial.requested.value && !director.requested.value"
       :guide="tutorial.guide.value" :shot="tutorial.shot.value"
       :invalid="tutorial.invalid.value" :unavailable="tutorial.unavailable.value"
       :applied="tutorial.applied.value" :adjusted="tutorial.adjusted.value"
@@ -758,7 +844,7 @@ watch(workflowInputType, (next) => {
       @apply="applyTutorial"
     />
 
-    <fieldset :disabled="loading" class="contents">
+    <fieldset :disabled="loading || director.saving.value" class="contents">
       <CreateWorkbenchToolbar
         :workflow-input-type="workflowInputType"
         :modes="creationModes"
@@ -774,7 +860,7 @@ watch(workflowInputType, (next) => {
     />
 
     <div class="s2v-studio-layout">
-      <fieldset :disabled="loading" class="s2v-studio-form">
+      <fieldset :disabled="loading || director.saving.value" class="s2v-studio-form">
         <CreateSlotsTrack
           v-if="workflowInputType !== 'text'"
           :variant="imageVariant"
@@ -816,6 +902,7 @@ watch(workflowInputType, (next) => {
             :carrier-id="selectedCarrierId"
             :model-id="selectedModelId"
             :supports-generated-audio="creationOptions.supportsGeneratedAudio"
+            :supports-reference-audio="!director.context.value"
             :audio-mode="audioMode"
             :reference-audio-name="referenceAudio?.fileName"
             @update:ratio="ratio = $event"
@@ -855,6 +942,7 @@ watch(workflowInputType, (next) => {
 
     <AssetPickDialog
       v-model:open="assetDialogOpen"
+      :assets="director.context.value ? director.referenceAssets.value : undefined"
       @pick="confirmAssetPick"
       @upload="confirmLocalUpload"
     />

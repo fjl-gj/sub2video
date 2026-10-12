@@ -14,10 +14,15 @@ import './auth.css'
       <RouterLink class="s2v-auth-home-link" to="/">探索 Sub2Video<ArrowUpRight :size="15" /></RouterLink>
     </header>
     <main class="s2v-auth-layout">
-      <AuthShowcase />
+      <div class="s2v-auth-showcase-copy">
+        <p class="s2v-auth-kicker">从一个镜头，开始你的故事</p>
+        <h2 id="auth-showcase-title">下一幕，<br />由你开场。</h2>
+      </div>
       <section class="s2v-auth-panel" aria-label="账号入口"><slot /></section>
     </main>
-    <footer class="s2v-auth-footer"><span>Sub2Video · 创作者的视频工作台</span><nav aria-label="法律信息"><RouterLink to="/auth/terms">服务条款</RouterLink><RouterLink to="/auth/privacy">隐私政策</RouterLink></nav></footer>
+    <AuthShowcase>
+      <nav aria-label="法律信息"><RouterLink to="/auth/terms">服务条款</RouterLink><RouterLink to="/auth/privacy">隐私政策</RouterLink></nav>
+    </AuthShowcase>
     <ToastHost />
   </div>
 </template>

@@ -52,11 +52,21 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: 'S2V Public Display';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/s2v-public-display-medium.woff2') format('woff2');
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
+  --s2v-font-reading: 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  --s2v-font-public-display: 'S2V Public Display', var(--s2v-font-reading);
   --s2v-canvas: 245 246 244;
   --s2v-surface: 255 255 255;
   --s2v-ink: 37 44 38;
@@ -67,6 +77,7 @@
   --s2v-nav-hover: 235 239 233;
   --s2v-line: 219 226 216;
   --s2v-line-strong: 184 196 181;
+  --s2v-control-line: 123 136 127;
   --s2v-primary: 132 88 43;
   --s2v-primary-hover: 104 66 28;
   --s2v-primary-soft: 246 238 224;
@@ -98,6 +109,7 @@
   --s2v-nav-hover: 40 47 41;
   --s2v-line: 50 56 50;
   --s2v-line-strong: 77 90 78;
+  --s2v-control-line: 120 133 124;
   --s2v-primary: 232 185 129;
   --s2v-primary-hover: 246 206 161;
   --s2v-primary-soft: 54 47 37;
@@ -111,10 +123,10 @@
 
 @layer base {
   * { box-sizing: border-box; }
-  html { min-width: 320px; height: 100%; background: rgb(var(--s2v-canvas) / 0.7); }
+  html { min-width: 0; height: 100%; background: rgb(var(--s2v-canvas) / 0.7); }
   body {
     margin: 0;
-    min-width: 320px;
+    min-width: 0;
     height: 100%;
     color: rgb(var(--s2v-body));
     background: rgb(var(--s2v-canvas) / 0.7);

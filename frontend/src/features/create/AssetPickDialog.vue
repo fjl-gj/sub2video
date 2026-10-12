@@ -5,6 +5,9 @@ import { useAppStore } from '@/stores/app'
 import { assetPreviewUrl } from '@/shared/lib/asset-preview'
 import S2VDialog from '@/shared/ui/S2VDialog.vue'
 import S2VButton from '@/shared/ui/S2VButton.vue'
+import type { Asset } from '@/data/projects'
+
+const props = defineProps<{ assets?: Asset[] }>()
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -15,7 +18,7 @@ const emit = defineEmits<{
 
 const app = useAppStore()
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
-const imageAssets = computed(() => app.assets.filter((item) => item.type === '图片'))
+const imageAssets = computed(() => (props.assets || app.assets).filter((item) => item.type === '图片'))
 
 function select(assetId: string) {
   emit('pick', assetId)

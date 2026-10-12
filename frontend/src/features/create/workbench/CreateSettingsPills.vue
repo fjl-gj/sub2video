@@ -14,12 +14,13 @@ withDefaults(defineProps<{
   carrierId?: string
   modelId?: string
   supportsGeneratedAudio?: boolean
+  supportsReferenceAudio?: boolean
   audioMode?: 'none' | 'generate' | 'reference'
   referenceAudioName?: string
 }>(), {
   durationOptions: () => ['5', '10', '15'], resolutionOptions: () => ['768P'],
   aspectRatioOptions: () => ['16:9', '9:16', '1:1'], carriers: () => [], models: () => [],
-  carrierId: '', modelId: '', supportsGeneratedAudio: false, audioMode: 'none', referenceAudioName: '',
+  carrierId: '', modelId: '', supportsGeneratedAudio: false, supportsReferenceAudio: true, audioMode: 'none', referenceAudioName: '',
 })
 
 const emit = defineEmits<{
@@ -74,10 +75,11 @@ function onReferenceAudioChange(event: Event) {
         <select aria-label="音频设置" :value="audioMode" :disabled="!supportsGeneratedAudio" @change="emit('update:audioMode', ($event.target as HTMLSelectElement).value as 'none' | 'generate' | 'reference')">
           <option value="none">不使用音频</option>
           <option v-if="supportsGeneratedAudio" value="generate">自动生成音频</option>
-          <option v-if="supportsGeneratedAudio" value="reference">上传参考音频</option>
+          <option v-if="supportsGeneratedAudio && supportsReferenceAudio" value="reference">上传参考音频</option>
+          <option v-else-if="audioMode === 'reference'" value="reference" disabled>参考音频暂不可用于导演台</option>
         </select>
       </label>
-      <div v-if="supportsGeneratedAudio && audioMode === 'reference'" class="s2v-studio-audio-upload">
+      <div v-if="supportsGeneratedAudio && supportsReferenceAudio && audioMode === 'reference'" class="s2v-studio-audio-upload">
         <input ref="referenceAudioInput" class="hidden" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/flac,audio/mp4,video/mp4,.mp3,.wav,.flac,.m4a,.mp4" aria-label="参考音频文件" @change="onReferenceAudioChange">
         <button type="button" title="上传参考音频" @click="referenceAudioInput?.click()"><Paperclip class="h-4 w-4" /><span>{{ referenceAudioName || '选择参考音频' }}</span></button>
         <button v-if="referenceAudioName" type="button" aria-label="移除参考音频" title="移除参考音频" @click="emit('clear-reference-audio')"><X class="h-4 w-4" /></button>

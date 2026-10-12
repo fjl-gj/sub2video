@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { AlertCircle, ArrowLeft, ArrowUpRight, Download, Folder, FolderOpen, LoaderCircle, Plus, RefreshCw, Search, Upload } from 'lucide-vue-next'
 import { countFolderFiles } from '@/data/projects'
 import AssetCard from './AssetCard.vue'
@@ -23,6 +24,7 @@ const {
   fileUrl, continueCreation,
 } = useAssetLibrary()
 const fileInput = ref<HTMLInputElement | null>(null)
+const router = useRouter()
 
 function onFilePicked(event: Event) {
   const input = event.target as HTMLInputElement
@@ -42,6 +44,7 @@ function onFilePicked(event: Event) {
       <template #description>素材留在资产目录，满意的镜头保存到视频目录。</template>
       <template #actions>
         <S2VButton @click="exitProject"><ArrowLeft class="h-4 w-4" />返回作品列表</S2VButton>
+        <S2VButton size="lg" :disabled="!project || loading" @click="router.push(`/app/projects/${encodeURIComponent(project!.id)}/director`)">导演台</S2VButton>
         <S2VButton :disabled="!project || loading" :loading="uploading" @click="fileInput?.click()"><Upload class="h-4 w-4" />上传素材</S2VButton>
         <S2VButton variant="primary" size="lg" :disabled="!project || loading" :loading="createNavigationBusy" @click="continueCreation">继续创作 <ArrowUpRight class="h-4 w-4" /></S2VButton>
       </template>

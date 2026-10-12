@@ -53,7 +53,7 @@ const adminGroups = computed<NavGroup[]>(() => [
 ])
 
 const groups = computed(() => props.surface === 'client' ? clientGroups.value : adminGroups.value)
-function active(to: string) { return route.path === to }
+function active(to: string) { return route.path === to || (to === '/app/assets' && /^\/app\/projects\/[^/]+\/director$/.test(route.path)) }
 </script>
 
 <template>

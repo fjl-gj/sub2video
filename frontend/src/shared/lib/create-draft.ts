@@ -35,7 +35,9 @@ export interface CreateDraft {
 
 // The unowned legacy key is deliberately not imported: its author cannot be
 // established when several people have used the same browser.
-const storageKey = (userId: string) => `sub2video.create-draft.${encodeURIComponent(userId)}`
+const storageKey = (userId: string, scope = '') => scope
+  ? `sub2video.director-draft.${encodeURIComponent(userId)}.${encodeURIComponent(scope)}`
+  : `sub2video.create-draft.${encodeURIComponent(userId)}`
 
 export function emptySlot(): CreateFrameSlot {
   return { uploaded: false, assetId: '', picking: false }
@@ -142,10 +144,10 @@ function migrateDraft(parsed: LegacyCreateDraft): CreateDraft | null {
   }
 }
 
-export function loadCreateDraft(userId: string): CreateDraft | null {
+export function loadCreateDraft(userId: string, scope = ''): CreateDraft | null {
   if (!userId || typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(storageKey(userId))
+    const raw = window.localStorage.getItem(storageKey(userId, scope))
     if (!raw) return null
     const parsed = JSON.parse(raw) as LegacyCreateDraft
     if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4) return null
@@ -159,7 +161,7 @@ export function loadCreateDraft(userId: string): CreateDraft | null {
   }
 }
 
-export function saveCreateDraft(userId: string, draft: Omit<CreateDraft, 'version'>) {
+export function saveCreateDraft(userId: string, draft: Omit<CreateDraft, 'version'>, scope = '') {
   if (!userId || typeof window === 'undefined') return
   const payload: CreateDraft = {
     version: 4,
@@ -178,10 +180,10 @@ export function saveCreateDraft(userId: string, draft: Omit<CreateDraft, 'versio
     extraFrames: draft.extraFrames.map(sanitizeSlot),
     multiFrames: draft.multiFrames.map(sanitizeSlot),
   }
-  window.localStorage.setItem(storageKey(userId), JSON.stringify(payload))
+  window.localStorage.setItem(storageKey(userId, scope), JSON.stringify(payload))
 }
 
-export function clearCreateDraft(userId: string) {
+export function clearCreateDraft(userId: string, scope = '') {
   if (!userId || typeof window === 'undefined') return
-  window.localStorage.removeItem(storageKey(userId))
+  window.localStorage.removeItem(storageKey(userId, scope))
 }

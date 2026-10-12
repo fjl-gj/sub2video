@@ -103,20 +103,20 @@ onBeforeUnmount(() => { codeRequest += 1; stopCountdown() })
     <div v-else-if="settingsState === 'error'" class="s2v-auth-status" role="alert">无法获取注册设置，请重试。<button class="s2v-auth-text-link" type="button" @click="loadSettings">重新加载注册设置</button></div>
     <div v-else-if="!registrationOpen" class="s2v-auth-status" role="status">新账号注册暂未开放，已有账号可以继续登录。</div>
     <form v-if="registrationOpen" class="s2v-auth-fields" :aria-busy="loading" @submit.prevent="register">
-      <S2VInput v-model="name" label="昵称" name="displayName" autocomplete="nickname" placeholder="你的创作者昵称" required maxlength="60" :disabled="loading" />
-      <S2VInput v-model="email" label="邮箱" type="email" name="email" autocomplete="email" placeholder="name@example.com" required :disabled="loading" />
-      <S2VInput v-model="password" label="密码" aria-label="密码" :type="showPassword ? 'text' : 'password'" name="password" autocomplete="new-password" placeholder="至少 8 位" required minlength="8" :disabled="loading">
+      <S2VInput v-model="name" size="lg" label="昵称" name="displayName" autocomplete="nickname" placeholder="你的创作者昵称" required maxlength="60" :disabled="loading" />
+      <S2VInput v-model="email" size="lg" label="邮箱" type="email" name="email" autocomplete="email" placeholder="name@example.com" required :disabled="loading" />
+      <S2VInput v-model="password" size="lg" label="密码" aria-label="密码" :type="showPassword ? 'text' : 'password'" name="password" autocomplete="new-password" placeholder="至少 8 位" required minlength="8" :disabled="loading">
         <template #suffix><button class="s2v-auth-password-action" type="button" :aria-label="showPassword ? '隐藏密码' : '显示密码'" :aria-pressed="showPassword" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="16" /><Eye v-else :size="16" /></button></template>
       </S2VInput>
       <div v-if="verificationRequired" class="s2v-auth-code">
-        <S2VInput v-model="verifyCode" label="邮箱验证码" aria-label="邮箱验证码" name="verifyCode" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="请输入 6 位验证码" required :disabled="loading">
-          <template #suffix><S2VButton size="sm" variant="ghost" :loading="sendingCode" :disabled="!validEmail || countdown > 0 || loading" @click="requestVerifyCode">{{ countdown > 0 ? `${countdown} 秒后重发` : '发送验证码' }}</S2VButton></template>
+        <S2VInput v-model="verifyCode" size="lg" label="邮箱验证码" aria-label="邮箱验证码" name="verifyCode" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6 位验证码" required :disabled="loading">
+          <template #suffix><S2VButton size="lg" variant="ghost" :loading="sendingCode" :disabled="!validEmail || countdown > 0 || loading" @click="requestVerifyCode">{{ countdown > 0 ? `${countdown} 秒后重发` : '发送验证码' }}</S2VButton></template>
         </S2VInput>
         <p v-if="codeNotice" class="s2v-auth-code-help" role="status">{{ codeNotice }}</p>
       </div>
       <label class="s2v-auth-agreement"><input v-model="agree" type="checkbox" required :disabled="loading" aria-label="同意服务条款与隐私政策" /><span>我已阅读并同意 <RouterLink class="s2v-auth-text-link" to="/auth/terms" target="_blank">服务条款</RouterLink> 与 <RouterLink class="s2v-auth-text-link" to="/auth/privacy" target="_blank">隐私政策</RouterLink></span></label>
       <p v-if="error" class="s2v-auth-error" role="alert">{{ error }}</p>
-      <S2VButton type="submit" variant="primary" size="lg" :loading="loading" block :disabled="!canRegister">注册并进入</S2VButton>
+      <S2VButton type="submit" variant="primary" size="xl" :loading="loading" block :disabled="!canRegister">注册并进入</S2VButton>
     </form>
     <div class="s2v-auth-switch"><span>已经有账号？</span><button class="s2v-auth-text-link" type="button" @click="router.push({ path: '/auth/login', query: { redirect: authReturnPath(route.query.redirect) } })">返回登录</button></div>
   </div>

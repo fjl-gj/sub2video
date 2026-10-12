@@ -80,6 +80,7 @@ export async function createTask(payload: {
 	title: string
 	prompt: string
 	sourceMeta?: Record<string, unknown>
+	directorContext?: import('@/api/director').DirectorContext
 }, idempotencyKey?: string) {
 	const { data } = await http.post('/client/tasks', payload, { headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined })
 	return data as {

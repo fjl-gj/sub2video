@@ -17,15 +17,22 @@ const button = tv({
       sm: 'min-h-8 px-2.5',
       md: 'min-h-9 px-3.5 py-2.5',
       lg: 'min-h-11 px-5',
+      xl: 'min-h-12 px-5 py-3 text-base font-medium leading-6',
     },
     block: { true: 'w-full' },
   },
+  // Primary actions keep the documented touch target on phone layouts while
+  // retaining the compact desktop sizes used by administration and dialogs.
+  compoundVariants: [
+    { variant: 'primary', size: 'sm', class: 'min-h-11 md:min-h-8' },
+    { variant: 'primary', size: 'md', class: 'min-h-11 md:min-h-9' },
+  ],
   defaultVariants: { variant: 'secondary', size: 'md' },
 })
 
 const props = withDefaults(defineProps<{
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   block?: boolean
   loading?: boolean
   disabled?: boolean

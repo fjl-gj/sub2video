@@ -32,6 +32,7 @@ const router = createRouter({
       { path: 'works', component: () => import('@/pages/client/WorksPage.vue'), meta: { surface: 'client', title: '任务' } },
       { path: 'works/:id', component: () => import('@/pages/client/TaskDetailPage.vue'), meta: { surface: 'client', title: '任务详情' } },
       { path: 'assets', component: () => import('@/pages/client/AssetsPage.vue'), meta: { surface: 'client', title: '资产' } },
+      { path: 'projects/:projectId/director', component: () => import('@/pages/client/DirectorPage.vue'), meta: { surface: 'client', title: '导演台' } },
       { path: 'trash', component: () => import('@/pages/client/TrashPage.vue'), meta: { surface: 'client', title: '回收站' } },
       { path: 'wallet', component: () => import('@/pages/client/WalletPage.vue'), meta: { surface: 'client', title: '钱包' } },
       { path: 'tickets', component: () => import('@/pages/client/TicketsPage.vue'), meta: { surface: 'client', title: '帮助与工单' } },

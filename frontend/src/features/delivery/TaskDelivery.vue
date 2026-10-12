@@ -20,6 +20,9 @@ const router = useRouter()
 const app = useAppStore()
 const auth = useAuthStore()
 const taskId = computed(() => String(route.params.id || ''))
+const directorReturn = computed(() => typeof route.query.directorProject === 'string' && typeof route.query.directorShot === 'string' && route.query.directorProject && route.query.directorShot
+  ? { projectId: route.query.directorProject, shotId: route.query.directorShot }
+  : null)
 const { task, loading, refreshing, loadError, pollingPaused, pending, downloadUrl, refresh } = useTaskDelivery(taskId)
 const mediaFailed = ref(false)
 const mediaVersion = ref(0)
@@ -133,7 +136,7 @@ function draftSlot(source?: { type: 'upload' | 'asset'; id: string }): CreateFra
 function retryTask() {
   const current = task.value
   if (!current || current.reviewRequired || !auth.user?.id) return
-  if (!window.confirm('将使用这次任务的模式、素材和参数覆盖当前创作草稿，是否继续？')) return
+  if (!window.confirm(directorReturn.value ? '将使用这次任务的参数准备该镜头的新版本。进入创作页后仍需确认镜头、参数与费用，是否继续？' : '将使用这次任务的模式、素材和参数覆盖当前创作草稿，是否继续？')) return
   const source = current.sourceMeta || {}
   const inputType = retryInputType(current.mode)
   const refs = source.refs || []
@@ -152,8 +155,8 @@ function retryTask() {
     lastFrame: draftSlot(source.last),
     extraFrames: (source.extras || []).map(draftSlot),
     multiFrames: refs.length ? refs.map(draftSlot) : [emptySlot()],
-  })
-  void router.push({ path: '/app/create', query: { mode: inputType } })
+  }, directorReturn.value ? `${directorReturn.value.projectId}/${directorReturn.value.shotId}` : '')
+  void router.push({ path: '/app/create', query: directorReturn.value ? { directorProject: directorReturn.value.projectId, directorShot: directorReturn.value.shotId } : { mode: inputType } })
 }
 
 watch(taskId, () => { mediaFailed.value = false; downloadError.value = ''; saveOpen.value = false; savedDestination.value = null; projectRequest++ })
@@ -174,7 +177,7 @@ onBeforeUnmount(() => { disposed = true; projectRequest++ })
   <section class="s2v-page s2v-delivery">
     <S2VPageHeader :title="task?.title || '任务详情'">
       <template #description>查看这一镜的生成与交付状态，留下满意的结果。</template>
-      <template #actions><S2VButton @click="router.push('/app/works')"><ArrowLeft class="h-4 w-4" />返回任务</S2VButton></template>
+      <template #actions><S2VButton v-if="directorReturn" size="lg" @click="router.push({ path: `/app/projects/${encodeURIComponent(directorReturn.projectId)}/director`, query: { shot: directorReturn.shotId } })"><ArrowLeft class="h-4 w-4" />返回导演台</S2VButton><S2VButton @click="router.push('/app/works')"><ArrowLeft class="h-4 w-4" />返回任务</S2VButton></template>
     </S2VPageHeader>
     <div v-if="loading" class="s2v-delivery-state" role="status"><LoaderCircle class="h-7 w-7 animate-spin" /><h2>正在读取任务详情</h2></div>
     <div v-else-if="!task" class="s2v-delivery-state" role="alert">
