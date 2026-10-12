@@ -216,6 +216,7 @@ type DirectTaskInput struct {
 	Title           string
 	Prompt          string
 	SourceMeta      SourceMeta
+	DirectorContext *DirectorContext
 	Preflight       func(context.Context, *Store, *ResolvedRoute) error
 }
 
@@ -269,6 +270,14 @@ WHERE o.user_id=$1 AND o.client_request_id=$2`, userID, requestID).Scan(
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+	var directorBoard *DirectorBoard
+	var directorIndex int
+	if in.DirectorContext != nil {
+		directorBoard, directorIndex, err = lockDirectorTask(ctx, tx, userID, in.DirectorContext)
+		if err != nil {
+			return nil, err
+		}
 	}
 	in.DirectRouteRequest.ImageCount = in.SourceMeta.ImageCount()
 
@@ -355,6 +364,11 @@ VALUES ($1,$2,$3,$4,'queued',0,$5,$6,$7,'',$8,$9,$10::jsonb,$11,$12,$13,$14,$15,
 	}
 	if _, err = tx.Exec(ctx, `UPDATE generation_tasks SET consumption_order_public_id=$1 WHERE id=$2`, orderID, taskInternalID); err != nil {
 		return nil, err
+	}
+	if directorBoard != nil {
+		if err = bindDirectorTask(ctx, tx, userID, directorBoard, directorIndex, publicTaskID, in, route); err != nil {
+			return nil, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err

@@ -81,7 +81,7 @@ func TestClientReviewRequiredDoesNotPromiseAutomaticRetry(t *testing.T) {
 }
 
 func TestCreationSupplyFailuresHideCredentialAndSupplierDetails(t *testing.T) {
-	for _, internal := range []string{"供应商执行凭据暂不可用", "供应商执行配置不可用"} {
+	for _, internal := range []string{"供应商执行凭据暂不可用", "供应商执行配置不可用", "当前模式暂无可用模型"} {
 		status, code, message := clientCreationError(errors.New(internal))
 		if status != http.StatusServiceUnavailable || code != "SUPPLY_UNAVAILABLE" || message != "当前生成能力暂不可用，请稍后重试" {
 			t.Fatalf("unexpected safe availability response: status=%d code=%s message=%q", status, code, message)

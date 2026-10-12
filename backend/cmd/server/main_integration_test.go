@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"net/url"
 	"os"
@@ -96,9 +97,28 @@ func TestMigrateOnlyCLIHasNoServiceSideEffectsIntegration(t *testing.T) {
 	if _, err := os.Stat(uploads); !os.IsNotExist(err) {
 		t.Fatal("migrate-only created or accessed the upload directory")
 	}
+	migrationPaths, err := filepath.Glob(filepath.Join("..", "..", "migrations", "*.sql"))
+	if err != nil || len(migrationPaths) == 0 {
+		t.Fatalf("read expected migration files: %v (found %d)", err, len(migrationPaths))
+	}
+	for _, path := range migrationPaths {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		version := strings.TrimSuffix(filepath.Base(path), ".sql")
+		digest := sha256.Sum256(body)
+		var checksum string
+		if err := pool.QueryRow(ctx, `SELECT checksum FROM schema_migrations WHERE version=$1`, version).Scan(&checksum); err != nil {
+			t.Fatalf("expected migration %s was not recorded: %v", version, err)
+		}
+		if checksum != hex.EncodeToString(digest[:]) {
+			t.Fatalf("migration %s checksum does not match its source", version)
+		}
+	}
 	var versions, users, products, codes, runtimeSeeds int
 	for query, target := range map[string]*int{
-		`SELECT COUNT(*) FROM schema_migrations WHERE length(checksum)=64`:                  &versions,
+		`SELECT COUNT(*) FROM schema_migrations`:                                            &versions,
 		`SELECT COUNT(*) FROM users`:                                                        &users,
 		`SELECT COUNT(*) FROM recharge_products`:                                            &products,
 		`SELECT COUNT(*) FROM redeem_codes`:                                                 &codes,
@@ -108,8 +128,8 @@ func TestMigrateOnlyCLIHasNoServiceSideEffectsIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if versions != 21 || users != 0 || products != 0 || codes != 0 || runtimeSeeds != 0 {
-		t.Fatalf("migration did not remain schema-only: versions=%d users=%d products=%d codes=%d runtimeSeeds=%d", versions, users, products, codes, runtimeSeeds)
+	if versions != len(migrationPaths) || users != 0 || products != 0 || codes != 0 || runtimeSeeds != 0 {
+		t.Fatalf("migration did not remain schema-only: versions=%d want=%d users=%d products=%d codes=%d runtimeSeeds=%d", versions, len(migrationPaths), users, products, codes, runtimeSeeds)
 	}
 	for _, args := range [][]string{{"--unknown-release-option"}, {"--migrate-only", "unexpected-positional"}} {
 		command := exec.CommandContext(ctx, binary, args...)

@@ -142,13 +142,17 @@ func clientCreationError(err error) (int, string, string) {
 	if errors.Is(err, store.ErrPromptRequired) {
 		return http.StatusBadRequest, "PROMPT_REQUIRED", store.ErrPromptRequired.Error()
 	}
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrDirectorConflict) || errors.Is(err, store.ErrDirectorShotMissing) ||
+		errors.Is(err, store.ErrDirectorInvalid) || errors.Is(err, store.ErrDirectorReference) || errors.Is(err, store.ErrDirectorTask) || errors.Is(err, store.ErrDirectorSelection) {
+		return directorError(err)
+	}
 	message := strings.TrimSpace(err.Error())
 	switch message {
 	case "insufficient balance":
 		return http.StatusPaymentRequired, "INSUFFICIENT_BALANCE", "余额不足"
 	case "对象存储尚未配置，当前创作暂不可用", "对象存储暂不可用，请稍后重试":
 		return http.StatusServiceUnavailable, "STORAGE_UNAVAILABLE", message
-	case "供应商执行凭据暂不可用", "供应商执行配置不可用":
+	case "供应商执行凭据暂不可用", "供应商执行配置不可用", "当前模式暂无可用模型":
 		return http.StatusServiceUnavailable, "SUPPLY_UNAVAILABLE", "当前生成能力暂不可用，请稍后重试"
 	}
 	// These messages are validated input/capability failures and are safe to
@@ -224,18 +228,19 @@ func (h *ClientHandler) EstimateTask(c *gin.Context) {
 
 func (h *ClientHandler) CreateTask(c *gin.Context) {
 	var req struct {
-		ModeID          string           `json:"modeId" binding:"required"`
-		CarrierID       string           `json:"carrierId"`
-		ModelID         string           `json:"modelId"`
-		DurationSec     int              `json:"durationSec"`
-		DurationSeconds int              `json:"durationSeconds,omitempty"`
-		Resolution      string           `json:"resolution" binding:"required"`
-		AspectRatio     string           `json:"aspectRatio" binding:"required"`
-		GenerateAudio   bool             `json:"generateAudio"`
-		Title           string           `json:"title"`
-		Prompt          string           `json:"prompt"`
-		SourceMeta      store.SourceMeta `json:"sourceMeta"`
-		ClientRequestID string           `json:"clientRequestId"`
+		ModeID          string                 `json:"modeId" binding:"required"`
+		CarrierID       string                 `json:"carrierId"`
+		ModelID         string                 `json:"modelId"`
+		DurationSec     int                    `json:"durationSec"`
+		DurationSeconds int                    `json:"durationSeconds,omitempty"`
+		Resolution      string                 `json:"resolution" binding:"required"`
+		AspectRatio     string                 `json:"aspectRatio" binding:"required"`
+		GenerateAudio   bool                   `json:"generateAudio"`
+		Title           string                 `json:"title"`
+		Prompt          string                 `json:"prompt"`
+		SourceMeta      store.SourceMeta       `json:"sourceMeta"`
+		ClientRequestID string                 `json:"clientRequestId"`
+		DirectorContext *store.DirectorContext `json:"directorContext,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
@@ -265,6 +270,7 @@ func (h *ClientHandler) CreateTask(c *gin.Context) {
 		Title:           req.Title,
 		Prompt:          req.Prompt,
 		SourceMeta:      req.SourceMeta,
+		DirectorContext: req.DirectorContext,
 		Preflight: func(ctx context.Context, transactionStore *store.Store, route *store.ResolvedRoute) error {
 			if err := h.ensureCreationSupplier(ctx, transactionStore, route); err != nil {
 				return err

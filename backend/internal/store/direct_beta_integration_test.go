@@ -12,7 +12,8 @@ import (
 // This suite exercises actual PostgreSQL queries across every public discovery
 // surface. It deliberately does not replace a real supplier acceptance test.
 func TestDirectAvailabilityGatesStayConsistentIntegration(t *testing.T) {
-	env := openIntegrationStore(t)
+	// This matrix shares migration/seed setup across all availability gates.
+	env := openIntegrationStoreWithTimeout(t, 3*time.Minute)
 	textMode, _, _, modelID := testCatalogIDs(t, env)
 	assertAvailability := func(t *testing.T, fallback string, available bool) {
 		t.Helper()
@@ -68,7 +69,9 @@ func TestDirectAvailabilityGatesStayConsistentIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() {
-				if _, err := env.pool.Exec(env.ctx, gate.restore); err != nil {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				if _, err := env.pool.Exec(cleanupCtx, gate.restore); err != nil {
 					t.Errorf("restore isolated fixture: %v", err)
 				}
 			})

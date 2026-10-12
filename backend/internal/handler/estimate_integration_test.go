@@ -118,4 +118,28 @@ func TestEstimateDurationSecHTTPContractHasNoFinancialSideEffectsIntegration(t *
 	if storageReads.Load() == 0 || supplierRequests.Load() != 0 {
 		t.Fatalf("estimate must check storage without invoking the supplier: storageReads=%d supplierRequests=%d", storageReads.Load(), supplierRequests.Load())
 	}
+	// A reset/unconfigured environment has no recommendable model. This is a
+	// public availability failure, not an internal server error, and still must
+	// not create financial records or contact a generation supplier.
+	if _, err := st.Pool.Exec(ctx, `UPDATE suppliers SET enabled=FALSE`); err != nil {
+		t.Fatal(err)
+	}
+	unavailableRequest := httptest.NewRequest(http.MethodPost, "/api/v1/client/tasks/estimate", strings.NewReader(payload))
+	unavailableRequest.Header.Set("Content-Type", "application/json")
+	unavailableRequest.Header.Set("Authorization", "Bearer "+deliveryTestToken(t, user, cfg.JWTSecret))
+	unavailableResponse := httptest.NewRecorder()
+	router.ServeHTTP(unavailableResponse, unavailableRequest)
+	var unavailable struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(unavailableResponse.Body.Bytes(), &unavailable); err != nil {
+		t.Fatal(err)
+	}
+	if unavailableResponse.Code != http.StatusServiceUnavailable || unavailable.Code != "SUPPLY_UNAVAILABLE" || unavailable.Message != "当前生成能力暂不可用，请稍后重试" {
+		t.Fatalf("empty recommendation must expose a stable availability error: status=%d result=%+v", unavailableResponse.Code, unavailable)
+	}
+	if after := snapshot(); after != before || supplierRequests.Load() != 0 {
+		t.Fatalf("unavailable estimate must have no side effects: before=%+v after=%+v supplierRequests=%d", before, after, supplierRequests.Load())
+	}
 }

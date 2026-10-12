@@ -83,6 +83,7 @@ func TestUpgradeFrom019PreservesExistingDataIntegration(t *testing.T) {
 	if _, err := pool.Exec(ctx, `
 INSERT INTO users (id,public_id,email,password_hash,display_name) VALUES (1,'release_user','release@example.test','unused','Release fixture');
 INSERT INTO wallets (user_id,balance) VALUES (1,17.23);
+INSERT INTO projects (public_id,user_id,name,folders_json) VALUES ('release_project',1,'Preserve work','{"资产":{"items":[],"folders":{}}}'::jsonb);
 INSERT INTO generation_tasks (id,public_id,user_id,title,workflow,status,duration_sec,resolution,cost,execution_mode,upstream_task_id,upstream_status)
 VALUES (1,'release_task',1,'Preserve accepted task','文生视频','running',5,'768P',0.27,'provider','accepted-fixture','RUNNING');
 INSERT INTO consumption_orders (public_id,user_id,task_id,client_request_id,amount,status) VALUES ('release_order',1,1,'release_request',0.27,'paid');
@@ -109,6 +110,7 @@ VALUES ('release_retail',1,NULL,'768P','Preserve admin price',0.0888,'admin-cust
 'wallet',(SELECT to_jsonb(x) FROM wallets x WHERE user_id=1),
 'ledger',(SELECT to_jsonb(x) FROM wallet_ledger x WHERE public_id='release_ledger'),
 'order',(SELECT to_jsonb(x) FROM consumption_orders x WHERE public_id='release_order'),
+'project',(SELECT jsonb_build_object('name',name,'folders',folders_json,'updatedAt',updated_at) FROM projects WHERE public_id='release_project'),
 'task',(SELECT jsonb_build_object('status',status,'upstream',upstream_task_id,'upstreamStatus',upstream_status,'cost',cost,'updatedAt',updated_at) FROM generation_tasks WHERE id=1),
 'cost',(SELECT to_jsonb(x) FROM supplier_cost_rules x WHERE public_id='release_cost'),
 'retail',(SELECT to_jsonb(x) FROM retail_price_rules x WHERE public_id='release_retail'),
@@ -141,8 +143,22 @@ VALUES ('release_retail',1,NULL,'768P','Preserve admin price',0.0888,'admin-cust
 	if err := pool.QueryRow(ctx, `SELECT is_nullable FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='supplier_cost_rules' AND column_name='offering_id'`).Scan(&nullable); err != nil {
 		t.Fatal(err)
 	}
-	if checksummed != 21 || leaseColumns != 10 || events != 0 || indexes != 1 || nullable != "YES" {
+	expectedVersions := 0
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			expectedVersions++
+		}
+	}
+	if checksummed != expectedVersions || leaseColumns != 10 || events != 0 || indexes != 1 || nullable != "YES" {
 		t.Fatal(fmt.Sprintf("unexpected upgrade shape: checksummed=%d leaseColumns=%d events=%d indexes=%d nullable=%s", checksummed, leaseColumns, events, indexes, nullable))
+	}
+	var directorRevision int64
+	var directorEmpty bool
+	if err := pool.QueryRow(ctx, `SELECT director_revision,director_board='[]'::jsonb FROM projects WHERE public_id='release_project'`).Scan(&directorRevision, &directorEmpty); err != nil {
+		t.Fatal(err)
+	}
+	if directorRevision != 0 || !directorEmpty {
+		t.Fatal("existing works must gain an empty director board without changing their assets")
 	}
 	if _, err := pool.Exec(ctx, `UPDATE schema_migrations SET checksum=repeat('0',64) WHERE version='019_limit_h3_creation_catalog'`); err != nil {
 		t.Fatal(err)

@@ -32,6 +32,11 @@ type integrationStore struct {
 
 func openIntegrationStore(t *testing.T) *integrationStore {
 	t.Helper()
+	return openIntegrationStoreWithTimeout(t, 60*time.Second)
+}
+
+func openIntegrationStoreWithTimeout(t *testing.T, timeout time.Duration) *integrationStore {
+	t.Helper()
 	if os.Getenv("SUB2VIDEO_RUN_INTEGRATION") != "1" {
 		t.Skip("set SUB2VIDEO_RUN_INTEGRATION=1 with SUB2VIDEO_TEST_DATABASE_URL and SUB2VIDEO_TEST_REDIS_URL to run PostgreSQL/Redis integration tests")
 	}
@@ -48,7 +53,7 @@ func openIntegrationStore(t *testing.T) *integrationStore {
 		t.Fatal("SUB2VIDEO_TEST_DATABASE_URL must target a database whose name contains 'test'")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	t.Cleanup(cancel)
 
 	base, err := pgxpool.ParseConfig(databaseURL)
@@ -77,14 +82,16 @@ func openIntegrationStore(t *testing.T) *integrationStore {
 		t.Fatalf("create isolated test schema: %v", err)
 	}
 	t.Cleanup(func() {
+		defer admin.Close()
 		cleanupCtx, stop := context.WithTimeout(context.Background(), 15*time.Second)
 		defer stop()
-		_, _ = admin.Exec(cleanupCtx, "DROP SCHEMA "+pgx.Identifier{name}.Sanitize()+" CASCADE")
-		admin.Close()
+		if _, err := admin.Exec(cleanupCtx, "DROP SCHEMA "+pgx.Identifier{name}.Sanitize()+" CASCADE"); err != nil {
+			t.Errorf("clean isolated integration schema %s: %v", name, err)
+		}
 	})
 
 	isolated := base.Copy()
-	isolated.ConnConfig.RuntimeParams["search_path"] = name + ",public"
+	isolated.ConnConfig.RuntimeParams["search_path"] = name
 	pool, err := pgxpool.NewWithConfig(ctx, isolated)
 	if err != nil {
 		t.Skipf("isolated PostgreSQL integration pool is unavailable: %v", err)
@@ -93,6 +100,13 @@ func openIntegrationStore(t *testing.T) *integrationStore {
 	if err := pool.Ping(ctx); err != nil {
 		t.Skipf("isolated PostgreSQL integration pool is unavailable: %v", err)
 	}
+	var actualSchema, actualDatabase string
+	if err := pool.QueryRow(ctx, `SELECT current_schema(),current_database()`).Scan(&actualSchema, &actualDatabase); err != nil {
+		t.Fatalf("verify isolated integration target: %v", err)
+	}
+	if actualSchema != name || actualDatabase != base.ConnConfig.Database || !strings.Contains(strings.ToLower(actualDatabase), "test") {
+		t.Fatal("integration connection did not resolve to the expected test database and isolated schema")
+	}
 
 	rdb, err := redisx.Connect(ctx, redisURL)
 	if err != nil {
@@ -100,13 +114,19 @@ func openIntegrationStore(t *testing.T) *integrationStore {
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
 	probeKey := "sub2video:integration:" + name
+	t.Cleanup(func() {
+		cleanupCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+		if err := rdb.Del(cleanupCtx, probeKey).Err(); err != nil {
+			t.Errorf("clean isolated Redis probe %s: %v", probeKey, err)
+		}
+	})
 	if err := rdb.Set(ctx, probeKey, "ready", time.Minute).Err(); err != nil {
 		t.Fatalf("write redis integration probe: %v", err)
 	}
 	if got, err := rdb.Get(ctx, probeKey).Result(); err != nil || got != "ready" {
 		t.Fatalf("read redis integration probe: got=%q err=%v", got, err)
 	}
-	t.Cleanup(func() { _ = rdb.Del(context.Background(), probeKey).Err() })
 
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatalf("first migrate: %v", err)
