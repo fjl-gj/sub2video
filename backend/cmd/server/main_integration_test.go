@@ -78,6 +78,7 @@ func TestMigrateOnlyCLIHasNoServiceSideEffectsIntegration(t *testing.T) {
 		}
 	}
 	env = append(env,
+		"SUB2VIDEO_ENV=development",
 		"SUB2VIDEO_DATABASE_URL="+commandDSN.String(),
 		"SUB2VIDEO_SKIP_BOOTSTRAP=true",
 		"SUB2VIDEO_REDIS_URL=invalid-redis-url",

@@ -19,14 +19,17 @@ Gin + PostgreSQL 客户端 API。从 Sub2API 提取认证/钱包模式，不含 
 cd backend
 docker compose up -d
 go mod tidy
-go run ./cmd/server
+SUB2VIDEO_ENV=development go run ./cmd/server
 ```
 
-环境变量见 `internal/config/config.go`。默认：
+环境变量见 `internal/config/config.go`。`SUB2VIDEO_ENV` 未设置时按**生产模式**处理，启动前会校验配置，不安全时直接退出。本地开发必须显式设置 `SUB2VIDEO_ENV=development` 才会使用以下默认值：
 
 - DB: `postgres://sub2video:sub2video@127.0.0.1:15432/sub2video?sslmode=disable`
 - API: `127.0.0.1:12080`
-- 演示账号: `demo@sub2video.local` / `Demo1234!`（余额 256）
+- 演示账号: `demo@sub2video.local` / `Demo1234!`（余额 256），仅开发模式在空库时创建
+- 密钥、CORS 为开发占位值，CORS 允许 `*`
+
+生产模式必须通过环境变量（或 `/etc/sub2video/backend.env`）提供：`SUB2VIDEO_JWT_SECRET` 与 `SUB2VIDEO_SECRET_KEY`（各至少 32 字符，且不能是仓库里的占位值）、`SUB2VIDEO_CORS_ORIGIN`（逗号分隔的精确来源，不能是 `*`）。不会自动创建演示账号；若要创建，需设置 `SUB2VIDEO_SEED_DEMO=true` 并提供非默认的 `SUB2VIDEO_SEED_PASSWORD`（至少 12 字符）。`SUB2VIDEO_PROMOTE_ADMIN_EMAIL` 不能指向演示账号。
 
 ## 认证接口
 

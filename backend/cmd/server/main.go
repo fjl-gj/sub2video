@@ -28,6 +28,9 @@ func main() {
 		log.Fatal("unexpected positional arguments")
 	}
 	cfg := config.Load()
+	if err := config.Validate(cfg); err != nil {
+		log.Fatalf("configuration rejected: %v", err)
+	}
 	ctx := context.Background()
 
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
@@ -70,8 +73,10 @@ func main() {
 		if err := st.SeedCreationCatalog(ctx); err != nil {
 			log.Fatalf("seed creation catalog: %v", err)
 		}
-		if err := ensureDemoUser(ctx, st, cfg); err != nil {
-			log.Fatalf("seed user: %v", err)
+		if cfg.SeedDemo {
+			if err := ensureDemoUser(ctx, st, cfg); err != nil {
+				log.Fatalf("seed user: %v", err)
+			}
 		}
 		if cfg.PromoteAdminEmail != "" {
 			if err := st.PromoteUserRole(ctx, cfg.PromoteAdminEmail, "admin"); err != nil {

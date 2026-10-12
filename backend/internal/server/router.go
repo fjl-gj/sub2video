@@ -17,7 +17,7 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
-	r.Use(cors(cfg.CORSOrigin))
+	r.Use(cors(cfg.CORSOrigins()))
 	r.MaxMultipartMemory = 16 << 20
 
 	r.GET("/health", func(c *gin.Context) {
@@ -126,9 +126,25 @@ func NewRouter(cfg config.Config, st *store.Store, authSvc *auth.Service, mailSv
 	return r
 }
 
-func cors(origin string) gin.HandlerFunc {
+func cors(allowed []string) gin.HandlerFunc {
+	wildcard := false
+	exact := make(map[string]bool, len(allowed))
+	for _, o := range allowed {
+		if o == "*" {
+			wildcard = true
+			continue
+		}
+		exact[o] = true
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", origin)
+		c.Writer.Header().Add("Vary", "Origin")
+		reqOrigin := c.GetHeader("Origin")
+		switch {
+		case wildcard:
+			c.Header("Access-Control-Allow-Origin", "*")
+		case reqOrigin != "" && exact[reqOrigin]:
+			c.Header("Access-Control-Allow-Origin", reqOrigin)
+		}
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept,Idempotency-Key,X-Request-ID")
 		if c.Request.Method == http.MethodOptions {

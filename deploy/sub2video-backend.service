@@ -8,13 +8,20 @@ Type=simple
 User=root
 WorkingDirectory=/opt/sub2video/backend
 Environment=GIN_MODE=release
+Environment=SUB2VIDEO_ENV=production
 Environment=SUB2VIDEO_ADDR=127.0.0.1:12080
 Environment=SUB2VIDEO_DATABASE_URL=postgres://sub2video:sub2video@127.0.0.1:15432/sub2video?sslmode=disable
 Environment=SUB2VIDEO_REDIS_URL=redis://127.0.0.1:16379/0
-Environment=SUB2VIDEO_JWT_SECRET=change-me-in-production
-Environment=SUB2VIDEO_SECRET_KEY=change-me-in-production-secret
-Environment=SUB2VIDEO_CORS_ORIGIN=*
 Environment=SUB2VIDEO_UPLOAD_DIR=/opt/sub2video/backend/data/uploads
+# Secrets and the browser allow-list live outside the repository. The service
+# refuses to start unless this file defines SUB2VIDEO_JWT_SECRET (>=32 chars),
+# SUB2VIDEO_SECRET_KEY (>=32 chars) and SUB2VIDEO_CORS_ORIGIN (comma-separated
+# exact origins, no "*"). Create it with mode 0600 before the first start, e.g.:
+#   SUB2VIDEO_JWT_SECRET=<openssl rand -hex 32>
+#   SUB2VIDEO_SECRET_KEY=<openssl rand -hex 32>
+#   SUB2VIDEO_CORS_ORIGIN=https://<your-client-domain>
+# Do not set SUB2VIDEO_SEED_DEMO or SUB2VIDEO_PROMOTE_ADMIN_EMAIL to demo values.
+EnvironmentFile=/etc/sub2video/backend.env
 # New quote-backed tasks require an enabled supplier credential. Historical
 # development tasks alone keep the simulator path; every completed result needs
 # COS or MinIO before it can be delivered to a creator.
@@ -24,7 +31,6 @@ Environment=SUB2VIDEO_UPLOAD_DIR=/opt/sub2video/backend/data/uploads
 # Environment=SUB2VIDEO_COS_SECRET_KEY=
 # Environment=SUB2VIDEO_COS_BUCKET=
 # Environment=SUB2VIDEO_COS_REGION=
-Environment=SUB2VIDEO_PROMOTE_ADMIN_EMAIL=demo@sub2video.local
 ExecStartPre=/bin/bash -c 'until docker exec sub2video-postgres pg_isready -U sub2video >/dev/null 2>&1; do sleep 1; done'
 ExecStart=/opt/sub2video/backend/sub2video-server
 Restart=on-failure
