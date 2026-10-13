@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sub2Video · 设计稿套件（小云雀结构）</title>
+<!--
+  审阅稿 · 2026-10-13 · 第二批扩页
+  视觉：浅色商业 SaaS + 暖琥珀；结构参考小云雀入口。
+  含：官网、创作、概览、钱包、帮助工单、个人资料、登录、注册。
+  未接后端；金额/图片均为示例。创作页仍可验证缺尾帧→估价→生成。
+-->
+<style>
+@font-face{font-family:"S2V Sans";src:url("../../../frontend/public/fonts/source-han-sans-sc-regular.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"S2V Sans";src:url("../../../frontend/public/fonts/source-han-sans-sc-medium.woff2") format("woff2");font-weight:500 700;font-display:swap}
+@font-face{font-family:"S2V Inter";src:url("../../../frontend/public/fonts/inter-latin-variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"S2V Mono";src:url("../../../frontend/public/fonts/jetbrains-mono-latin-variable.woff2") format("woff2");font-weight:100 800;font-display:swap}
+:root{
+  --bg:#F4F5F4;--sidebar:#ECEEEB;--surface:#FFFFFF;--ink:#252C27;--body:#3A433D;
+  --muted:#657068;--faint:#8B948E;--line:#D9DED8;--line-strong:#C5CBC4;--chip:#F0F2EF;
+  --accent:#C4843A;--accent-soft:#F4E6D4;--accent-ink:#FFFFFF;--success:#1F8A55;--danger:#C2453A;
+  --shadow:0 8px 28px rgba(28,36,30,.08);--shadow-soft:0 2px 10px rgba(28,36,30,.06);
+  --f:"S2V Sans","PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --fb:"S2V Inter","Inter",system-ui,sans-serif;--fm:"S2V Mono","JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:400 14px/1.5 var(--f);color:var(--ink);background:#0E100F;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,textarea,select{font:inherit;color:inherit}button{cursor:pointer;border:0;background:none}
+img{display:block;max-width:100%}a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.review{height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#121412;color:#A8B0AA;font-size:12px;border-bottom:1px solid #222;overflow-x:auto;white-space:nowrap}
+.review strong{color:#F4F4F0;font-weight:500}
+.seg{display:inline-flex;padding:3px;border:1px solid #2c322e;border-radius:8px;gap:2px;flex:none}
+.seg button{padding:5px 9px;border-radius:6px;color:#8B948E}
+.seg button.on{background:#2A302C;color:#F4F4F0}
+.review .hint{margin-left:auto;opacity:.85;flex:none}
+.review .reset{padding:6px 10px;border:1px solid #3a423c;border-radius:8px;color:#E8B981;flex:none}
+
+.stage-wrap{height:calc(100% - 52px);display:grid;place-items:center;padding:16px;background:#0E100F}
+.stage{width:1440px;height:900px;background:var(--bg);border-radius:14px;overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.stage[data-w="390"]{width:390px;height:844px;border-radius:28px}
+.view{display:none;position:absolute;inset:0;overflow:auto;background:var(--bg)}
+.stage[data-page="home"] .view-home,
+.stage[data-page="login"] .view-auth,
+.stage[data-page="register"] .view-auth,
+.stage[data-page="create"] .view-app,
+.stage[data-page="overview"] .view-app,
+.stage[data-page="wallet"] .view-app,
+.stage[data-page="help"] .view-app,
+.stage[data-page="profile"] .view-app{display:block}
+
+/* shared app shell */
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100%}
+.stage[data-w="390"] .app{grid-template-columns:1fr}
+.side{background:var(--sidebar);padding:18px 12px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--line);min-height:100%}
+.logo{display:flex;align-items:center;gap:8px;padding:6px 10px 16px;font:650 16px/1 var(--fb);letter-spacing:-.02em}
+.logo i{font-style:normal;color:var(--accent)}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button,.nav a{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:10px;color:var(--body);font-size:13.5px;width:100%;text-align:left}
+.nav button:hover,.nav a:hover{background:rgba(255,255,255,.55)}
+.nav button.on,.nav a.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:var(--shadow-soft)}
+.nav svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.side .proj{margin-top:auto;padding:12px;border-radius:12px;background:rgba(255,255,255,.45)}
+.side .proj h4{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:500}
+.side .proj p{margin:0;font-size:12px;color:var(--faint)}
+.user{display:flex;align-items:center;gap:8px;padding:10px 8px 4px;margin-top:8px;cursor:pointer;border-radius:10px}
+.user:hover{background:rgba(255,255,255,.4)}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#E8B981,#8B5E2F);color:#fff;display:grid;place-items:center;font:600 11px/1 var(--fb)}
+.user span{font-size:12px;color:var(--muted)}
+.main{overflow:auto;padding:28px 48px 40px;position:relative;min-width:0}
+.stage[data-w="390"] .side{display:none}
+.stage[data-w="390"] .main{padding:0 0 72px}
+.panel{display:none}.panel.on{display:block}
+.m-top{display:none;align-items:center;justify-content:space-between;height:56px;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.stage[data-w="390"] .m-top{display:flex}
+.m-nav{display:none;position:absolute;left:0;right:0;bottom:0;height:64px;padding-bottom:env(safe-area-inset-bottom);background:rgba(255,255,255,.94);border-top:1px solid var(--line);backdrop-filter:blur(8px);grid-template-columns:repeat(5,1fr);align-items:center;z-index:6}
+.stage[data-w="390"] .view-app .m-nav{display:grid}
+.m-nav button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;color:var(--muted)}
+.m-nav button.on{color:var(--accent)}
+.m-nav svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+.topbar{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:8px}
+.stage[data-w="390"] .topbar{display:none}
+.bal{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--muted);box-shadow:var(--shadow-soft)}
+.bal b{font:500 12px/1 var(--fm);color:var(--ink)}
+.page-h{margin:0 0 18px}
+.page-h h1{margin:0;font-size:24px;font-weight:500;letter-spacing:-.02em}
+.page-h p{margin:6px 0 0;color:var(--muted);font-size:13px}
+.card-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-soft);padding:16px}
+.btn-gen{height:40px;padding:0 18px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-weight:500;font-size:14px;box-shadow:0 6px 16px rgba(196,132,58,.28)}
+.btn-gen:disabled{opacity:.42;cursor:not-allowed;box-shadow:none}
+.btn-sec{height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--body);font-size:13px}
+.btn-sec:disabled{opacity:.42;cursor:not-allowed}
+.btn-text{color:var(--accent);font-size:13px;font-weight:500}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label{font-size:13px;font-weight:500;color:var(--body)}
+.field input,.field textarea,.field select{height:44px;padding:0 12px;border:1px solid var(--line-strong);border-radius:10px;background:#FAFBFA}
+.field textarea{height:auto;padding:10px 12px;resize:vertical;min-height:96px}
+.field .hint{font-size:12px;color:var(--faint)}
+.chip-row{display:flex;flex-wrap:wrap;gap:8px}
+.pill{height:34px;padding:0 12px;border-radius:999px;background:var(--chip);border:1px solid transparent;font-size:12.5px;color:var(--body)}
+.pill.on{background:var(--accent-soft);border-color:#E7C9A0;color:#8A5A22}
+
+/* CREATE (kept) */
+.hero-title{text-align:center;margin:12px auto 22px;max-width:720px}
+.hero-title h1{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em;line-height:1.35}
+.hero-title h1 em{font-style:normal;font-weight:650}
+.tabs{display:inline-flex;gap:6px;margin-top:14px;padding:4px;background:var(--chip);border-radius:999px}
+.tabs button{height:32px;padding:0 14px;border-radius:999px;color:var(--muted);font-size:13px}
+.tabs button.on{background:var(--ink);color:#fff}
+.composer{max-width:860px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:16px 16px 12px;position:relative}
+.composer textarea{width:100%;min-height:92px;resize:vertical;border:0;outline:none;padding:6px 4px 10px;font-size:15px;line-height:1.6;background:transparent}
+.composer textarea::placeholder{color:var(--faint)}
+.slots{display:none;gap:10px;padding:0 4px 12px}.slots.show{display:flex}
+.slot{width:88px;height:88px;border-radius:12px;border:1px dashed var(--line-strong);background:var(--chip);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--muted);position:relative;overflow:hidden;cursor:pointer}
+.slot.has{border-style:solid;border-color:var(--line)}.slot img{width:100%;height:100%;object-fit:cover}
+.slot .cap{position:absolute;left:0;right:0;bottom:0;padding:4px 6px;background:rgba(20,24,21,.72);color:#fff;font-size:10px;text-align:center}
+.slot.need{border-color:var(--danger);background:#FCEFEE;color:var(--danger)}.slot.need .cap{background:var(--danger)}
+.bar{display:flex;align-items:center;gap:8px;padding-top:4px;flex-wrap:wrap}
+.icon-btn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--muted);background:var(--chip)}
+.icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.chip{height:34px;padding:0 12px;border-radius:999px;background:var(--chip);color:var(--body);display:inline-flex;align-items:center;gap:6px;font-size:12.5px;border:1px solid transparent}
+.chip.on{background:var(--accent-soft);border-color:#E7C9A0;color:#8A5A22}
+.chip svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bar .spacer{flex:1}
+.est{font-size:12px;color:var(--muted);padding:0 8px;max-width:220px;text-align:right}
+.est strong{font:500 13px/1.2 var(--fm);color:var(--ink);display:block}.est .sub{font-size:11px;color:var(--faint);margin-top:2px}
+.est.warn{color:var(--danger)}.est.warn strong{color:var(--danger)}
+.pop{position:absolute;z-index:20;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);display:none;min-width:220px}
+.pop.open{display:block}
+.pop.mode{left:16px;bottom:56px;padding:6px}
+.pop.mode button{width:100%;text-align:left;padding:10px 12px;border-radius:10px;display:flex;flex-direction:column;gap:2px}
+.pop.mode button:hover,.pop.mode button.on{background:var(--chip)}
+.pop.mode b{font-size:13px;font-weight:500}.pop.mode span{font-size:11px;color:var(--muted)}
+.pop.pref{right:16px;bottom:56px;width:560px;padding:0;overflow:hidden}
+.pref-grid{display:grid;grid-template-columns:1.15fr .95fr}
+.pref-col{padding:14px}.pref-col + .pref-col{border-left:1px solid var(--line)}
+.pref-col h3{margin:0 0 10px;font-size:13px;font-weight:500}
+.model{display:flex;gap:10px;padding:10px;border-radius:12px;cursor:pointer;border:1px solid transparent}
+.model:hover{background:var(--chip)}.model.on{background:var(--accent-soft);border-color:#E7C9A0}
+.model .t b{display:block;font-size:13px;font-weight:500}.model .t span{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.seg2{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.seg2 button{min-width:52px;height:36px;padding:0 10px;border-radius:10px;background:var(--chip);font-size:12px;border:1px solid transparent}
+.seg2 button.on{background:var(--surface);border-color:var(--line-strong);box-shadow:var(--shadow-soft);font-weight:500}
+.seg3{display:inline-flex;padding:3px;background:var(--chip);border-radius:10px;gap:2px;margin-bottom:14px}
+.seg3 button{height:30px;padding:0 12px;border-radius:8px;font-size:12px;color:var(--muted)}.seg3 button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-soft)}
+.pop.at{left:54px;bottom:56px;padding:6px;min-width:180px}
+.pop.at button{width:100%;text-align:left;padding:10px 12px;border-radius:10px;font-size:13px}.pop.at button:hover{background:var(--chip)}
+.tools{max-width:860px;margin:18px auto 0;display:flex;justify-content:center;gap:18px;flex-wrap:wrap}
+.tool{display:flex;flex-direction:column;align-items:center;gap:8px;width:72px;color:var(--muted);font-size:11px}
+.tool .ic{width:48px;height:48px;border-radius:14px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;box-shadow:var(--shadow-soft)}
+.tool .ic svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.section{max-width:980px;margin:36px auto 0}
+.section .head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.section h2{margin:0;font-size:16px;font-weight:500}.section .note{font-size:12px;color:var(--faint)}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-soft)}
+.card .thumb{aspect-ratio:16/10;background:#ddd;position:relative}.card .thumb img{width:100%;height:100%;object-fit:cover}
+.card .badge{position:absolute;left:8px;bottom:8px;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:10px}
+.card .body{padding:10px 12px 12px}.card .body b{display:block;font-size:13px;font-weight:500;margin-bottom:4px}.card .body span{font-size:11px;color:var(--muted)}
+.status-toast{max-width:860px;margin:12px auto 0;padding:10px 14px;border-radius:12px;background:#FFF7EC;border:1px solid #F0D7B0;color:#8A5A22;font-size:12.5px;display:none}
+.status-toast.show{display:block}
+.backdrop{position:absolute;inset:0;background:rgba(20,24,21,.18);display:none;z-index:15}.backdrop.show{display:block}
+.stage[data-w="390"] .hero-title{margin:18px 16px 14px;text-align:left}.stage[data-w="390"] .hero-title h1{font-size:22px}
+.stage[data-w="390"] .composer{margin:0 12px;border-radius:18px}
+.stage[data-w="390"] .pop.pref{left:12px;right:12px;width:auto;bottom:58px}
+.stage[data-w="390"] .pref-grid{grid-template-columns:1fr}.stage[data-w="390"] .pref-col + .pref-col{border-left:0;border-top:1px solid var(--line)}
+.stage[data-w="390"] .tools{gap:10px;padding:0 8px}.stage[data-w="390"] .section{margin:28px 12px 0}.stage[data-w="390"] .cards{grid-template-columns:1fr 1fr}
+.stage[data-w="390"] .status-toast{margin:12px}.stage[data-w="390"] .page-pad{padding:16px}
+
+/* HOME — full-bleed film + three modes only */
+.view-home{background:#0B0C0C;color:#F4F4F0;overflow:auto}
+.pub-nav{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 36px;position:absolute;left:0;right:0;top:0;z-index:3}
+.pub-nav .logo{color:#F4F4F0;padding:0}
+.pub-nav .nav-right{display:flex;align-items:center;gap:10px}
+.pub-nav .link-quiet{height:36px;padding:0 12px;border-radius:999px;color:rgba(244,244,240,.78);font-size:13px}
+.pub-nav .link-quiet:hover{color:#fff;background:rgba(255,255,255,.06)}
+.home-film{
+  position:relative;min-height:100%;display:flex;flex-direction:column;justify-content:flex-end;
+  padding:0 0 0;isolation:isolate;
+}
+.home-film-media{position:absolute;inset:0;z-index:0;overflow:hidden}
+.home-film-media video,.home-film-media img{width:100%;height:100%;object-fit:cover}
+.home-film-media::after{
+  content:"";position:absolute;inset:0;
+  background:
+    linear-gradient(90deg,rgba(8,9,9,.78) 0%,rgba(8,9,9,.42) 42%,rgba(8,9,9,.18) 70%,rgba(8,9,9,.35) 100%),
+    linear-gradient(180deg,rgba(8,9,9,.25) 0%,transparent 28%,rgba(8,9,9,.55) 72%,rgba(8,9,9,.92) 100%);
+}
+.home-hero{
+  position:relative;z-index:1;margin-left:auto;padding:110px 56px 36px;
+  max-width:520px;text-align:right;
+  animation:homeRise .7s cubic-bezier(.2,.7,.2,1) both;
+}
+.home-hero h1{
+  margin:0 0 0 auto;font-size:56px;line-height:1.22;font-weight:600;letter-spacing:.02em;
+  max-width:8em;text-wrap:balance;
+}
+.home-hero .cta{margin-top:28px;display:flex;justify-content:flex-end}
+.home-hero .btn-gen{height:52px;padding:0 28px;font-size:15px;border-radius:999px}
+.home-modes{
+  position:relative;z-index:1;margin:0 40px 36px;padding:0;
+  display:grid;gap:12px;
+}
+.home-modes > h2{
+  margin:0;font-size:13px;font-weight:500;letter-spacing:.12em;
+  color:rgba(244,244,240,.55);text-transform:uppercase;padding:0 4px;
+}
+.mode-rows{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.mode-row{
+  display:grid;grid-template-columns:44px 1fr;grid-template-rows:auto auto;column-gap:14px;row-gap:4px;
+  align-items:center;text-align:left;padding:18px 18px 18px 16px;border-radius:16px;
+  background:rgba(20,22,21,.42);border:1px solid rgba(255,255,255,.12);
+  color:#F4F4F0;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  transition:border-color .2s,background .2s,transform .2s;
+}
+.mode-row:hover{background:rgba(20,22,21,.58);border-color:rgba(232,185,129,.55);transform:translateY(-1px)}
+.mode-row .ic{
+  grid-row:1 / span 2;width:44px;height:44px;border-radius:12px;
+  display:grid;place-items:center;background:rgba(232,185,129,.14);color:#E8B981;
+}
+.mode-row .ic svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.mode-row b{font-size:16px;font-weight:600;letter-spacing:.01em;line-height:1.3}
+.mode-row span{font-size:13px;line-height:1.4;color:rgba(244,244,240,.62)}
+@keyframes homeRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.stage[data-w="390"] .pub-nav{padding:0 16px;height:56px}
+.stage[data-w="390"] .home-hero{padding:80px 20px 24px;max-width:none}
+.stage[data-w="390"] .home-hero h1{font-size:36px;max-width:none}
+.stage[data-w="390"] .home-modes{margin:0 12px 20px}
+.stage[data-w="390"] .mode-rows{grid-template-columns:1fr}
+
+/* AUTH — cinematic full-bleed video; quiet type form, no opaque card */
+.view-auth{display:none;background:#0B0C0C;overflow:hidden}
+.stage[data-page="login"] .view-auth,
+.stage[data-page="register"] .view-auth{
+  display:block;position:absolute;inset:0;width:100%;height:100%;overflow:hidden;background:#0B0C0C;
+}
+.auth-bg{position:absolute;inset:0;z-index:0;width:100%;height:100%}
+.auth-bg video,.auth-bg img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:58% center;
+}
+.auth-bg::after{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:
+    radial-gradient(90% 80% at 78% 50%, rgba(8,9,9,.28) 0%, transparent 70%),
+    linear-gradient(90deg, transparent 48%, rgba(8,9,9,.22) 78%, rgba(8,9,9,.4) 100%),
+    linear-gradient(180deg, rgba(8,9,9,.18) 0%, transparent 28%, rgba(8,9,9,.2) 100%);
+}
+.auth-panel{
+  position:absolute;z-index:2;top:0;right:0;bottom:0;
+  width:min(340px,36%);
+  padding:0 56px 0 20px;
+  display:flex;flex-direction:column;justify-content:center;
+  color:#F7F6F2;background:transparent;border:0;box-shadow:none;
+}
+.auth-lead-row{
+  display:flex;flex-wrap:nowrap;align-items:baseline;gap:12px;
+  margin:0 0 22px;min-height:1.2em;
+}
+.auth-panel .auth-lead,
+.s2v-art{
+  margin:0;font-size:18px;font-weight:500;letter-spacing:.04em;
+  color:#FFF;line-height:1.2;white-space:nowrap;
+}
+.s2v-art{
+  display:inline-flex;align-items:baseline;
+  font-family:var(--fb);user-select:none;opacity:.78;
+}
+.s2v-art .t2{color:#E8B981;font-weight:600;padding:0 .02em}
+.auth-panel .field{margin:0 0 18px;gap:6px;display:flex;flex-direction:column}
+.auth-panel .field label{
+  color:rgba(247,246,242,.62);font-weight:400;font-size:12px;letter-spacing:.08em;
+}
+.auth-panel .field-row{
+  display:flex;align-items:stretch;gap:0;
+  border-bottom:1px solid rgba(255,255,255,.28);
+  transition:border-color .2s;
+}
+.auth-panel .field-row:focus-within{border-bottom-color:#E8B981}
+.auth-panel .field input{
+  flex:1;min-width:0;height:42px;padding:0;border:0;border-radius:0;
+  background:transparent;color:#FFF;
+  border-bottom:1px solid rgba(255,255,255,.28);
+  box-shadow:none;font-size:15px;letter-spacing:.01em;
+  transition:border-color .2s;
+}
+.auth-panel .field-row input{
+  border-bottom:0;height:42px;
+}
+.auth-panel .field input:focus{
+  outline:none;border-bottom-color:#E8B981;
+  box-shadow:none;
+}
+.auth-panel .field-row input:focus{border-bottom-color:transparent}
+.auth-panel .field input::placeholder{color:rgba(247,246,242,.32)}
+.auth-panel .pwd-toggle,
+.auth-panel .code-send{
+  flex:none;align-self:center;height:32px;padding:0 2px 0 10px;
+  border:0;border-radius:0;background:none;color:rgba(247,246,242,.7);
+  font:500 12px/1 var(--fb);letter-spacing:.04em;cursor:pointer;white-space:nowrap;
+}
+.auth-panel .pwd-toggle{padding:0 0 0 8px;color:rgba(247,246,242,.55)}
+.auth-panel .pwd-toggle svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;display:block}
+.auth-panel .pwd-toggle:hover,.auth-panel .code-send:hover{color:#E8B981}
+.auth-panel .code-send:disabled{color:rgba(247,246,242,.38);cursor:default}
+.auth-panel .check{
+  display:flex;gap:10px;align-items:flex-start;
+  color:rgba(247,246,242,.7);margin:4px 0 28px;font-size:12.5px;line-height:1.5;
+}
+.check input{margin-top:3px;accent-color:#E8B981}
+.auth-actions{display:flex;flex-direction:column;align-items:stretch;gap:16px;margin-top:8px}
+.auth-panel .btn-gen{
+  width:100%;height:48px;border-radius:999px;
+  background:#E8B981;color:#1E1A14;font-weight:500;font-size:15px;letter-spacing:.04em;
+  box-shadow:none;
+}
+.auth-panel .btn-gen:hover{filter:brightness(1.04)}
+.auth-panel .auth-switch{
+  text-align:center;font-size:13px;color:rgba(247,246,242,.58);
+}
+.auth-panel .auth-switch button{
+  color:#F7F6F2;font-weight:500;padding:0;margin-left:6px;
+  border-bottom:1px solid rgba(232,185,129,.7);
+  border-radius:0;background:none;
+}
+.auth-panel .auth-switch button:hover{color:#E8B981}
+.auth-login,.auth-register{display:none}
+.stage[data-page="login"] .auth-login,.stage[data-page="register"] .auth-register{display:block}
+.stage[data-w="390"] .auth-panel{
+  left:0;right:0;top:auto;bottom:0;width:100%;height:auto;
+  max-height:none;padding:28px 22px 36px;justify-content:flex-end;
+}
+.stage[data-w="390"] .auth-lead-row{margin-bottom:18px;gap:10px}
+.stage[data-w="390"] .auth-panel .auth-lead,
+.stage[data-w="390"] .s2v-art{font-size:16px}
+.stage[data-w="390"] .auth-bg::after{
+  background:
+    linear-gradient(180deg, transparent 25%, rgba(8,9,9,.5) 58%, rgba(8,9,9,.78) 100%);
+}
+.stage[data-w="390"] .auth-bg video{object-position:center 30%}
+
+/* OVERVIEW / WALLET / HELP / PROFILE */
+.ov-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+.ov-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.ov-mode{padding:16px;border-radius:14px;background:var(--surface);border:1px solid var(--line);text-align:left;box-shadow:var(--shadow-soft)}
+.ov-mode b{display:block;font-size:14px;margin-bottom:4px}.ov-mode span{font-size:12px;color:var(--muted)}
+.ov-mode:hover{border-color:#E7C9A0}
+.list{display:flex;flex-direction:column;gap:10px}
+.list-item{display:flex;gap:12px;align-items:center;padding:12px;border-radius:12px;background:var(--chip)}
+.list-item img{width:64px;height:40px;object-fit:cover;border-radius:8px}
+.list-item .t{flex:1;min-width:0}.list-item .t b{display:block;font-size:13px;font-weight:500}.list-item .t span{font-size:11px;color:var(--muted)}
+.badge-s{display:inline-flex;height:22px;padding:0 8px;border-radius:999px;background:#E7F6EE;color:var(--success);font-size:11px;align-items:center}
+.badge-w{background:#FFF3E0;color:#A66A1C}
+.money{font:500 28px/1.1 var(--fm)}.muted{color:var(--muted);font-size:13px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th,.table td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:left}
+.table th{color:var(--muted);font-weight:500;font-size:12px}
+.notice{padding:12px 14px;border-radius:12px;background:#FFF7EC;border:1px solid #F0D7B0;color:#8A5A22;font-size:13px;margin-bottom:14px}
+.stage[data-w="390"] .ov-grid{grid-template-columns:1fr}.stage[data-w="390"] .ov-modes{grid-template-columns:1fr}
+.stage[data-w="390"] .main .page-pad{padding:16px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="review">
+  <strong>Sub2Video 设计套件</strong>
+  <div class="seg" id="pageSeg" role="group" aria-label="页面">
+    <button type="button" data-page="home">官网</button>
+    <button type="button" class="on" data-page="create">创作</button>
+    <button type="button" data-page="overview">概览</button>
+    <button type="button" data-page="wallet">钱包</button>
+    <button type="button" data-page="help">帮助</button>
+    <button type="button" data-page="profile">资料</button>
+    <button type="button" data-page="login">登录</button>
+    <button type="button" data-page="register">注册</button>
+  </div>
+  <div class="seg" id="widthSeg" role="group" aria-label="视口">
+    <button type="button" class="on" data-w="1440">1440</button>
+    <button type="button" data-w="390">390</button>
+  </div>
+  <button type="button" class="reset" id="resetCritical">创作关键态</button>
+  <span class="hint">浅色商业 · 示例数据 · 未接后端</span>
+</div>
+
+<div class="stage-wrap">
+  <div class="stage" id="stage" data-page="create" data-w="1440">
+
+    <!-- HOME -->
+    <div class="view view-home">
+      <nav class="pub-nav">
+        <div class="logo">Sub<i>2</i>Video</div>
+        <div class="nav-right">
+          <button type="button" class="link-quiet" data-go="login">登录</button>
+          <button type="button" class="btn-gen" data-go="create" style="height:36px;padding:0 14px;font-size:13px">开始创作</button>
+        </div>
+      </nav>
+      <section class="home-film" aria-label="官网首屏">
+        <div class="home-film-media">
+          <video id="homeVideo" autoplay muted loop playsinline poster="../../../frontend/public/brand/auth/creator-studio-poster.jpg" aria-hidden="true">
+            <source src="../../../frontend/public/brand/auth/creator-studio-loop.mp4" type="video/mp4">
+          </video>
+        </div>
+        <div class="home-hero">
+          <h1>一句话，一个镜头。</h1>
+          <div class="cta">
+            <button type="button" class="btn-gen" data-go="create">开始创作</button>
+          </div>
+        </div>
+        <section class="home-modes" aria-label="三种创作方式">
+          <h2>三种创作方式</h2>
+          <div class="mode-rows">
+            <button type="button" class="mode-row" data-go="create" data-jump="text">
+              <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h10M5 17h8"/></svg></span>
+              <b>文生视频</b><span>只需提示词</span>
+            </button>
+            <button type="button" class="mode-row" data-go="create" data-jump="fl">
+              <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="7" height="12" rx="1.5"/><rect x="14" y="6" width="7" height="12" rx="1.5"/><path d="M10 12h4"/></svg></span>
+              <b>首尾帧</b><span>提示词 + 首帧 + 尾帧</span>
+            </button>
+            <button type="button" class="mode-row" data-go="create" data-jump="multi">
+              <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="7" height="7" rx="1.5"/><rect x="13" y="5" width="7" height="7" rx="1.5"/><rect x="4" y="14" width="7" height="5" rx="1.5"/><rect x="13" y="14" width="7" height="5" rx="1.5"/></svg></span>
+              <b>多图生成</b><span>提示词 + 至少一张参考图</span>
+            </button>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <!-- AUTH -->
+    <div class="view view-auth">
+      <div class="auth-bg" aria-hidden="true">
+        <video id="authVideo" autoplay muted loop playsinline poster="../../../frontend/public/brand/auth/creator-studio-poster.jpg">
+          <source src="../../../frontend/public/brand/auth/creator-studio-loop.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div class="auth-panel">
+        <div class="auth-login">
+          <div class="auth-lead-row">
+            <p class="auth-lead">欢迎回来</p>
+            <span class="s2v-art" aria-hidden="true">Sub<span class="t2">2</span>Video</span>
+          </div>
+          <div class="field"><label for="loginEmail">邮箱</label><input id="loginEmail" type="email" placeholder="name@studio.com" autocomplete="username"></div>
+          <div class="field">
+            <label for="loginPass">密码</label>
+            <div class="field-row">
+              <input id="loginPass" type="password" placeholder="输入密码" autocomplete="current-password">
+              <button type="button" class="pwd-toggle" data-pwd="loginPass" aria-label="显示密码" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="auth-actions">
+            <button type="button" class="btn-gen" data-go="overview">登录</button>
+            <p class="auth-switch">还没有账户？<button type="button" data-go="register">注册</button></p>
+          </div>
+        </div>
+        <div class="auth-register">
+          <div class="auth-lead-row">
+            <p class="auth-lead">开始创作</p>
+            <span class="s2v-art" aria-hidden="true">Sub<span class="t2">2</span>Video</span>
+          </div>
+          <div class="field"><label for="regEmail">邮箱</label><input id="regEmail" type="email" placeholder="name@studio.com" autocomplete="email"></div>
+          <div class="field">
+            <label for="regCode">邮箱验证码</label>
+            <div class="field-row">
+              <input id="regCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 位验证码" autocomplete="one-time-code">
+              <button type="button" class="code-send" id="sendRegCode">发送验证码</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="regPass">密码</label>
+            <div class="field-row">
+              <input id="regPass" type="password" placeholder="至少 8 位" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" data-pwd="regPass" aria-label="显示密码" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="regPass2">确认密码</label>
+            <div class="field-row">
+              <input id="regPass2" type="password" placeholder="再输入一次" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" data-pwd="regPass2" aria-label="显示密码" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="tos"> 我已阅读并同意服务条款与隐私说明</label>
+          <div class="auth-actions">
+            <button type="button" class="btn-gen" id="regSubmit">创建账户</button>
+            <p class="auth-switch">已有账户？<button type="button" data-go="login">登录</button></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- APP SHELL -->
+    <div class="view view-app">
+      <div class="app">
+        <aside class="side">
+          <div class="logo">Sub<i>2</i>Video</div>
+          <nav class="nav" id="sideNav">
+            <button type="button" data-page="overview"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>首页概览</button>
+            <button type="button" data-page="create" class="on"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>创作</button>
+            <button type="button" data-page="create"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m8 13 2.5-2.5L14 14l2-2 2 2"/></svg>广场</button>
+            <button type="button" data-page="overview"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h10"/></svg>任务</button>
+            <button type="button" data-page="overview"><svg viewBox="0 0 24 24"><path d="M4 8h6l2-2h8v12H4z"/></svg>资产</button>
+            <button type="button" data-page="wallet"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M4 10h16"/></svg>钱包</button>
+            <button type="button" data-page="help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M9.5 9.5h.01M14.5 9.5h.01M9 14c.8 1.1 2 1.7 3 1.7s2.2-.6 3-1.7"/></svg>帮助与工单</button>
+          </nav>
+          <div class="proj"><h4>最近作品</h4><p>暂无进行中的作品工程</p></div>
+          <button type="button" class="user" data-page="profile"><div class="avatar">CF</div><span>创作者账户</span></button>
+        </aside>
+
+        <div class="main">
+          <div class="m-top">
+            <strong style="font:650 15px var(--fb)">Sub2Video</strong>
+            <span class="bal">余额 <b>128.00</b></span>
+          </div>
+          <div class="topbar"><span class="bal">创作余额 <b>¥128.00</b> · 示例</span></div>
+
+          <!-- CREATE PANEL -->
+          <div class="panel on" id="panel-create">
+            <div class="status-toast" id="toast" role="status"></div>
+            <header class="hero-title">
+              <h1>和 Sub2Video 聊聊<em>这一镜</em></h1>
+              <div class="tabs"><button type="button" class="on">创作</button><button type="button" disabled title="导演台在作品内进入">导演台</button></div>
+            </header>
+            <section class="composer" id="composer">
+              <label class="sr" for="prompt">镜头描述</label>
+              <textarea id="prompt" placeholder="描述你想要的镜头。输入 @ 可引用已有素材。"></textarea>
+              <div class="slots" id="slots"></div>
+              <div class="bar">
+                <button type="button" class="icon-btn" id="btnPlus" aria-label="上传"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+                <button type="button" class="icon-btn" id="btnAt" aria-label="引用"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M16.5 8.5A5.5 5.5 0 1 0 12 17.5h1.5"/></svg></button>
+                <button type="button" class="chip on" id="btnMode"><span id="modeLabel">首尾帧</span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+                <button type="button" class="chip" id="btnModel"><span id="modelLabel">智能推荐</span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+                <button type="button" class="chip" id="btnPref">创作偏好</button>
+                <div class="spacer"></div>
+                <div class="est warn" id="estBox"><strong id="estMain">还缺尾帧</strong><div class="sub" id="estSub">补齐后才能估价和生成</div></div>
+                <button type="button" class="btn-sec" id="btnEstimate" disabled>估价</button>
+                <button type="button" class="btn-gen" id="btnGen" disabled>生成</button>
+              </div>
+              <div class="pop mode" id="popMode">
+                <button type="button" data-mode="text"><b>文生视频</b><span>只需提示词</span></button>
+                <button type="button" class="on" data-mode="fl"><b>首尾帧生成视频</b><span>提示词 + 首帧 + 尾帧</span></button>
+                <button type="button" data-mode="multi"><b>多图生成视频</b><span>提示词 + 至少一张参考图</span></button>
+              </div>
+              <div class="pop at" id="popAt">
+                <button type="button" data-at="asset">素材库</button>
+                <button type="button" data-at="upload">本地上传</button>
+                <button type="button" data-at="first">设为尾帧（示例）</button>
+              </div>
+              <div class="pop pref" id="popPref">
+                <div class="pref-grid">
+                  <div class="pref-col">
+                    <h3>模型偏好</h3>
+                    <div class="model on" data-model="auto"><div class="t"><b>智能推荐</b><span>按当前方式自动选择可用模型</span></div></div>
+                    <div class="model" data-model="a"><div class="t"><b>示例原厂 A · 型号 H3</b><span>示例占位名</span></div></div>
+                    <div class="model" data-model="b"><div class="t"><b>示例原厂 B · Seedance 2.0</b><span>示例占位名</span></div></div>
+                  </div>
+                  <div class="pref-col">
+                    <h3>画面比例</h3>
+                    <div class="seg2" id="ratioSeg"><button type="button" data-v="16:9">16:9</button><button type="button" class="on" data-v="9:16">9:16</button><button type="button" data-v="1:1" disabled>1:1</button></div>
+                    <h3>分辨率</h3>
+                    <div class="seg3" id="resSeg"><button type="button" data-v="480P">480P</button><button type="button" class="on" data-v="720P">720P</button><button type="button" data-v="1080P">1080P</button></div>
+                    <h3>时长</h3>
+                    <div class="seg3" id="durSeg"><button type="button" data-v="5">5 秒</button><button type="button" class="on" data-v="8">8 秒</button><button type="button" data-v="10">10 秒</button></div>
+                    <h3>音频</h3>
+                    <div class="seg3" id="audSeg"><button type="button" class="on" data-v="off">不使用</button><button type="button" data-v="auto">自动生成</button></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <div class="tools">
+              <button type="button" class="tool" data-jump="text"><span class="ic"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h10M5 17h8"/></svg></span>文生视频</button>
+              <button type="button" class="tool" data-jump="fl"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="7" height="12" rx="1"/><rect x="14" y="6" width="7" height="12" rx="1"/><path d="M10 12h4"/></svg></span>首尾帧</button>
+              <button type="button" class="tool" data-jump="multi"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="7" height="7" rx="1"/><rect x="13" y="5" width="7" height="7" rx="1"/><rect x="4" y="14" width="7" height="5" rx="1"/><rect x="13" y="14" width="7" height="5" rx="1"/></svg></span>多图</button>
+              <button type="button" class="tool" id="toolPlaza"><span class="ic"><svg viewBox="0 0 24 24"><path d="m12 4 2.2 4.5L19 9.2l-3.5 3.4.8 4.9L12 15.2 7.7 17.5l.8-4.9L5 9.2l4.8-.7z"/></svg></span>镜头教程</button>
+            </div>
+            <section class="section">
+              <div class="head"><h2>灵感参考</h2><span class="note">构图参考 · 非生成作品 · 示例</span></div>
+              <div class="cards">
+                <article class="card"><div class="thumb"><img src="../../../frontend/public/brand/auth/iceland-coast.jpg" alt=""><span class="badge">文生 · 参考</span></div><div class="body"><b>海岸建立镜头</b><span>可带入提示词</span></div></article>
+                <article class="card"><div class="thumb"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt=""><span class="badge">首尾帧 · 参考</span></div><div class="body"><b>人物转场</b><span>需自备首尾帧</span></div></article>
+                <article class="card"><div class="thumb"><img src="../../../frontend/public/brand/auth/creator-studio-last.jpg" alt=""><span class="badge">多图 · 参考</span></div><div class="body"><b>产品光影</b><span>至少一张参考图</span></div></article>
+                <article class="card"><div class="thumb"><img src="../../../frontend/public/brand/auth/iceland-coast.jpg" alt="" style="filter:saturate(.7)"><span class="badge">参考</span></div><div class="body"><b>情绪收束</b><span>示例卡片</span></div></article>
+              </div>
+            </section>
+          </div>
+
+          <!-- OVERVIEW -->
+          <div class="panel page-pad" id="panel-overview">
+            <header class="page-h"><h1>首页概览</h1><p>余额、进行中任务、最近结果，以及三种创作入口。</p></header>
+            <div class="ov-modes">
+              <button type="button" class="ov-mode" data-go="create"><b>文生视频</b><span>只需提示词</span></button>
+              <button type="button" class="ov-mode" data-go="create"><b>首尾帧</b><span>提示词 + 双帧</span></button>
+              <button type="button" class="ov-mode" data-go="create"><b>多图生成</b><span>至少一张参考图</span></button>
+            </div>
+            <div class="ov-grid">
+              <div class="card-box">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>最近结果</b><span class="muted">示例</span></div>
+                <div class="list">
+                  <div class="list-item"><img src="../../../frontend/public/brand/auth/iceland-coast.jpg" alt=""><div class="t"><b>海岸建立镜头</b><span>文生 · 8 秒 · 刚刚</span></div><span class="badge-s">已交付</span></div>
+                  <div class="list-item"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt=""><div class="t"><b>人物转场</b><span>首尾帧 · 排队中</span></div><span class="badge-w">进行中</span></div>
+                </div>
+              </div>
+              <div class="card-box">
+                <div class="muted">创作余额</div>
+                <div class="money" style="margin:8px 0 6px">¥128.00</div>
+                <p class="muted" style="margin:0 0 14px">在线充值未开放 · 可查看流水</p>
+                <button type="button" class="btn-sec" data-go="wallet">打开钱包</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- WALLET -->
+          <div class="panel page-pad" id="panel-wallet">
+            <header class="page-h"><h1>钱包</h1><p>真实余额与流水示意。不提供订阅或 API 套餐。</p></header>
+            <div class="notice">在线充值尚未开放。如需兑换或异常退款，请走帮助与工单。</div>
+            <div class="ov-grid" style="margin-bottom:14px">
+              <div class="card-box"><div class="muted">可用余额</div><div class="money" style="margin-top:8px">¥128.00</div></div>
+              <div class="card-box"><div class="muted">本月消耗（示例）</div><div class="money" style="margin-top:8px">¥36.40</div></div>
+            </div>
+            <div class="card-box">
+              <b>流水</b>
+              <table class="table" style="margin-top:8px">
+                <thead><tr><th>时间</th><th>类型</th><th>说明</th><th>金额</th></tr></thead>
+                <tbody>
+                  <tr><td>10-13 14:02</td><td>扣费</td><td>生成任务 · 示例</td><td style="font-family:var(--fm)">-¥4.80</td></tr>
+                  <tr><td>10-12 09:18</td><td>退款</td><td>失败退回 · 示例</td><td style="font-family:var(--fm);color:var(--success)">+¥4.80</td></tr>
+                  <tr><td>10-10 20:41</td><td>兑换</td><td>兑换码入账 · 示例</td><td style="font-family:var(--fm);color:var(--success)">+¥100.00</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- HELP -->
+          <div class="panel page-pad" id="panel-help">
+            <header class="page-h"><h1>帮助与工单</h1><p>生成异常、退款、充值与售前请求。</p></header>
+            <div class="ov-grid">
+              <div class="card-box">
+                <b>提交工单</b>
+                <div class="field" style="margin-top:12px"><label>类型</label>
+                  <div class="chip-row">
+                    <button type="button" class="pill on">生成异常</button>
+                    <button type="button" class="pill">退款</button>
+                    <button type="button" class="pill">充值</button>
+                    <button type="button" class="pill">售前</button>
+                  </div>
+                </div>
+                <div class="field"><label for="ticket">描述</label><textarea id="ticket" placeholder="说明发生了什么、对应任务时间等"></textarea></div>
+                <button type="button" class="btn-gen" id="ticketSend">提交（示意）</button>
+              </div>
+              <div class="card-box">
+                <b>我的工单</b>
+                <div class="list" style="margin-top:12px">
+                  <div class="list-item"><div class="t"><b>#1042 生成失败咨询</b><span>处理中 · 昨天</span></div><span class="badge-w">处理中</span></div>
+                  <div class="list-item"><div class="t"><b>#1011 退款到账确认</b><span>已关闭 · 上周</span></div><span class="badge-s">已关闭</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PROFILE -->
+          <div class="panel page-pad" id="panel-profile">
+            <header class="page-h"><h1>个人资料</h1><p>从右上头像进入，不占高频主导航。</p></header>
+            <div class="card-box" style="max-width:520px">
+              <div class="field"><label>显示名</label><input value="Chris" readonly></div>
+              <div class="field"><label>邮箱</label><input value="chris@example.com" readonly><span class="hint">正式环境支持验证码改绑</span></div>
+              <div class="field"><label>新密码</label><input type="password" placeholder="留空则不修改"></div>
+              <div class="auth-actions">
+                <button type="button" class="btn-gen" id="saveProfile">保存（示意）</button>
+                <button type="button" class="btn-sec" data-go="login">退出登录</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="backdrop" id="backdrop"></div>
+      <nav class="m-nav" id="mNav">
+        <button type="button" data-page="overview"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5V20h-5v-6H9v6H4z"/></svg>概览</button>
+        <button type="button" data-page="create" class="on"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>创作</button>
+        <button type="button" data-page="create"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></svg>广场</button>
+        <button type="button" data-page="overview"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h10"/></svg>任务</button>
+        <button type="button" data-page="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 19c1.5-3 4-4.5 7-4.5S17.5 16 19 19"/></svg>我的</button>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const APP_PAGES = new Set(['create','overview','wallet','help','profile']);
+  const state = { mode:'fl', hasFirst:true, hasLast:false, multiCount:0, model:'auto', ratio:'9:16', res:'720P', dur:8, audio:'off', estimate:null, dirtyReason:null };
+  const $ = (s,el=document)=>el.querySelector(s);
+  const $$ = (s,el=document)=>[...el.querySelectorAll(s)];
+  const stage = $('#stage');
+  const toast = $('#toast');
+  const slots = $('#slots');
+  const estBox = $('#estBox'); const estMain = $('#estMain'); const estSub = $('#estSub');
+  const btnEstimate = $('#btnEstimate'); const btnGen = $('#btnGen');
+  const modeLabel = $('#modeLabel'); const modelLabel = $('#modelLabel');
+  const popMode = $('#popMode'); const popPref = $('#popPref'); const popAt = $('#popAt'); const backdrop = $('#backdrop');
+  const modeNames = { text:'文生视频', fl:'首尾帧', multi:'多图' };
+  const modelNames = { auto:'智能推荐', a:'示例原厂 A', b:'示例原厂 B' };
+
+  function syncMedia(){
+    const homeV = $('#homeVideo'); const authV = $('#authVideo');
+    const page = stage.dataset.page;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (homeV){ if(page==='home' && !reduce) homeV.play().catch(()=>{}); else homeV.pause(); }
+    if (authV){ if((page==='login'||page==='register') && !reduce) authV.play().catch(()=>{}); else authV.pause(); }
+  }
+
+  function go(page){
+    stage.dataset.page = page;
+    $$('#pageSeg button').forEach(b=>b.classList.toggle('on', b.dataset.page===page));
+    $$('#sideNav button').forEach(b=>b.classList.toggle('on', b.dataset.page===page));
+    $$('#mNav button').forEach(b=>b.classList.toggle('on', b.dataset.page===page));
+    $$('.panel').forEach(p=>p.classList.remove('on'));
+    if (APP_PAGES.has(page)) {
+      const panel = $(`#panel-${page}`);
+      if (panel) panel.classList.add('on');
+    }
+    closePops();
+    $('#resetCritical').style.display = page==='create' ? '' : 'none';
+    syncMedia();
+  }
+
+  function materialsOk(){ if(state.mode==='text') return true; if(state.mode==='fl') return state.hasFirst&&state.hasLast; return state.multiCount>=1; }
+  function missingLabel(){ if(state.mode==='fl'&&!state.hasLast) return '还缺尾帧'; if(state.mode==='fl'&&!state.hasFirst) return '还缺首帧'; if(state.mode==='multi'&&state.multiCount<1) return '还缺参考图'; return null; }
+  function clearEstimate(reason){ if(state.estimate!=null||state.dirtyReason){ state.estimate=null; state.dirtyReason=reason||'参数已变更'; } else if(reason){ state.dirtyReason=reason; } render(); }
+  function closePops(){ popMode.classList.remove('open'); popPref.classList.remove('open'); popAt.classList.remove('open'); backdrop.classList.remove('show'); }
+  function openPop(el){ const was=el.classList.contains('open'); closePops(); if(!was){ el.classList.add('open'); backdrop.classList.add('show'); } }
+  function showToast(msg){ toast.textContent=msg; toast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),2600); }
+
+  function render(){
+    if(state.mode==='text'){ slots.classList.remove('show'); slots.innerHTML=''; }
+    else if(state.mode==='fl'){
+      slots.classList.add('show'); slots.innerHTML='';
+      const first=document.createElement('button'); first.type='button'; first.className='slot'+(state.hasFirst?' has':' need');
+      first.innerHTML=state.hasFirst?`<img src="../../../frontend/public/brand/auth/iceland-coast.jpg" alt=""><span class="cap">首帧</span>`:`添加首帧`;
+      first.onclick=()=>{ state.hasFirst=true; clearEstimate('你更新了首帧'); };
+      const last=document.createElement('button'); last.type='button'; last.className='slot'+(state.hasLast?' has':' need');
+      last.innerHTML=state.hasLast?`<img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt=""><span class="cap">尾帧</span>`:`添加尾帧<span class="cap">还缺尾帧</span>`;
+      last.onclick=()=>{ state.hasLast=true; clearEstimate('你更新了尾帧'); showToast('已补尾帧 · 可以估价了'); };
+      slots.append(first,last);
+    } else {
+      slots.classList.add('show'); slots.innerHTML='';
+      for(let i=0;i<Math.max(state.multiCount,1);i++){
+        const filled=i<state.multiCount; const b=document.createElement('button'); b.type='button';
+        b.className='slot'+(filled?' has':' need');
+        b.innerHTML=filled?`<img src="../../../frontend/public/brand/auth/creator-studio-last.jpg" alt=""><span class="cap">图 ${i+1}</span>`:`添加参考图`;
+        b.onclick=()=>{ if(!filled){ state.multiCount=Math.min(4,state.multiCount+1); clearEstimate('你更新了参考图'); showToast('已添加参考图'); } };
+        slots.append(b);
+      }
+    }
+    modeLabel.textContent=modeNames[state.mode]; modelLabel.textContent=modelNames[state.model];
+    $$('#popMode button').forEach(b=>b.classList.toggle('on', b.dataset.mode===state.mode));
+    $$('.model').forEach(m=>m.classList.toggle('on', m.dataset.model===state.model));
+    const miss=missingLabel(); const ok=materialsOk() && $('#prompt').value.trim().length>0;
+    if(!ok){ estBox.classList.add('warn'); estMain.textContent=miss||(!$('#prompt').value.trim()?'先写镜头描述':'素材未齐'); estSub.textContent='补齐后才能估价和生成'; btnEstimate.disabled=true; btnGen.disabled=true; }
+    else if(state.estimate==null){ estBox.classList.toggle('warn',!!state.dirtyReason); estMain.textContent=state.dirtyReason?'旧估价已清除':'素材已齐'; estSub.textContent=state.dirtyReason?`${state.dirtyReason} · 请重新估价`:'先估价，再生成'; btnEstimate.disabled=false; btnGen.disabled=true; }
+    else { estBox.classList.remove('warn'); estMain.textContent=`预估 ¥${state.estimate.toFixed(2)}`; estSub.textContent=`${state.dur} 秒 × ¥0.60/秒 · 示例价格`; btnEstimate.disabled=false; btnGen.disabled=false; }
+  }
+
+  function setMode(mode){ if(state.mode===mode){ closePops(); return; } state.mode=mode; if(mode==='fl'){ state.hasFirst=true; state.hasLast=false; } if(mode==='multi') state.multiCount=0; clearEstimate('你切换了创作方式'); closePops(); showToast('已切换为「'+modeNames[mode]+'」'); go('create'); }
+
+  $$('#pageSeg button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.page)));
+  $$('#widthSeg button').forEach(b=>b.addEventListener('click',()=>{ $$('#widthSeg button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); stage.dataset.w=b.dataset.w; closePops(); }));
+  $$('[data-go]').forEach(b=>b.addEventListener('click',()=>{
+    const jump = b.dataset.jump;
+    go(b.dataset.go);
+    if (jump) setMode(jump);
+  }));
+  $$('#sideNav button, #mNav button, .user[data-page]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.page)));
+
+  $('#resetCritical').addEventListener('click',()=>{ go('create'); state.mode='fl'; state.hasFirst=true; state.hasLast=false; state.estimate=null; state.dirtyReason=null; state.model='auto'; $('#prompt').value='黄昏海岸，人物侧脸回望，镜头缓慢推进，风吹动发丝。'; closePops(); render(); showToast('已回到关键态：首尾帧 · 缺尾帧'); });
+  $('#btnMode').onclick=()=>openPop(popMode); $('#btnPref').onclick=()=>openPop(popPref); $('#btnModel').onclick=()=>openPop(popPref); $('#btnAt').onclick=()=>openPop(popAt);
+  $('#btnPlus').onclick=()=>{ if(state.mode==='fl'){ state.hasLast=true; clearEstimate('你更新了尾帧'); showToast('已通过上传补齐尾帧（示例）'); } else if(state.mode==='multi'){ state.multiCount=Math.min(4,state.multiCount+1); clearEstimate('你更新了参考图'); } else showToast('文生视频不需要上传图片'); };
+  backdrop.onclick=closePops;
+  $$('#popMode button').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+  $$('.tool[data-jump]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.jump)));
+  $('#toolPlaza').onclick=()=>showToast('正式产品跳转广场 / 镜头教程');
+  $$('.model').forEach(m=>m.addEventListener('click',()=>{ state.model=m.dataset.model; clearEstimate('你修改了模型偏好'); render(); }));
+  function bindSeg(id,key){ $$(`#${id} button:not([disabled])`).forEach(b=>b.addEventListener('click',()=>{ $$(`#${id} button`).forEach(x=>x.classList.remove('on')); b.classList.add('on'); state[key]=key==='dur'?Number(b.dataset.v):b.dataset.v; clearEstimate('你修改了创作偏好'); })); }
+  bindSeg('ratioSeg','ratio'); bindSeg('resSeg','res'); bindSeg('durSeg','dur'); bindSeg('audSeg','audio');
+  $$('#popAt button').forEach(b=>b.addEventListener('click',()=>{ if(state.mode==='fl'){ state.hasLast=true; clearEstimate('你通过 @ 引用了素材'); showToast('已将素材设为尾帧（示例）'); } else if(state.mode==='multi'){ state.multiCount=Math.min(4,state.multiCount+1); clearEstimate('你通过 @ 引用了素材'); } else showToast('已引用到描述（示例）'); closePops(); }));
+  $('#prompt').addEventListener('input',()=>{ if(state.estimate!=null) clearEstimate('你修改了镜头描述'); else render(); });
+  btnEstimate.onclick=()=>{ if(!materialsOk()||!$('#prompt').value.trim()) return; state.estimate=+(state.dur*0.6).toFixed(2); state.dirtyReason=null; render(); showToast('估价完成（示例）· 生成才会扣费'); };
+  btnGen.onclick=()=>{ if(!btnGen.disabled) showToast('设计稿示意：正式产品将提交任务'); };
+  $('#ticketSend')?.addEventListener('click',()=>alert('工单提交为示意，未接后端'));
+  $('#saveProfile')?.addEventListener('click',()=>alert('资料保存为示意，未接后端'));
+  const eyeOn='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const eyeOff='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.7 10.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1.3M6.7 6.8C4.2 8.3 2.5 11 2.5 11s3.5 7 9.5 7c1.6 0 3-.3 4.2-.8M14.1 9.1C15.3 9.8 16 11 16 12"/><path d="M9.9 5.2A10.5 10.5 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 3.8"/></svg>';
+  $$('.pwd-toggle').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const input=$('#'+btn.dataset.pwd); if(!input) return;
+      const show=input.type==='password';
+      input.type=show?'text':'password';
+      btn.setAttribute('aria-pressed',String(show));
+      btn.setAttribute('aria-label',show?'隐藏密码':'显示密码');
+      btn.innerHTML=show?eyeOff:eyeOn;
+    });
+  });
+  let codeLeft=0, codeTimer=null;
+  $('#sendRegCode')?.addEventListener('click',()=>{
+    const email=$('#regEmail')?.value.trim();
+    if(!email||!email.includes('@')){ alert('请先填写有效邮箱'); return; }
+    if(codeLeft>0) return;
+    const btn=$('#sendRegCode');
+    codeLeft=60; btn.disabled=true; btn.textContent=codeLeft+'s';
+    codeTimer=setInterval(()=>{
+      codeLeft-=1;
+      if(codeLeft<=0){ clearInterval(codeTimer); codeTimer=null; btn.disabled=false; btn.textContent='发送验证码'; return; }
+      btn.textContent=codeLeft+'s';
+    },1000);
+  });
+  $('#regSubmit')?.addEventListener('click',()=>{
+    if(!$('#tos').checked){ alert('请先勾选条款'); return; }
+    if(!$('#regCode')?.value.trim()){ alert('请填写邮箱验证码'); return; }
+    go('overview');
+  });
+  $$('#panel-help .pill').forEach(p=>p.addEventListener('click',()=>{ $$('#panel-help .pill').forEach(x=>x.classList.remove('on')); p.classList.add('on'); }));
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closePops(); });
+
+  $('#prompt').value='黄昏海岸，人物侧脸回望，镜头缓慢推进，风吹动发丝。';
+  go('create');
+  render();
+})();
+</script>
+</body>
+</html>

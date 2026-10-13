@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
 
 for (const surface of [
-  { name: 'auth-login', path: '/auth/login', title: '登录 Sub2Video' },
-  { name: 'auth-register', path: '/auth/register', title: '创建账号' },
+  { name: 'auth-login', path: '/auth/login', title: '欢迎回来' },
+  { name: 'auth-register', path: '/auth/register', title: '开始创作' },
 ]) {
   test(`${surface.name} uses the commercial film entrance`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })

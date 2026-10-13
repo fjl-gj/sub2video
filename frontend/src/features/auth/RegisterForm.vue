@@ -98,7 +98,12 @@ onBeforeUnmount(() => { codeRequest += 1; stopCountdown() })
 
 <template>
   <div class="s2v-auth-form">
-    <header class="s2v-auth-form-header"><p class="s2v-auth-form-eyebrow">每个故事，都值得被看见</p><h1>创建账号</h1><p>从第一镜开始，慢慢拍出你的故事。</p></header>
+    <header class="s2v-auth-form-header">
+      <div class="s2v-auth-lead-row">
+        <h1>开始创作</h1>
+        <span class="s2v-auth-wordmark" aria-hidden="true">Sub<span>2</span>Video</span>
+      </div>
+    </header>
     <div v-if="settingsState === 'loading'" class="s2v-auth-status" role="status">正在读取注册设置…</div>
     <div v-else-if="settingsState === 'error'" class="s2v-auth-status" role="alert">无法获取注册设置，请重试。<button class="s2v-auth-text-link" type="button" @click="loadSettings">重新加载注册设置</button></div>
     <div v-else-if="!registrationOpen" class="s2v-auth-status" role="status">新账号注册暂未开放，已有账号可以继续登录。</div>

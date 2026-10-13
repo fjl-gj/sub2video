@@ -40,9 +40,10 @@ async function login() {
 <template>
   <div class="s2v-auth-form">
     <header class="s2v-auth-form-header">
-      <p class="s2v-auth-form-eyebrow">继续你的下一镜</p>
-      <h1>登录 Sub2Video</h1>
-      <p>你的灵感、素材和作品，都在这里。</p>
+      <div class="s2v-auth-lead-row">
+        <h1>欢迎回来</h1>
+        <span class="s2v-auth-wordmark" aria-hidden="true">Sub<span>2</span>Video</span>
+      </div>
     </header>
     <div v-if="route.query.reason === 'session-expired'" class="s2v-auth-status" role="status">登录已过期，请重新登录后继续。</div>
     <div v-else-if="route.query.reason === 'session-ended'" class="s2v-auth-status" role="status">账号登录状态已在其他页面变更，请重新登录。</div>

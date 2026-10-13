@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { seedSurfaceData } from './fixtures/surface-data'
 
 const surfaces = [
-  { name: 'journey-product-home', path: '/', auth: false, content: '从一个镜头开始。' },
+  { name: 'journey-product-home', path: '/', auth: false, content: '一句话，一个镜头。' },
   { name: 'journey-guide-detail', path: '/guides/coast-letter', auth: false, content: '海岸来信' },
   { name: 'journey-guided-create', path: '/app/create?guide=coast-letter&shot=arrival', auth: true, content: '海岸来信' },
   { name: 'journey-result-detail', path: '/app/works/tsk_visual_coast', auth: true, content: '海岸清晨 · 镜头 03' },

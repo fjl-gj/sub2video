@@ -168,7 +168,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     const privateCalls: string[] = []
     page.on('request', (request) => { if (request.url().includes('/api/v1/client/')) privateCalls.push(request.url()) })
     await page.goto(createPath, { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: '登录 Sub2Video', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '欢迎回来', exact: true })).toBeVisible()
     expect(new URL(page.url()).searchParams.get('redirect')).toBe(createPath)
     expect(privateCalls).toEqual([])
   })

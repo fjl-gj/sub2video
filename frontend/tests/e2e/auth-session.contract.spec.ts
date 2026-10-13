@@ -348,7 +348,7 @@ test.describe('authentication session contracts (mocked frontend only)', () => {
     })
     await page.getByLabel('视频时长', { exact: true }).selectOption('10')
     await expect(page).toHaveURL((url) => url.pathname === '/auth/login' && url.searchParams.get('redirect') === destination)
-    await expect(page.getByRole('heading', { name: '登录 Sub2Video', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '欢迎回来', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '用户菜单', exact: true })).toHaveCount(0)
     expect(await storedTokens(page)).toEqual({ accessToken: null, refreshToken: null })
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_session') || '{}').prompt)).toBe(prompt)

@@ -171,7 +171,7 @@ test('a missing poster and video do not hide the login or entrance heading', asy
   await page.goto('/auth/login')
   await expect(page.getByRole('img', { name: authPosterAlt, exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '播放背景影像', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '登录 Sub2Video', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来', exact: true })).toBeVisible()
   if (page.viewportSize()!.width >= 1024) await expect(page.getByRole('heading', { name: /下一幕，\s*由你开场。/ })).toBeVisible()
   await expect(page.getByLabel('邮箱', { exact: true })).toBeEditable()
 })

@@ -9,12 +9,10 @@ import './home.css'
     <section class="s2v-home-hero" aria-labelledby="product-home-title">
       <ProductHeroFilm />
       <div class="s2v-home-hero-content">
-        <h1 id="product-home-title"><span>用文字与图片，</span><span>创作你的下一幕。</span></h1>
+        <h1 id="product-home-title">一句话，一个镜头。</h1>
+        <RouterLink to="/app/create" class="s2v-home-primary-link">开始创作</RouterLink>
       </div>
-      <RouterLink to="/app/create" class="s2v-home-primary-link">开始创作</RouterLink>
-    </section>
-    <div class="s2v-home-content">
       <ProductModeShowcase />
-    </div>
+    </section>
   </div>
 </template>

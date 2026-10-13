@@ -87,7 +87,7 @@ test.describe('Sub2Video live public entrance', () => {
     await page.getByRole('button', { name: '退出登录', exact: true }).click()
     expect((await logoutResponsePromise).ok(), 'Real server-side logout must succeed.').toBe(true)
     await expect(page).toHaveURL((url) => url.pathname === '/auth/login')
-    await expect(page.getByRole('heading', { name: '登录 Sub2Video', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '欢迎回来', exact: true })).toBeVisible()
     expect(await page.evaluate(() => !localStorage.getItem('s2v_access_token') && !localStorage.getItem('s2v_refresh_token')), 'Logout must clear local credentials.').toBe(true)
 
     anonymous = true

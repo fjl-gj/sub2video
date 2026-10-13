@@ -8,11 +8,12 @@ const homePosterUrl = '/brand/auth/creator-studio-poster.jpg'
 const homeFilmUrl = '/brand/auth/creator-studio-loop.mp4'
 const user = { id: 'u_public_home', email: 'home@example.test', displayName: '首页测试', workspaceName: '首页测试工作室', role: 'user', balance: 256 }
 const modes = [
-  { name: '文生视频', inputType: 'text', id: 'mode_text', material: '画面描述', imageNames: [] },
-  { name: '首尾帧生成视频', inputType: 'first_last', id: 'mode_frames', material: '首帧与尾帧', imageNames: ['首帧构图', '尾帧构图'] },
-  { name: '多图生成视频', inputType: 'multi_image', id: 'mode_multi', material: '参考图片', imageNames: ['工作室人物参考', '镜头光影参考'] },
+  { name: '文生视频', inputType: 'text', id: 'mode_text', hint: '只需提示词' },
+  { name: '首尾帧', inputType: 'first_last', id: 'mode_frames', hint: '提示词 + 首帧 + 尾帧' },
+  { name: '多图生成', inputType: 'multi_image', id: 'mode_multi', hint: '提示词 + 至少一张参考图' },
 ] as const
 type HomeMode = typeof modes[number]
+const homeHeadline = '一句话，一个镜头。'
 const options = { durations: [5, 10, 15], resolutions: ['768P', '1080P'], aspectRatios: ['16:9', '9:16'], supportsGeneratedAudio: true, minImages: 1, maxImages: 9, defaultDuration: 5, defaultResolution: '768P' }
 const emptySlot = { uploaded: false, assetId: '', picking: false }
 const draft = {
@@ -62,26 +63,19 @@ async function login(page: Page) {
   await page.getByRole('button', { name: '登录', exact: true }).click()
 }
 
-async function expectModePreview(page: Page, mode: HomeMode) {
-  await expect(page.getByRole('tab', { name: mode.name, exact: true })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('tabpanel')).toHaveCount(1)
-  const panel = page.getByRole('tabpanel')
-  await expect(panel).toBeVisible()
-  await expect(panel).toContainText('创作界面示意')
-  await expect(panel).toContainText(mode.material)
-  await expect(panel.getByText('参考画面', { exact: true })).toBeVisible()
-  for (const name of mode.imageNames) await expect(panel.getByRole('img', { name, exact: true })).toHaveCount(1)
-  for (const other of modes.filter((candidate) => candidate.inputType !== mode.inputType)) {
-    await expect(page.getByRole('tab', { name: other.name, exact: true })).toHaveAttribute('aria-selected', 'false')
-    await expect(page.getByRole('link', { name: `尝试${other.name}`, exact: true })).toHaveCount(0)
-    for (const name of other.imageNames) await expect(panel.getByRole('img', { name, exact: true })).toHaveCount(0)
+async function expectModeRows(page: Page) {
+  const section = page.locator('#modes')
+  await expect(section.getByRole('heading', { name: '三种创作方式', level: 2 })).toBeVisible()
+  for (const mode of modes) {
+    const enter = section.getByRole('link', { name: `用${mode.name}开始创作`, exact: true })
+    await expect(enter).toBeVisible()
+    await expect(enter).toContainText(mode.name)
+    await expect(enter).toContainText(mode.hint)
+    await expect(enter).toHaveAttribute('href', `/app/create?mode=${mode.inputType}`)
   }
-  const enter = panel.getByRole('link', { name: `尝试${mode.name}`, exact: true })
-  await expect(enter).toBeVisible()
-  await expect(enter).toHaveAttribute('href', `/app/create?mode=${mode.inputType}`)
-  // This is an explanatory preview, not a second live creation form.
-  await expect(panel.getByRole('textbox')).toHaveCount(0)
-  await expect(panel.locator('input[type="file"], video')).toHaveCount(0)
+  await expect(section.getByRole('textbox')).toHaveCount(0)
+  await expect(section.locator('input[type="file"], video')).toHaveCount(0)
+  await expect(page.getByRole('tablist')).toHaveCount(0)
 }
 
 async function expectPosterOnly(page: Page, videoRequests: string[]) {
@@ -110,18 +104,22 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
         const header = document.querySelector<HTMLElement>('.s2v-public-header')!
         const title = document.querySelector<HTMLElement>('.s2v-home-hero h1')!
         const action = document.querySelector<HTMLElement>('.s2v-home-primary-link')!
-        const content = document.querySelector<HTMLElement>('.s2v-home-content')!
         const modes = document.querySelector<HTMLElement>('#modes')!
         const footer = document.querySelector<HTMLElement>('.s2v-public-footer')!
         const rect = (element: HTMLElement) => {
           const box = element.getBoundingClientRect()
           return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, height: box.height }
         }
+        const footerInner = () => {
+          const box = footer.getBoundingClientRect()
+          const style = getComputedStyle(footer)
+          return { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) }
+        }
         return {
           viewport: document.documentElement.clientWidth,
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-          hero: rect(hero), poster: rect(poster), header: rect(header), modes: rect(modes), footer: rect(footer),
-          title: rect(title), action: rect(action), content: rect(content),
+          hero: rect(hero), poster: rect(poster), header: rect(header), modes: rect(modes), footer: footerInner(),
+          title: rect(title), action: rect(action),
           titleAlign: getComputedStyle(title).textAlign,
           fit: getComputedStyle(poster).objectFit,
           radius: getComputedStyle(hero).borderRadius,
@@ -143,11 +141,10 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
       expect(Math.abs(geometry.modes.right - geometry.footer.right)).toBeLessThanOrEqual(1)
       expect(geometry.overflow).toBeLessThanOrEqual(1)
       expect(geometry.titleAlign, 'The artistic headline is aligned to the right.').toBe('right')
-      expect(Math.abs(geometry.title.right - geometry.content.right), 'The headline uses the right foreground axis.').toBeLessThanOrEqual(1)
-      expect(Math.abs(geometry.action.right - geometry.content.right), 'Creation occupies the former bottom-right media-control position.').toBeLessThanOrEqual(1)
-      expect(geometry.hero.bottom - geometry.action.bottom).toBeGreaterThanOrEqual(width < 768 ? 24 : 32)
-      expect(geometry.hero.bottom - geometry.action.bottom).toBeLessThanOrEqual(width < 768 ? 25 : 33)
-      expect(geometry.action.top - geometry.title.bottom, 'The headline leaves room before the bottom action.').toBeGreaterThanOrEqual(24)
+      expect(Math.abs(geometry.title.right - geometry.action.right), 'Headline and primary action share the right axis.').toBeLessThanOrEqual(1)
+      expect(geometry.action.top - geometry.title.bottom, 'The headline leaves room before the creation action.').toBeGreaterThanOrEqual(24)
+      expect(geometry.modes.top - geometry.action.bottom, 'Mode rows sit below the creation action.').toBeGreaterThanOrEqual(12)
+      expect(geometry.hero.bottom - geometry.modes.bottom).toBeGreaterThanOrEqual(width < 768 ? 20 : 24)
       await expectPosterOnly(page, videoRequests)
       await expect(page.locator('.s2v-home-hero').getByRole('link', { name: '开始创作', exact: true }).locator('svg')).toHaveCount(0)
       await page.locator('.s2v-home-hero').getByRole('link', { name: '开始创作', exact: true }).click({ trial: true })
@@ -182,7 +179,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     await expect(back).toHaveAttribute('href', '/')
     await back.click()
     await expect(page).toHaveURL((url) => url.pathname === '/' && url.hash === '')
-    await expect(page.getByRole('heading', { name: '从一个镜头开始。', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: homeHeadline, exact: true })).toBeVisible()
     await page.goto('/guides/unknown-tutorial', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: '未找到这个镜头教程', exact: true })).toBeVisible()
     await page.getByRole('link', { name: '查看入门教程', exact: true }).click()
@@ -196,17 +193,11 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
   test('is public and does not read private data, estimate, or create a task', async ({ page }) => {
     const { unmatchedRequests, privateRequests, mutations, videoRequests } = await seedPublicHome(page)
     await page.goto('/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: /^用文字与图片，\s*创作你的下一幕。$/, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: homeHeadline, exact: true, level: 1 })).toBeVisible()
     const hero = page.locator('.s2v-home-hero')
-    await expect(hero.getByRole('link')).toHaveCount(1)
     await expect(hero.getByRole('link', { name: '开始创作', exact: true })).toHaveAttribute('href', '/app/create')
     await expect(hero.getByRole('link', { name: '开始创作', exact: true }).locator('svg')).toHaveCount(0)
-    await expect(page.locator('#modes').getByRole('heading', { name: '从一个镜头开始。', level: 2 })).toBeVisible()
-    await expect(page.getByRole('tablist')).toHaveCount(1)
-    for (const mode of modes) {
-      await page.getByRole('tab', { name: mode.name, exact: true }).click()
-      await expectModePreview(page, mode)
-    }
+    await expectModeRows(page)
     await expect(page.locator('.s2v-public-footer').getByRole('link', { name: '镜头教程', exact: true })).toHaveAttribute('href', '/guides/coast-letter')
     await expect(page.locator('.s2v-public-footer').getByRole('link', { name: '帮助', exact: true })).toHaveAttribute('href', '/app/tickets')
     await expectPosterOnly(page, videoRequests)
@@ -242,9 +233,8 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
       await page.addInitScript((saved) => { localStorage.setItem('sub2video.create-draft.u_public_home', JSON.stringify(saved)) }, draft)
       await page.goto('/', { waitUntil: 'networkidle' })
       expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_public_home') || '{}'))).toEqual(draft)
-      await page.getByRole('tab', { name: mode.name, exact: true }).click()
-      await expectModePreview(page, mode)
-      await page.getByRole('link', { name: `尝试${mode.name}`, exact: true }).click()
+      await expectModeRows(page)
+      await page.getByRole('link', { name: `用${mode.name}开始创作`, exact: true }).click()
       const destination = `/app/create?mode=${mode.inputType}`
       await expect(page).toHaveURL((url) => url.pathname === '/auth/login' && url.searchParams.get('redirect') === destination)
       expect(privateRequests).toEqual([])
@@ -262,74 +252,22 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     })
   }
 
-  test('switches the single explanatory mode panel by keyboard without reading private data or replacing drafts', async ({ page }) => {
+  test('mode entry links stay keyboard-focusable without reading private data or replacing drafts', async ({ page }) => {
     const { unmatchedRequests, privateRequests, mutations } = await seedPublicHome(page)
     await page.addInitScript((saved) => { localStorage.setItem('sub2video.create-draft.u_public_home', JSON.stringify(saved)) }, draft)
     await page.goto('/', { waitUntil: 'networkidle' })
-    const text = page.getByRole('tab', { name: modes[0].name, exact: true })
-    const frames = page.getByRole('tab', { name: modes[1].name, exact: true })
-    const images = page.getByRole('tab', { name: modes[2].name, exact: true })
-    await text.focus()
-    await expectModePreview(page, modes[0])
-    await text.press('ArrowRight')
-    await expect(frames).toBeFocused()
-    await expectModePreview(page, modes[1])
-    await frames.press('End')
-    await expect(images).toBeFocused()
-    await expectModePreview(page, modes[2])
-    await images.press('ArrowLeft')
-    await expect(frames).toBeFocused()
-    await expectModePreview(page, modes[1])
-    await frames.press('Home')
-    await expect(text).toBeFocused()
-    await expectModePreview(page, modes[0])
+    await expectModeRows(page)
+    const first = page.getByRole('link', { name: `用${modes[0].name}开始创作`, exact: true })
+    await first.focus()
+    await expect(first).toBeFocused()
+    await first.press('Tab')
+    await expect(page.getByRole('link', { name: `用${modes[1].name}开始创作`, exact: true })).toBeFocused()
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_public_home') || '{}'))).toEqual(draft)
     expect(new URL(page.url()).pathname).toBe('/')
     expect(privateRequests).toEqual([])
     expect(mutations).toEqual([])
     expect(unmatchedRequests).toEqual([])
   })
-
-  for (const failure of [
-    { name: '403', status: 403, contentType: 'text/plain', body: 'Reference image forbidden in the frontend fixture.' },
-    { name: 'invalid image bytes', status: 200, contentType: 'image/jpeg', body: 'This fixture is intentionally not a decodable JPEG.' },
-  ]) {
-    test(`a ${failure.name} reference image keeps mode navigation and creation usable`, async ({ page }) => {
-      const { unmatchedRequests, privateRequests, mutations } = await seedPublicHome(page)
-      const failedImageRequests: string[] = []
-      await page.route('**/brand/auth/creator-studio-last.jpg', async (route) => {
-        failedImageRequests.push(route.request().url())
-        await route.fulfill({ status: failure.status, contentType: failure.contentType, body: failure.body })
-      })
-      await page.goto('/', { waitUntil: 'networkidle' })
-      const frames = page.getByRole('tab', { name: '首尾帧生成视频', exact: true })
-      await frames.click()
-      await expect(frames).toHaveAttribute('aria-selected', 'true')
-      const panel = page.getByRole('tabpanel')
-      const materials = panel.locator('.s2v-home-demo-materials')
-      const preview = panel.locator('.s2v-home-demo-preview')
-      // Lazy-loaded material and preview images must actually be requested.
-      await materials.scrollIntoViewIfNeeded()
-      await expect(materials.getByRole('status')).toHaveText('参考图暂不可用')
-      await expect(materials.getByRole('status')).toBeVisible()
-      await expect(materials.getByRole('img', { name: '首帧构图', exact: true })).toBeVisible()
-      await expect(materials.getByRole('img', { name: '尾帧构图', exact: true })).toHaveCount(0)
-      await preview.scrollIntoViewIfNeeded()
-      await expect(preview.getByRole('status')).toHaveText('参考图暂不可用')
-      await expect(preview.getByRole('status')).toBeVisible()
-      await expect(preview.getByText('参考画面', { exact: true })).toBeVisible()
-      const enter = panel.getByRole('link', { name: '尝试首尾帧生成视频', exact: true })
-      await expect(enter).toHaveAttribute('href', '/app/create?mode=first_last')
-      await enter.click({ trial: true })
-      await expect.poll(() => failedImageRequests.length).toBeGreaterThan(0)
-      await page.getByRole('tab', { name: '文生视频', exact: true }).click()
-      await expectModePreview(page, modes[0])
-      await expect(page.getByRole('tabpanel').getByRole('status')).toHaveCount(0)
-      expect(privateRequests).toEqual([])
-      expect(mutations).toEqual([])
-      expect(unmatchedRequests).toEqual([])
-    })
-  }
 
   for (const viewport of [
     { width: 320, height: 480 },
@@ -345,7 +283,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
       await page.setViewportSize(viewport)
       await page.goto('/', { waitUntil: 'networkidle' })
       await page.evaluate(() => document.fonts.ready)
-      const title = page.getByRole('heading', { name: /^用文字与图片，\s*创作你的下一幕。$/, level: 1 })
+      const title = page.getByRole('heading', { name: homeHeadline, exact: true, level: 1 })
       const enter = page.locator('.s2v-home-hero').getByRole('link', { name: '开始创作', exact: true })
       for (const element of [title, enter]) {
         await expect(element).toBeVisible()
@@ -356,14 +294,13 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
           const box = document.querySelector<HTMLElement>(selector)!.getBoundingClientRect()
           return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, height: box.height }
         }
+        const titleEl = document.querySelector<HTMLElement>('.s2v-home-hero h1')!
         return {
           title: rect('.s2v-home-hero h1'), enter: rect('.s2v-home-primary-link'),
           header: rect('.s2v-public-header'),
-          titleAlign: getComputedStyle(document.querySelector<HTMLElement>('.s2v-home-hero h1')!).textAlign,
-          titleLines: Array.from(document.querySelectorAll<HTMLElement>('.s2v-home-hero h1 > span')).map((line) => ({
-            text: line.textContent, height: line.getBoundingClientRect().height,
-            lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
-          })),
+          titleAlign: getComputedStyle(titleEl).textAlign,
+          titleHeight: titleEl.getBoundingClientRect().height,
+          titleLineHeight: Number.parseFloat(getComputedStyle(titleEl).lineHeight),
           width: document.documentElement.clientWidth, height: innerHeight,
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         }
@@ -386,11 +323,8 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
       expect(geometry.titleAlign).toBe('right')
       expect(Math.abs(geometry.title.right - geometry.enter.right), 'Headline and primary action share their right edge.').toBeLessThanOrEqual(1)
       expect(geometry.enter.top - geometry.title.bottom).toBeGreaterThanOrEqual(24)
-      expect(geometry.titleLines).toHaveLength(2)
-      for (const line of geometry.titleLines) {
-        expect(line.lineHeight).toBeGreaterThan(0)
-        expect(line.height, `The semantic headline line '${line.text}' must not wrap again.`).toBeLessThanOrEqual(line.lineHeight + 1)
-      }
+      expect(geometry.titleLineHeight).toBeGreaterThan(0)
+      expect(geometry.titleHeight, 'The headline should stay on one line when space allows.').toBeLessThanOrEqual(geometry.titleLineHeight * 2 + 2)
       expect(geometry.enter.height).toBeGreaterThanOrEqual(viewport.width < 768 ? 52 : 56)
       expect(geometry.overflow).toBeLessThanOrEqual(1)
       // Trial verifies real pointer hit testing without navigating or mutating.
@@ -432,20 +366,20 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     await page.evaluate(() => document.fonts.ready)
     const typography = await page.evaluate(() => {
       const firstFamily = (element: Element) => getComputedStyle(element).fontFamily.split(',')[0]!.trim().replace(/^["']|["']$/g, '')
-      const headings = Array.from(document.querySelectorAll('.s2v-home h1, .s2v-home h2'))
-      const reading = Array.from(document.querySelectorAll('.s2v-public-header nav a, .s2v-public-home-login, .s2v-home-primary-link, .s2v-home-mode-description, .s2v-public-footer nav a'))
+      const displayHeadings = Array.from(document.querySelectorAll('.s2v-home h1'))
+      const reading = Array.from(document.querySelectorAll('.s2v-public-header nav a, .s2v-public-home-login, .s2v-home-primary-link, .s2v-home-modes-title, .s2v-public-footer nav a'))
       const displayFaces: { family: string; status: string; weight: string }[] = []
       document.fonts.forEach((face) => {
         if (face.family.replace(/^["']|["']$/g, '') === 'S2V Public Display') displayFaces.push({ family: face.family, status: face.status, weight: face.weight })
       })
       return {
-        headings: headings.map((element) => ({ text: element.textContent, family: firstFamily(element) })),
+        headings: displayHeadings.map((element) => ({ text: element.textContent, family: firstFamily(element) })),
         reading: reading.map((element) => ({ text: element.textContent, family: firstFamily(element) })),
         displayFaces,
-        headlineLoaded: document.fonts.check('500 40px "S2V Public Display"', '用文字与图片，创作你的下一幕。'),
+        headlineLoaded: document.fonts.check('500 40px "S2V Public Display"', '一句话，一个镜头。'),
       }
     })
-    expect(typography.headings).toHaveLength(2)
+    expect(typography.headings).toHaveLength(1)
     for (const heading of typography.headings) expect(heading.family, `Artistic heading: ${heading.text}`).toBe('S2V Public Display')
     expect(typography.reading.length).toBeGreaterThanOrEqual(7)
     for (const item of typography.reading) expect(item.family, `Reading/control text: ${item.text}`).toBe('Source Han Sans SC')
@@ -509,7 +443,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     expect(unmatchedRequests).toEqual([])
   })
 
-  test('failed desktop playback does not trigger additional requests when mode tabs are used', async ({ page }) => {
+  test('failed desktop playback does not trigger additional requests when mode rows are used', async ({ page }) => {
     const { unmatchedRequests, privateRequests, mutations, videoRequests } = await seedPublicHome(page)
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.emulateMedia({ reducedMotion: 'no-preference' })
@@ -518,9 +452,9 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     await expect(page.locator('.s2v-home-film video')).toHaveCount(0)
     const failedRequests = videoRequests.length
     await expect(page.getByRole('button', { name: /(?:播放|暂停|重试)首页背景影像/ })).toHaveCount(0)
+    await expectModeRows(page)
     for (const mode of modes) {
-      await page.getByRole('tab', { name: mode.name, exact: true }).click()
-      await expectModePreview(page, mode)
+      await page.getByRole('link', { name: `用${mode.name}开始创作`, exact: true }).click({ trial: true })
     }
     expect(videoRequests).toHaveLength(failedRequests)
     expect(videoRequests.every((url) => new URL(url).pathname === homeFilmUrl)).toBe(true)
@@ -531,7 +465,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     expect(unmatchedRequests).toEqual([])
   })
 
-  test('retains usable public actions and all mode tabs at the minimum supported width', async ({ page }) => {
+  test('retains usable public actions and all mode rows at the minimum supported width', async ({ page }) => {
     const { unmatchedRequests, privateRequests, mutations } = await seedPublicHome(page)
     await page.setViewportSize({ width: 320, height: 844 })
     await page.goto('/', { waitUntil: 'networkidle' })
@@ -539,7 +473,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
     const controls = [
       page.locator('.s2v-home-hero').getByRole('link', { name: '开始创作', exact: true }),
-      ...modes.map((mode) => page.getByRole('tab', { name: mode.name, exact: true })),
+      ...modes.map((mode) => page.getByRole('link', { name: `用${mode.name}开始创作`, exact: true })),
     ]
     for (const control of controls) {
       await expect(control).toBeVisible()
@@ -547,16 +481,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
       expect(box).not.toBeNull()
       expect(box!.x).toBeGreaterThanOrEqual(0)
       expect(box!.x + box!.width).toBeLessThanOrEqual(321)
-    }
-    for (const mode of modes) {
-      await page.getByRole('tab', { name: mode.name, exact: true }).click()
-      await expectModePreview(page, mode)
-      const enter = page.getByRole('link', { name: `尝试${mode.name}`, exact: true })
-      await enter.click({ trial: true })
-      const box = await enter.boundingBox()
-      expect(box).not.toBeNull()
-      expect(box!.x).toBeGreaterThanOrEqual(0)
-      expect(box!.x + box!.width).toBeLessThanOrEqual(321)
+      await control.click({ trial: true })
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
     }
     expect(privateRequests).toEqual([])
