@@ -103,7 +103,7 @@ onBeforeUnmount(() => { disposed = true; loadVersion++ })
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="帮助与工单">
-      <template #description>遇到生成异常、退款或售前问题，可以关联任务和订单提交给我们。</template>
+      <template #description>生成异常、退款、充值与售前请求。</template>
       <template #actions>
         <S2VBadge v-if="openCount" tone="warning">本页 {{ openCount }} 未解决</S2VBadge>
         <S2VButton variant="primary" @click="showForm = !showForm">

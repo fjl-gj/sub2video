@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowUpRight } from 'lucide-vue-next'
+import { ArrowUpRight, BookOpen, FileText, Images, SquareStack } from 'lucide-vue-next'
 import '@/features/create/workbench/studio.css'
 import AssetPickDialog from '@/features/create/AssetPickDialog.vue'
+import CreateComposerTools from '@/features/create/workbench/CreateComposerTools.vue'
 import CreateFilmstrip from '@/features/create/workbench/CreateFilmstrip.vue'
+import CreateInspiration from '@/features/create/workbench/CreateInspiration.vue'
 import CreatePromptSubmit from '@/features/create/workbench/CreatePromptSubmit.vue'
 import CreateSettingsPills from '@/features/create/workbench/CreateSettingsPills.vue'
 import CreateSlotsTrack, { type SlotDescriptor } from '@/features/create/workbench/CreateSlotsTrack.vue'
@@ -30,7 +32,6 @@ import {
   type WorkflowInputType,
 } from '@/shared/lib/create-draft'
 import S2VButton from '@/shared/ui/S2VButton.vue'
-import S2VPageHeader from '@/shared/ui/S2VPageHeader.vue'
 import {
   createTask,
   estimateTask,
@@ -113,6 +114,48 @@ const assetDialogOpen = computed({
     if (!open) pickingSlotRef.value = null
   },
 })
+const prefOpen = ref(true)
+
+const modeShortcutIcons: Record<WorkflowInputType, typeof FileText> = {
+  text: FileText,
+  first_last: SquareStack,
+  multi_image: Images,
+}
+
+function openMaterialPicker() {
+  if (workflowInputType.value === 'text') {
+    app.notify('文生视频只需提示词。切换到首尾帧或多图后可添加素材。')
+    return
+  }
+  if (workflowInputType.value === 'first_last') {
+    const slot = !frameReady(firstFrame.value)
+      ? firstFrame.value
+      : !frameReady(lastFrame.value)
+        ? lastFrame.value
+        : lastFrame.value
+    pickingSlotRef.value = slot
+    activeSlotKey.value = !frameReady(firstFrame.value) ? 'first' : 'last'
+    return
+  }
+  const empty = multiFrames.value.find((slot) => !frameReady(slot))
+  if (empty) {
+    pickingSlotRef.value = empty
+    return
+  }
+  if (multiFrames.value.length < maxReferenceImages.value) {
+    addMulti()
+    pickingSlotRef.value = multiFrames.value[multiFrames.value.length - 1] ?? null
+    return
+  }
+  pickingSlotRef.value = multiFrames.value[multiFrames.value.length - 1] ?? null
+}
+
+function applyInspiration(payload: { mode: WorkflowInputType; prompt: string }) {
+  workflowInputType.value = payload.mode
+  prompt.value = payload.prompt
+  prefOpen.value = false
+  app.notify('已带入灵感参考，可继续调整素材与参数')
+}
 
 const workflowOrder: Record<WorkflowInputType, number> = { text: 0, multi_image: 1, first_last: 2 }
 const creationModes = computed(() => catalog.value.modes
@@ -190,6 +233,11 @@ const preparationHint = computed(() => {
   if (workflowInputType.value === 'multi_image' && !hasRequiredImageInput.value) return `请先准备至少 ${Math.max(creationOptions.value.minImages, 1)} 张参考图，再查看费用。`
   if (audioMode.value === 'reference' && !referenceAudio.value) return '请先选择参考音频文件。'
   return ''
+})
+const canEstimate = computed(() => {
+  if (!prompt.value.trim() || !durationValid.value || !!preparationHint.value || generationUnavailable.value) return false
+  if (workflowInputType.value === 'text') return true
+  return hasRequiredImageInput.value
 })
 const submitHint = computed(() => {
   if (director.saving.value) return '正在保存镜头素材与参数，请稍候再提交生成。'
@@ -822,16 +870,11 @@ watch(workflowInputType, (next) => {
 </script>
 
 <template>
-  <section class="s2v-page s2v-studio">
-    <S2VPageHeader title="创作">
-      <template #description>从一个画面出发，把想法变成下一段影片。</template>
-      <template #actions>
-        <div class="s2v-studio-page-actions">
-          <span class="s2v-studio-balance">钱包余额: ¥ {{ auth.balance.toFixed(2) }}</span>
-          <S2VButton size="sm" @click="router.push('/app/works')">查看任务<ArrowUpRight class="h-4 w-4" /></S2VButton>
-        </div>
-      </template>
-    </S2VPageHeader>
+  <section class="s2v-page s2v-studio s2v-studio--composer">
+    <div class="s2v-studio-topbar">
+      <span class="s2v-studio-balance">创作余额 <b>¥ {{ auth.balance.toFixed(2) }}</b></span>
+      <S2VButton size="sm" variant="ghost" @click="router.push('/app/works')">查看任务<ArrowUpRight class="h-4 w-4" /></S2VButton>
+    </div>
 
     <DirectorCreationContext v-if="director.requested.value" :title="director.title.value" :applied="!!director.context.value" :loading="director.loading.value || !catalogLoaded" :blocked="loading || !!pendingCreation || !!recoveryError" :saving="director.saving.value" :can-save="director.canSave.value && audioMode !== 'reference'" :needs-reapply="director.needsReapply.value" :error="director.error.value" :notice="director.notice.value" :return-route="director.returnRoute.value" @apply="director.apply" @reload="director.load" @save="director.save" />
 
@@ -844,13 +887,13 @@ watch(workflowInputType, (next) => {
       @apply="applyTutorial"
     />
 
-    <fieldset :disabled="loading || director.saving.value" class="contents">
-      <CreateWorkbenchToolbar
-        :workflow-input-type="workflowInputType"
-        :modes="creationModes"
-        @update:workflow-input-type="workflowInputType = $event"
-      />
-    </fieldset>
+    <header class="s2v-studio-hero">
+      <h1>和 Sub2Video 聊聊<em>这一镜</em></h1>
+      <div class="s2v-studio-tabs" role="tablist" aria-label="创作台切换">
+        <button type="button" role="tab" aria-selected="true" class="on">创作</button>
+        <button type="button" role="tab" aria-selected="false" disabled title="导演台在作品内进入">导演台</button>
+      </div>
+    </header>
 
     <CreateAvailabilityNotice
       v-if="catalogError || optionsError"
@@ -860,7 +903,12 @@ watch(workflowInputType, (next) => {
     />
 
     <div class="s2v-studio-layout">
-      <fieldset :disabled="loading || director.saving.value" class="s2v-studio-form">
+      <fieldset :disabled="loading || director.saving.value" class="s2v-studio-composer s2v-studio-form">
+        <CreateWorkbenchToolbar
+          :workflow-input-type="workflowInputType"
+          :modes="creationModes"
+          @update:workflow-input-type="workflowInputType = $event"
+        />
         <CreateSlotsTrack
           v-if="workflowInputType !== 'text'"
           :variant="imageVariant"
@@ -886,36 +934,72 @@ watch(workflowInputType, (next) => {
           :pending="pendingCreation"
           :disabled="!canSubmit"
           :unavailable="generationUnavailable"
+          :can-estimate="canEstimate"
           @submit="submit"
           @retry-estimate="refreshEstimate"
           @recover="recoverSubmission"
         >
-          <CreateSettingsPills
-            :ratio="ratio"
-            :duration-sec="durationSec"
-            :resolution="resolution"
-            :duration-options="durationOptions"
-            :resolution-options="creationOptions.resolutions"
-            :aspect-ratio-options="creationOptions.aspectRatios"
-            :carriers="visibleCarriers"
-            :models="visibleModels"
-            :carrier-id="selectedCarrierId"
-            :model-id="selectedModelId"
-            :supports-generated-audio="creationOptions.supportsGeneratedAudio"
-            :supports-reference-audio="!director.context.value"
-            :audio-mode="audioMode"
-            :reference-audio-name="referenceAudio?.fileName"
-            @update:ratio="ratio = $event"
-            @update:duration-sec="durationSec = $event"
-            @update:resolution="resolution = $event"
-            @update:carrier-id="selectedCarrierId = $event"
-            @update:model-id="selectedModelId = $event"
-            @update:audio-mode="audioMode = $event"
-            @reference-audio-upload="selectReferenceAudio"
-            @clear-reference-audio="clearReferenceAudio"
-          />
+          <template #tools>
+            <CreateComposerTools
+              :pref-open="prefOpen"
+              @upload="openMaterialPicker"
+              @mention="openMaterialPicker"
+              @toggle-pref="prefOpen = !prefOpen"
+            />
+          </template>
+          <div v-show="prefOpen" id="studio-pref-panel">
+            <CreateSettingsPills
+              :ratio="ratio"
+              :duration-sec="durationSec"
+              :resolution="resolution"
+              :duration-options="durationOptions"
+              :resolution-options="creationOptions.resolutions"
+              :aspect-ratio-options="creationOptions.aspectRatios"
+              :carriers="visibleCarriers"
+              :models="visibleModels"
+              :carrier-id="selectedCarrierId"
+              :model-id="selectedModelId"
+              :supports-generated-audio="creationOptions.supportsGeneratedAudio"
+              :supports-reference-audio="!director.context.value"
+              :audio-mode="audioMode"
+              :reference-audio-name="referenceAudio?.fileName"
+              @update:ratio="ratio = $event"
+              @update:duration-sec="durationSec = $event"
+              @update:resolution="resolution = $event"
+              @update:carrier-id="selectedCarrierId = $event"
+              @update:model-id="selectedModelId = $event"
+              @update:audio-mode="audioMode = $event"
+              @reference-audio-upload="selectReferenceAudio"
+              @clear-reference-audio="clearReferenceAudio"
+            />
+          </div>
         </CreatePromptSubmit>
       </fieldset>
+
+      <nav class="s2v-studio-shortcuts" aria-label="快速切换创作方式">
+        <button
+          v-for="mode in creationModes"
+          :key="mode.inputType"
+          type="button"
+          class="s2v-studio-shortcut"
+          :aria-pressed="workflowInputType === mode.inputType"
+          :disabled="loading || director.saving.value"
+          @click="workflowInputType = mode.inputType"
+        >
+          <span class="s2v-studio-shortcut-ic" aria-hidden="true">
+            <component :is="modeShortcutIcons[mode.inputType]" class="h-5 w-5" />
+          </span>
+          {{ mode.name }}
+        </button>
+        <RouterLink class="s2v-studio-shortcut" to="/guides/coast-letter">
+          <span class="s2v-studio-shortcut-ic" aria-hidden="true">
+            <BookOpen class="h-5 w-5" />
+          </span>
+          镜头教程
+        </RouterLink>
+      </nav>
+
+      <CreateInspiration @apply="applyInspiration" />
 
       <div class="s2v-studio-results">
         <CreateStagePlayer

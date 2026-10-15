@@ -241,7 +241,7 @@ test.describe('public cinematic homepage contracts (mocked frontend only)', () =
       expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sub2video.create-draft.u_public_home') || '{}'))).toEqual(draft)
       await login(page)
       await expect(page).toHaveURL((url) => `${url.pathname}${url.search}` === destination)
-      await expect(page.getByRole('button', { name: mode.name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByLabel('创作模式', { exact: true }).getByRole('button', { name: mode.name, exact: true })).toHaveAttribute('aria-pressed', 'true')
       await expect(page.getByRole('textbox', { name: '画面描述', exact: true })).toHaveValue(draft.prompt)
       await expect(page.getByLabel('视频时长', { exact: true })).toHaveValue(draft.durationSec)
       await expect(page.getByLabel('输出分辨率', { exact: true })).toHaveValue(draft.resolution)

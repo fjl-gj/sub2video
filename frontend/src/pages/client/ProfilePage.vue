@@ -21,7 +21,7 @@ async function logout() {
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="个人资料">
-      <template #description>查看当前登录账号，资料编辑与设备管理暂未开放。</template>
+      <template #description>从右上头像进入，不占高频主导航。资料编辑与设备管理暂未开放。</template>
       <template #actions>
         <S2VButton variant="ghost" @click="logout"><LogOut class="h-3.5 w-3.5" />退出登录</S2VButton>
       </template>

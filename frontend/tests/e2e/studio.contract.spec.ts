@@ -82,8 +82,10 @@ test.describe('commercial studio interactions (mocked frontend only)', () => {
       await expect(entry).toBeVisible()
       await entry.click()
       await expect(page).toHaveURL(new RegExp(`/app/create\\?mode=${mode.inputType}$`))
-      await expect(page.getByRole('button', { name: mode.name, exact: true })).toHaveAttribute('aria-pressed', 'true')
-      await expect(page.getByLabel('费用预估', { exact: true })).toContainText(mode.inputType === 'text' ? '2.50' : '等待素材')
+      await expect(page.getByLabel('创作模式', { exact: true }).getByRole('button', { name: mode.name, exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByLabel('费用预估', { exact: true })).toContainText(
+        mode.inputType === 'text' ? '2.50' : mode.inputType === 'first_last' ? '请先准备首帧' : '请先准备至少',
+      )
     }
   })
 

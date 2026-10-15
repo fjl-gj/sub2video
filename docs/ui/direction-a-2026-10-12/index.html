@@ -1,0 +1,1195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sub2Video 设计稿 · 第一批 · 方向 A</title>
+<!--
+  Sub2Video 设计稿 · 第一批（2026-10-12）
+  方向 A：成片优先的暗色工作室 + 官网标题胆气 + 对话优先创作。
+
+  5 色（沿用 docs/ui/design-system.md 的 client token，不另立第二套）
+    canvas  #141616  页面底
+    surface #1B1E1C  创作容器 / 面板
+    ink     #F4F4F0  标题与正文
+    muted   #A2AAA6  辅助说明
+    accent  #E8B981  唯一信号色：主 CTA、选中
+  语义色只做状态：success #6CC38F（完成 / 在线）。线条、抬升面由 surface 派生。
+
+  字体：Source Han Sans SC 阅读；Inter 只用于英文字标；JetBrains Mono 只用于金额。
+  官网标题 136/136（390 下 60/64），工作区正文 14–15px。
+
+  动效（3 个，均遵守 prefers-reduced-motion）：
+    1. 官网首屏影像落定 + 标题上浮（一次性）
+    2. 对话新消息进入
+    3. 估价状态切换（计算中进度 / 旧估价清除）
+
+  本文件只是设计稿：不连接后端，不提交任务；金额与图片均为示例。
+-->
+<style>
+@font-face{font-family:"S2V Sans";src:url("../../../frontend/public/fonts/source-han-sans-sc-regular.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"S2V Sans";src:url("../../../frontend/public/fonts/source-han-sans-sc-medium.woff2") format("woff2");font-weight:500 700;font-display:swap}
+@font-face{font-family:"S2V Inter";src:url("../../../frontend/public/fonts/inter-latin-variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"S2V Mono";src:url("../../../frontend/public/fonts/jetbrains-mono-latin-variable.woff2") format("woff2");font-weight:100 800;font-display:swap}
+
+:root{
+  --canvas:#141616;
+  --surface:#1B1E1C;
+  --ink:#F4F4F0;
+  --muted:#A2AAA6;
+  --accent:#E8B981;
+
+  --raised:#232724;
+  --stage:#0D0E0E;
+  --line:#323832;
+  --line-strong:#4A514B;
+  --body:#D8DED8;
+  --faint:#6E7671;
+  --accent-ink:#25221C;
+  --success:#6CC38F;
+  --overlay:rgba(9,10,10,.74);
+
+  --r-card:12px;
+  --r-ctl:8px;
+  --f-read:"S2V Sans","PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --f-brand:"S2V Inter","Inter","Segoe UI",system-ui,sans-serif;
+  --f-mono:"S2V Mono","JetBrains Mono",ui-monospace,Consolas,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:#0A0B0B;color:var(--ink);font:400 14px/1.6 var(--f-read);-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:inherit}
+img{display:block;max-width:100%}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ic-sm{width:16px;height:16px}
+.ic-lg{width:22px;height:22px}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border:1px solid var(--line-strong);border-radius:4px;font-size:11px;line-height:1;color:var(--muted);font-weight:400;white-space:nowrap;vertical-align:middle}
+.wordmark{font:650 18px/1 var(--f-brand);letter-spacing:-.02em;color:var(--ink);text-decoration:none;display:inline-block;white-space:nowrap;background:none;border:0;padding:0}
+.wordmark i{font-style:normal;color:var(--accent)}
+
+/* ---------- review chrome (设计稿外壳，不属于产品) ---------- */
+.review-bar{height:56px;display:flex;align-items:center;gap:20px;padding:0 16px;background:#0A0B0B;border-bottom:1px solid #22262300;box-shadow:0 1px 0 #222623;color:var(--muted);font-size:13px;overflow-x:auto;white-space:nowrap}
+.review-bar strong{color:var(--ink);font-weight:500}
+.rb-group{display:flex;align-items:center;gap:8px}
+.rb-seg{display:inline-flex;padding:3px;border:1px solid #2a2f2b;border-radius:8px}
+.rb-seg button{border:0;background:none;color:var(--muted);padding:5px 12px;border-radius:6px;font-size:13px}
+.rb-seg button[aria-pressed="true"]{background:#262a27;color:var(--ink)}
+.rb-reset{border:1px solid #2a2f2b;background:none;color:var(--muted);padding:6px 12px;border-radius:8px;font-size:13px}
+.rb-spacer{flex:1}
+
+.stage{height:calc(100dvh - 56px);overflow:auto;display:flex;justify-content:center;align-items:flex-start}
+.stage[data-vp="mobile"]{padding:16px;background:#0A0B0B}
+.frame{position:relative;width:1440px;max-width:100%;height:100%;overflow:auto;background:var(--canvas);container:frame/inline-size;scrollbar-color:#3a403b transparent}
+.stage[data-vp="mobile"] .frame{width:390px;height:min(844px,100%);border-radius:24px;box-shadow:0 0 0 1px #2a2f2b}
+.view[hidden]{display:none}
+
+/* ---------- buttons & controls ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--r-ctl);border:1px solid transparent;font-weight:500;font-size:14px;line-height:20px;white-space:nowrap;text-decoration:none;transition:background-color .15s,border-color .15s,color .15s}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover:not(:disabled){background:#F0C796}
+.btn-primary:disabled{background:var(--raised);color:var(--faint);border-color:var(--line);cursor:not-allowed}
+.btn-secondary{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+.btn-secondary:hover:not(:disabled){background:var(--raised)}
+.btn-secondary:disabled{color:var(--faint);border-color:var(--line);cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--body);border-color:transparent;padding:0 10px;height:32px;font-size:13px}
+.btn-ghost:hover{background:var(--raised);color:var(--ink)}
+.btn-xl{height:56px;padding:0 28px;font-size:18px;line-height:28px}
+.text-link{display:inline-flex;align-items:center;gap:6px;color:var(--ink);text-decoration:none;font-weight:500;background:none;border:0;padding:4px 0;border-bottom:1px solid var(--line-strong)}
+.text-link:hover{border-bottom-color:var(--ink)}
+
+.seg{display:inline-flex;padding:3px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-ctl);gap:2px}
+.seg label{position:relative;display:block}
+.seg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.seg span{display:block;padding:5px 12px;border-radius:6px;color:var(--muted);font-size:13px;line-height:20px;white-space:nowrap;box-shadow:inset 0 0 0 1px transparent}
+.seg input:checked + span{background:var(--raised);color:var(--ink);box-shadow:inset 0 0 0 1px var(--accent)}
+.seg input:focus-visible + span{outline:2px solid var(--accent);outline-offset:1px}
+.select{position:relative}
+.select select{appearance:none;width:100%;height:34px;padding:0 34px 0 12px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-ctl);font-size:13px;color:var(--ink)}
+.select .ic{position:absolute;right:10px;top:9px;pointer-events:none;color:var(--muted)}
+.switch{display:inline-flex;align-items:center;gap:10px;background:none;border:0;padding:4px 0;color:var(--body);font-size:13px}
+.switch-track{width:36px;height:20px;border-radius:10px;background:var(--line-strong);position:relative;transition:background-color .15s}
+.switch-track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--ink);transition:transform .15s var(--ease)}
+.switch[aria-checked="true"] .switch-track{background:var(--accent)}
+.switch[aria-checked="true"] .switch-track::after{transform:translateX(16px);background:var(--accent-ink)}
+
+.media{position:relative;background:var(--stage);overflow:hidden}
+.media img{width:100%;height:100%;object-fit:cover}
+.media.is-failed img{visibility:hidden}
+.media.is-failed::after{content:"图片未能加载";position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px}
+
+/* =========================================================
+   官网 /
+   ========================================================= */
+.hero{position:relative;height:var(--fh,800px);min-height:640px;overflow:hidden}
+.hero-media{position:absolute;inset:0}
+.hero-media img{object-position:58% 50%;animation:settle 1.6s var(--ease) both}
+.hero-scrim{position:absolute;inset:0;background:
+  linear-gradient(90deg,rgba(10,11,11,.86) 0%,rgba(10,11,11,.55) 38%,rgba(10,11,11,0) 66%),
+  linear-gradient(0deg,rgba(10,11,11,.9) 0%,rgba(10,11,11,0) 42%),
+  linear-gradient(180deg,rgba(10,11,11,.6) 0%,rgba(10,11,11,0) 18%)}
+.hero-nav{position:absolute;inset:0 0 auto;height:76px;display:flex;align-items:center;justify-content:space-between;padding:0 56px;z-index:2}
+.hero-nav nav{display:flex;align-items:center;gap:32px;font-size:15px}
+.hero-nav nav a{color:var(--body);text-decoration:none}
+.hero-nav nav a:hover{color:var(--ink)}
+.hero-copy{position:absolute;left:56px;bottom:72px;z-index:2;max-width:920px}
+.hero h1{margin:0;font-weight:500;font-size:136px;line-height:1;letter-spacing:-.03em;animation:rise .9s .25s var(--ease) both}
+.hero h1 span{display:block}
+.hero-lede{margin:32px 0 40px;max-width:680px;text-wrap:pretty;font-size:20px;line-height:32px;color:var(--body);animation:rise .9s .4s var(--ease) both}
+.hero-actions{display:flex;align-items:center;gap:28px;animation:rise .9s .5s var(--ease) both}
+.hero-note{position:absolute;right:56px;bottom:32px;z-index:2;font-size:12px;color:var(--muted)}
+
+.modes-sec{max-width:1328px;margin:0 auto;padding:128px 56px 104px}
+.modes-sec h2{margin:0 0 16px;font-weight:500;font-size:56px;line-height:68px;letter-spacing:-.02em}
+.modes-sec .sec-lede{margin:0 0 64px;max-width:640px;text-wrap:pretty;font-size:18px;line-height:30px;color:var(--muted)}
+.mrow{display:grid;grid-template-columns:320px minmax(0,1fr) auto;gap:56px;align-items:center;padding:44px 0;border-top:1px solid var(--line)}
+.mrow:last-of-type{border-bottom:1px solid var(--line)}
+.mrow h3{margin:0 0 10px;font-weight:500;font-size:28px;line-height:38px}
+.mrow .give{margin:0;font-size:16px;line-height:26px;color:var(--muted)}
+.mrow .give b{color:var(--ink);font-weight:500}
+.viz{display:flex;align-items:center;gap:16px;min-width:0}
+.viz-text{flex:1;max-width:560px;padding:18px 20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);font-size:17px;line-height:28px;color:var(--body)}
+.viz-thumb{width:208px;flex:none}
+.viz-thumb .media{aspect-ratio:16/9;border-radius:var(--r-ctl)}
+.viz-thumb small{display:block;margin-top:8px;font-size:13px;color:var(--muted)}
+.viz-arrow{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);font-size:12px;width:96px;flex:none;text-align:center}
+.viz-arrow .ic{width:28px;height:28px}
+.viz-multi .viz-thumb{width:150px}
+.viz-add{width:150px;aspect-ratio:16/9;flex:none;border:1.5px dashed var(--line-strong);border-radius:var(--r-ctl);display:grid;place-items:center;color:var(--muted);font-size:12px;align-self:flex-start}
+.modes-foot{margin:24px 0 0;font-size:13px;color:var(--muted)}
+
+.site-foot{max-width:1328px;margin:0 auto;padding:40px 56px 48px;display:flex;align-items:center;justify-content:space-between;gap:24px;color:var(--muted);font-size:14px}
+.site-foot nav{display:flex;gap:28px;flex-wrap:wrap}
+.site-foot nav a{text-decoration:none}
+.site-foot nav a:hover{color:var(--ink)}
+
+/* =========================================================
+   工作区外壳
+   ========================================================= */
+.app{display:grid;grid-template-columns:200px minmax(0,1fr);height:var(--fh,800px);position:relative}
+.side{border-right:1px solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:24px;background:var(--canvas)}
+.side .wordmark{padding:4px 12px}
+.side ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:12px;width:100%;height:42px;padding:0 12px;border:0;border-radius:var(--r-ctl);background:none;color:var(--muted);font-size:14px;text-align:left}
+.nav-item:hover{color:var(--ink);background:var(--surface)}
+.nav-item[aria-current="page"]{background:var(--raised);color:var(--ink)}
+.nav-item[aria-current="page"] .ic{color:var(--accent)}
+.main{overflow:auto;min-width:0;scrollbar-gutter:stable}
+.topbar{position:sticky;top:0;z-index:6;height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 32px;background:var(--canvas);border-bottom:1px solid var(--line)}
+.topbar h1{margin:0;font-weight:500;font-size:25px;line-height:32px}
+.topbar .m-wordmark{display:none}
+.top-right{display:flex;align-items:center;gap:12px}
+.balance{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:none;color:var(--body);font-size:13px}
+.balance b{font:500 13px var(--f-mono);color:var(--ink)}
+.avatar{width:34px;height:34px;border-radius:50%;border:1px solid var(--line-strong);background:var(--raised);color:var(--ink);font-size:13px;font-weight:500}
+.bnav{display:none}
+.sheet[hidden]{display:none}
+
+/* =========================================================
+   创作 /app/create
+   ========================================================= */
+.mtabs{display:none}
+.create-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;max-width:1760px;padding:24px 32px 24px;align-items:start}
+.compose{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card)}
+.blk{padding:20px 24px;border-top:1px solid var(--line)}
+.blk:first-child{border-top:0}
+.blk-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.blk-title{margin:0;font-size:15px;line-height:22px;font-weight:500;color:var(--ink)}
+.blk-note{font-size:12px;color:var(--muted)}
+
+.msgs{list-style:none;margin:0;padding:0 0 4px;display:flex;flex-direction:column;gap:18px;max-height:300px;overflow:auto}
+.msg{max-width:88%}
+.msg.is-new{animation:msgIn .36s var(--ease) both}
+.msg-u{align-self:flex-end;background:var(--raised);padding:10px 14px;border-radius:12px 12px 4px 12px;color:var(--ink);font-size:15px;line-height:24px}
+.msg-a{align-self:flex-start}
+.msg-who{font-size:12px;color:var(--muted);margin-bottom:6px}
+.msg-a p{margin:0;color:var(--body);font-size:14px}
+.shot{margin:8px 0 0;padding:12px 14px;border-left:2px solid var(--line-strong);background:var(--canvas);border-radius:0 var(--r-ctl) var(--r-ctl) 0;color:var(--body);font-size:15px;line-height:26px}
+.shot.is-adopted{border-left-color:var(--accent)}
+.msg-actions{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.msg-actions .state{display:inline-flex;align-items:center;gap:4px}
+.typing{align-self:flex-start;color:var(--muted);font-size:13px}
+
+.chat-input{margin-top:16px;display:flex;align-items:flex-end;gap:10px;padding:10px 10px 10px 16px;background:var(--canvas);border:1px solid var(--line-strong);border-radius:var(--r-card)}
+.chat-input:focus-within{border-color:var(--muted)}
+.chat-input textarea{flex:1;min-height:48px;max-height:140px;resize:none;border:0;background:none;outline:0;font-size:15px;line-height:24px;color:var(--ink);padding:2px 0}
+.chat-input textarea::placeholder{color:var(--faint)}
+.send{width:36px;height:36px;border-radius:var(--r-ctl);border:1px solid var(--line-strong);background:var(--raised);color:var(--ink);display:grid;place-items:center;flex:none}
+.send:disabled{color:var(--faint);cursor:not-allowed}
+.chat-meta{margin-top:8px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:12px}
+
+.adopt-area textarea{width:100%;min-height:104px;resize:vertical;padding:12px 14px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-ctl);font-size:15px;line-height:26px;color:var(--ink)}
+.adopt-area textarea:focus{border-color:var(--muted);outline:0}
+.adopt-area textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.adopt-meta{margin-top:8px;display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}
+
+.mode-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0;padding:0;border:0}
+.mode-pick legend{padding:0;margin-bottom:12px}
+.mode-opt{position:relative}
+.mode-opt input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.mode-card{display:flex;align-items:center;gap:12px;height:60px;padding:0 14px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--canvas);color:var(--muted);transition:border-color .15s,background-color .15s}
+.mode-card b{display:block;font-weight:500;font-size:14px;line-height:20px;color:var(--body)}
+.mode-card small{display:block;font-size:12px;line-height:16px;color:var(--muted)}
+.mode-opt input:checked + .mode-card{border-color:var(--accent);background:var(--raised)}
+.mode-opt input:checked + .mode-card .ic{color:var(--accent)}
+.mode-opt input:checked + .mode-card b{color:var(--ink)}
+.mode-opt input:focus-visible + .mode-card{outline:2px solid var(--accent);outline-offset:2px}
+
+.mats{margin-top:20px}
+.mats-label{font-size:13px;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;gap:12px}
+.slots-2{display:grid;grid-template-columns:minmax(0,1fr) 64px minmax(0,1fr);align-items:center;max-width:560px}
+.slots-2 .link{display:flex;flex-direction:column;align-items:center;color:var(--faint);font-size:11px;gap:2px}
+.slots-n{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;max-width:640px}
+.slot{position:relative;aspect-ratio:16/9;border-radius:var(--r-ctl);overflow:hidden;margin:0}
+.slot.is-filled{border:1px solid var(--line)}
+.slot.is-filled figcaption{position:absolute;left:8px;bottom:8px;display:flex;gap:6px;align-items:center;padding:2px 8px;border-radius:4px;background:var(--overlay);font-size:12px;color:var(--ink)}
+.slot.is-filled figcaption .tag{border-color:#6a716b;height:16px}
+.slot-x{position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:6px;border:0;background:var(--overlay);color:var(--ink);display:grid;place-items:center}
+button.slot{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:var(--canvas);border:1.5px dashed var(--line-strong);color:var(--muted);padding:8px;text-align:center}
+button.slot:hover{border-color:var(--muted);color:var(--body)}
+button.slot b{font-weight:500;font-size:13px;color:var(--body)}
+button.slot small{font-size:11px;line-height:15px}
+button.slot.is-missing{border-color:var(--ink);color:var(--ink)}
+button.slot.is-missing b{color:var(--ink)}
+.mat-none{display:flex;align-items:center;gap:10px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-ctl);color:var(--muted);font-size:13px;max-width:560px}
+
+.params-toggle{display:none}
+.params{display:grid;grid-template-columns:minmax(0,1.3fr) auto auto;gap:16px 20px;margin-top:20px;align-items:end}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field > span,.field > .lbl{font-size:12px;color:var(--muted)}
+.field-hint{font-size:11px;color:var(--faint)}
+.field .seg,.field .switch{align-self:flex-start}
+
+.actionbar{position:sticky;bottom:0;z-index:3;display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--surface);border-top:1px solid var(--line);border-radius:0 0 var(--r-card) var(--r-card)}
+.est{flex:1;min-width:0}
+.est-body{display:flex;align-items:center;gap:12px;animation:estIn .32s var(--ease) both}
+.est-body .ic{color:var(--muted)}
+.est-main{font-size:14px;line-height:22px;color:var(--ink);font-weight:500;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.est-sub{font-size:12px;line-height:18px;color:var(--muted)}
+.est-price{font:500 22px/28px var(--f-mono);letter-spacing:-.01em}
+.est-label{font-weight:400;color:var(--muted);font-size:13px}
+.est-bar{margin-top:6px;width:140px;height:2px;background:var(--line);overflow:hidden;border-radius:1px}
+.est-bar::after{content:"";display:block;width:40%;height:100%;background:var(--ink);animation:scan 1s linear infinite}
+.est.is-cleared .est-body{animation:cleared .5s var(--ease) both}
+
+.preview{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:16px;position:sticky;top:88px}
+.pv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.tabs{display:inline-flex;padding:3px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--r-ctl)}
+.tabs button{border:0;background:none;color:var(--muted);padding:5px 12px;border-radius:6px;font-size:13px}
+.tabs button[aria-selected="true"]{background:var(--raised);color:var(--ink)}
+.pv-stage{margin:0 auto;border-radius:var(--r-ctl);background:var(--stage);border:1px solid var(--line);overflow:hidden;position:relative;width:100%}
+.pv-stage.ar-169{aspect-ratio:16/9}
+.pv-stage.ar-916{aspect-ratio:9/16;width:min(100%,260px)}
+.pv-stage.ar-11{aspect-ratio:1/1;width:min(100%,320px)}
+.pv-stage img{width:100%;height:100%;object-fit:contain;background:var(--stage)}
+.pv-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px;text-align:center}
+.pv-empty .ic{width:28px;height:28px;color:var(--faint);margin-bottom:4px}
+.pv-empty b{font-weight:500;font-size:15px}
+.pv-empty span{font-size:13px;color:var(--muted)}
+.pv-cap{margin:10px 0 0;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.steps{list-style:none;margin:16px 0 0;padding:14px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.steps li{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.steps .dot{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;flex:none}
+.steps li.done{color:var(--body)}
+.steps li.done .dot{border-color:var(--success);color:var(--success)}
+.steps li.done .dot .ic{width:12px;height:12px;stroke-width:2.5}
+.steps li.next{color:var(--ink);font-weight:500}
+.steps li.next .dot{border-color:var(--ink)}
+.pv-note{margin:14px 0 0;font-size:12px;color:var(--faint)}
+
+.inspire{max-width:1760px;padding:8px 32px 48px}
+.inspire-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.inspire-head h2{margin:0;font-size:15px;font-weight:500}
+.inspire-head span{font-size:12px;color:var(--muted)}
+.inspire ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.insp{display:flex;gap:14px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:var(--r-card)}
+.insp .media{width:128px;aspect-ratio:16/9;border-radius:6px;flex:none}
+.insp p{margin:0 0 6px;font-size:13px;line-height:20px;color:var(--body);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+.toast{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);z-index:30;max-width:min(560px,calc(100% - 32px));padding:12px 16px;background:var(--raised);border:1px solid var(--line-strong);border-radius:var(--r-ctl);font-size:13px;color:var(--ink);box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.toast[hidden]{display:none}
+
+/* =========================================================
+   方向说明
+   ========================================================= */
+.dir{max-width:1200px;margin:0 auto;padding:56px 56px 80px}
+.dir h1{margin:0 0 8px;font-size:40px;line-height:52px;font-weight:500;letter-spacing:-.01em}
+.dir > p{margin:0 0 48px;color:var(--muted);font-size:16px;max-width:720px}
+.dir h2{margin:0 0 16px;font-size:16px;font-weight:500}
+.dir section{padding:32px 0;border-top:1px solid var(--line)}
+.swatches{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.sw{border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden}
+.sw i{display:block;height:88px}
+.sw div{padding:10px 12px;font-size:13px}
+.sw code{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.sw small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.sem{margin-top:12px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.sem i{width:10px;height:10px;border-radius:50%;background:var(--success)}
+.type-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:32px;align-items:end}
+.type-hero{font-size:72px;line-height:1;font-weight:500;letter-spacing:-.03em}
+.type-list{display:flex;flex-direction:column;gap:12px;font-size:14px;color:var(--body)}
+.type-list span{color:var(--muted);font-size:12px;display:block}
+.struct{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.struct div{border:1px solid var(--line);border-radius:var(--r-card);padding:16px}
+.struct h3{margin:0 0 8px;font-size:14px;font-weight:500}
+.struct ol{margin:0;padding-left:18px;color:var(--body);font-size:13px;line-height:22px}
+.checks{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:10px 32px}
+.checks li{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--body)}
+.checks .ic{color:var(--success);margin-top:2px}
+.dir-actions{display:flex;gap:12px;margin-top:8px}
+
+/* =========================================================
+   手机 390（按容器宽度切换，不是缩放）
+   ========================================================= */
+@container frame (max-width: 760px){
+  /* 官网 */
+  .hero{min-height:620px}
+  .hero-media img{object-position:30% 50%}
+  .hero-scrim{background:
+    linear-gradient(0deg,rgba(10,11,11,.95) 0%,rgba(10,11,11,.78) 34%,rgba(10,11,11,0) 64%),
+    linear-gradient(180deg,rgba(10,11,11,.7) 0%,rgba(10,11,11,0) 16%)}
+  .hero-nav{height:56px;padding:0 16px}
+  .hero-nav nav{gap:20px;font-size:14px}
+  .hero-nav nav .wide-only{display:none}
+  .hero-copy{left:16px;right:16px;bottom:56px}
+  .hero h1{font-size:60px;line-height:64px;letter-spacing:-.02em}
+  .hero-lede{margin:20px 0 28px;font-size:16px;line-height:26px}
+  .hero-actions{flex-direction:column;align-items:stretch;gap:16px}
+  .hero-actions .btn-xl{height:52px}
+  .hero-actions .text-link{align-self:center}
+  .hero-note{right:16px;top:56px;bottom:auto;font-size:11px}
+
+  .modes-sec{padding:72px 16px 56px}
+  .modes-sec h2{font-size:32px;line-height:42px}
+  .modes-sec .sec-lede{font-size:16px;line-height:26px;margin-bottom:32px}
+  .mrow{grid-template-columns:1fr;gap:16px;padding:28px 0}
+  .mrow h3{font-size:20px;line-height:30px;margin-bottom:4px}
+  .mrow .give{font-size:15px;line-height:24px}
+  .viz{gap:8px}
+  .viz-text{font-size:15px;line-height:24px;padding:14px 16px}
+  .viz-thumb{width:auto;flex:1}
+  .viz-arrow{width:44px}
+  .viz-arrow span{display:none}
+  .viz-multi .viz-thumb{width:auto}
+  .viz-add{width:auto;flex:1}
+  .site-foot{flex-direction:column;align-items:flex-start;padding:32px 16px 40px}
+  .site-foot nav{gap:12px 20px}
+
+  /* 工作区外壳 */
+  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  .side{display:none}
+  .topbar{height:56px;padding:0 16px}
+  .topbar h1{font-size:20px;line-height:28px}
+  .balance .wide-only{display:none}
+  .bnav{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);background:var(--canvas);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px) + 14px)}
+  .bnav button{display:flex;flex-direction:column;align-items:center;gap:2px;height:48px;justify-content:center;border:0;background:none;color:var(--muted);font-size:11px;border-radius:var(--r-ctl)}
+  .bnav button[aria-current="page"]{color:var(--ink)}
+  .bnav button[aria-current="page"] .ic{color:var(--accent)}
+  .sheet{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,.5)}
+  .sheet-panel{background:var(--surface);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:12px 12px calc(24px + env(safe-area-inset-bottom,0px))}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;padding:4px 8px 8px;font-weight:500}
+
+  /* 创作 */
+  .mtabs{display:flex;position:sticky;top:56px;z-index:5;padding:10px 16px;background:var(--canvas);border-bottom:1px solid var(--line)}
+  .mtabs .tabs{width:100%}
+  .mtabs .tabs button{flex:1;padding:7px 0;font-size:14px}
+  .create-grid{grid-template-columns:minmax(0,1fr);padding:12px 16px 16px;gap:16px}
+  .create[data-mtab="edit"] .preview{display:none}
+  .create[data-mtab="preview"] .compose,.create[data-mtab="preview"] .inspire{display:none}
+  .preview{position:static}
+  .blk{padding:16px}
+  .blk-head{flex-direction:column;align-items:flex-start;gap:2px}
+  .msgs{max-height:none;overflow:visible;gap:14px}
+  .msg{max-width:94%}
+  .shot,.msg-u,.chat-input textarea,.adopt-area textarea{font-size:15px}
+  .chat-meta .kbd-hint{display:none}
+  .mode-pick{gap:6px}
+  .mode-card{height:48px;justify-content:center;padding:0 6px;gap:6px}
+  .mode-card small{display:none}
+  .mode-card .ic{display:none}
+  .slots-2{grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr)}
+  .slots-2 .link span{display:none}
+  .slots-n{grid-template-columns:repeat(2,minmax(0,1fr))}
+  button.slot small{display:none}
+  .params-toggle{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--canvas);text-align:left;font-size:13px;color:var(--body)}
+  .params-toggle span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .params-toggle[aria-expanded="true"] .ic{transform:rotate(180deg)}
+  .params{grid-template-columns:1fr;gap:14px;margin-top:12px}
+  .params[data-open="false"]{display:none}
+  .field .seg{display:flex;align-self:stretch}
+  .seg label{flex:1}
+  .seg span{text-align:center}
+  .actionbar{padding:10px 16px;gap:8px}
+  .est-price{font-size:18px;line-height:24px}
+  .est-body .ic{display:none}
+  .actionbar .btn{height:44px;padding:0 14px}
+  .inspire{padding:0 16px 24px}
+  .inspire ul{display:flex;overflow-x:auto;gap:10px;scroll-snap-type:x mandatory;padding-bottom:4px}
+  .inspire li{flex:0 0 82%;scroll-snap-align:start}
+  .insp .media{width:96px}
+
+  /* 方向说明 */
+  .dir{padding:32px 16px 56px}
+  .dir h1{font-size:28px;line-height:38px}
+  .swatches{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .type-grid,.struct,.checks{grid-template-columns:1fr}
+  .type-hero{font-size:48px}
+}
+
+@keyframes settle{from{transform:scale(1.06);opacity:.4}to{transform:none;opacity:1}}
+@keyframes rise{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes msgIn{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+@keyframes estIn{from{transform:translateY(4px);opacity:0}to{transform:none;opacity:1}}
+@keyframes cleared{0%{opacity:0;transform:translateX(-6px)}100%{opacity:1;transform:none}}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@media (prefers-reduced-motion: reduce){
+  .hero-media img,.hero h1,.hero-lede,.hero-actions,.msg.is-new,.est-body,.est.is-cleared .est-body{animation:none}
+  .est-bar::after{animation:none;width:100%;opacity:.5}
+  .switch-track,.switch-track::after,.btn,.mode-card{transition:none}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
+  <symbol id="i-create" viewBox="0 0 24 24"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></symbol>
+  <symbol id="i-plaza" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 6 2 2 3-3"/><path d="m3 16 2 2 3-3"/><path d="M12 7h9M12 17h9"/></symbol>
+  <symbol id="i-assets" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 14h10l1-14"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.5"/><path d="M12 16.8h.01"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4-4-6 6"/><path d="M3 18l4-4 3 3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7L20 8.5"/><path d="M20 3.5v5h-5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></symbol>
+  <symbol id="i-frames" viewBox="0 0 24 24"><rect x="2" y="6" width="7" height="12" rx="1.5"/><rect x="15" y="6" width="7" height="12" rx="1.5"/><path d="M10.5 12h3"/></symbol>
+  <symbol id="i-images" viewBox="0 0 24 24"><rect x="7" y="3" width="14" height="14" rx="2"/><path d="M3 7v12a2 2 0 0 0 2 2h12"/></symbol>
+</svg>
+
+<header class="review-bar" aria-label="设计稿切换（非产品界面）">
+  <span><strong>Sub2Video 设计稿</strong> · 第一批 · 方向 A</span>
+  <div class="rb-group" role="group" aria-label="页面">
+    <div class="rb-seg">
+      <button type="button" data-goto="direction" aria-pressed="false">方向说明</button>
+      <button type="button" data-goto="home" aria-pressed="false">官网 /</button>
+      <button type="button" data-goto="create" aria-pressed="false">创作</button>
+    </div>
+  </div>
+  <div class="rb-group" role="group" aria-label="视口">
+    <div class="rb-seg">
+      <button type="button" data-vp="desktop" aria-pressed="true">1440</button>
+      <button type="button" data-vp="mobile" aria-pressed="false">390</button>
+    </div>
+  </div>
+  <span class="rb-spacer"></span>
+  <button type="button" class="rb-reset" data-reset>回到关键态：首尾帧缺尾帧</button>
+</header>
+
+<div class="stage" id="stage" data-vp="desktop">
+<div class="frame" id="frame">
+
+<!-- =================== 方向说明 =================== -->
+<section class="view" data-view="direction" hidden aria-label="方向说明">
+  <div class="dir">
+    <h1>方向 A · 成片优先的暗色工作室</h1>
+    <p>暗底让影像发光，工具退后。官网标题借一点编辑部的胆气：更大、更短；进入工作区后回到高效阅读。创作以对话开始，方式、参数、估价都在同一个创作容器里，提交的是「当前采用的镜头描述」。</p>
+
+    <section>
+      <h2>5 色</h2>
+      <div class="swatches">
+        <div class="sw"><i style="background:#141616"></i><div>canvas <code>#141616</code><small>页面底，影像的暗场</small></div></div>
+        <div class="sw"><i style="background:#1B1E1C"></i><div>surface <code>#1B1E1C</code><small>创作容器、面板</small></div></div>
+        <div class="sw"><i style="background:#F4F4F0"></i><div>ink <code>#F4F4F0</code><small>标题、正文、缺失提示</small></div></div>
+        <div class="sw"><i style="background:#A2AAA6"></i><div>muted <code>#A2AAA6</code><small>辅助说明、未选中</small></div></div>
+        <div class="sw"><i style="background:#E8B981"></i><div>accent <code>#E8B981</code><small>只用于主 CTA 与选中</small></div></div>
+      </div>
+      <p class="sem"><i></i>成功 / 完成 / 在线使用语义绿 #6CC38F，不用品牌色冒充。线条与抬升面由 surface 派生，不算新颜色。</p>
+    </section>
+
+    <section>
+      <h2>字体</h2>
+      <div class="type-grid">
+        <div class="type-hero">一句话，一个镜头。</div>
+        <div class="type-list">
+          <div><span>官网标题 · 思源黑体 Medium · 136px（390 下 60px）</span>大、短、敢，只出现在官网首屏</div>
+          <div><span>工作区 · 思源黑体 14–15px · 行高 1.6–1.7</span>镜头描述、参数、说明都以可读为先</div>
+          <div><span>金额 · JetBrains Mono</span><b style="font:500 20px var(--f-mono)">¥3.00</b> 仅用于价格数字</div>
+          <div><span>品牌字标 · Inter</span><span class="wordmark">Sub<i>2</i>Video</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>关键结构</h2>
+      <div class="struct">
+        <div><h3>官网 /</h3><ol><li>全幅影像 + 两行大标题 + 一个「开始创作」</li><li>三种方式按「你给什么」逐行对比，不做营销卡</li><li>极简页脚：教程、帮助与工单、法律链接</li></ol></div>
+        <div><h3>创作 · 1440</h3><ol><li>左：创作容器，上半是镜头对话</li><li>对话下方紧接「当前采用的镜头描述」可编辑稿</li><li>再下：方式 → 素材槽 → 参数 → 估价 + 生成（吸底）</li><li>右：交付预览 / 参考画面，空态写清还缺什么</li></ol></div>
+        <div><h3>创作 · 390</h3><ol><li>顶部「编辑 / 预览」切换</li><li>对话与采用稿置顶，方式与素材在下，参数折叠成一行摘要</li><li>估价 + 生成吸底，保留底部导航与安全区</li></ol></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>动效（3 个，减少动态时全部关闭）</h2>
+      <div class="struct">
+        <div><h3>首屏落定</h3><ol><li>影像从 1.06 缩放落定，标题上浮，一次性</li></ol></div>
+        <div><h3>新消息进入</h3><ol><li>对话追问与整理回复轻微上移淡入</li></ol></div>
+        <div><h3>估价切换</h3><ol><li>计算中细进度；修改参数后「旧估价已清除」侧移进入</li></ol></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>自检</h2>
+      <ul class="checks">
+        <li><svg class="ic"><use href="#i-check"/></svg>去掉导航后首屏仍是 Sub2Video：影像 + 「一句话，一个镜头」</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>创作是对话在上、方式选择在下，不是三列表单</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>缺尾帧时估价与生成都不可用，并写明「还缺尾帧」</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>对话发送与整理不扣费、不建任务；无供应商 / 成本 / workflow / API Key</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>无用户数、客户 logo、生成案例；图片与金额均标「示例」</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>390 改结构：编辑/预览切换、参数折叠、底部导航</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>官网标题有胆气，工作区仍是暗色工作室</li>
+        <li><svg class="ic"><use href="#i-check"/></svg>估价公式只作为价格下方的一行小字</li>
+      </ul>
+    </section>
+    <div class="dir-actions">
+      <button type="button" class="btn btn-secondary" data-goto="home">看官网首屏</button>
+      <button type="button" class="btn btn-secondary" data-goto="create">看创作关键态</button>
+    </div>
+  </div>
+</section>
+
+<!-- =================== 官网 / =================== -->
+<section class="view" data-view="home" hidden aria-label="官网">
+  <div class="hero">
+    <div class="hero-media media"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt=""></div>
+    <div class="hero-scrim"></div>
+    <header class="hero-nav">
+      <a href="#" class="wordmark" data-goto="home" aria-label="Sub2Video 首页">Sub<i>2</i>Video</a>
+      <nav aria-label="官网导航">
+        <a href="#" class="wide-only" data-toast="教程页不在本轮范围">教程</a>
+        <a href="#" class="wide-only" data-toast="帮助与工单在第二批">帮助与工单</a>
+        <a href="#" data-toast="登录在第二批">登录</a>
+      </nav>
+    </header>
+    <div class="hero-copy">
+      <h1><span>一句话，</span><span>一个镜头。</span></h1>
+      <p class="hero-lede">用对话把想法整理成镜头描述，选好方式与参数，先看估价，再生成。</p>
+      <div class="hero-actions">
+        <button type="button" class="btn btn-primary btn-xl" data-goto="create">开始创作<svg class="ic"><use href="#i-arrow"/></svg></button>
+        <a href="#modes" class="text-link" data-scroll="modes">三种创作方式</a>
+      </div>
+    </div>
+    <p class="hero-note">背景为品牌示例画面</p>
+  </div>
+
+  <section class="modes-sec" id="modes" aria-labelledby="modes-title">
+    <h2 id="modes-title">三种方式，<br>差别只在你给什么。</h2>
+    <p class="sec-lede">每种方式最后都得到一个镜头视频。先想清楚手上有什么素材，再选方式。</p>
+
+    <article class="mrow">
+      <div>
+        <h3>文生视频</h3>
+        <p class="give">你给：<b>一段镜头描述</b>。<br>适合从零开始的画面。</p>
+      </div>
+      <div class="viz"><div class="viz-text">“夜里的工作室，女生低头调试镜头，镜头慢慢推近，停在镜片里映出的湖面。”</div></div>
+      <button type="button" class="text-link" data-goto="create" data-mode="text">用这种方式开始<svg class="ic ic-sm"><use href="#i-arrow"/></svg></button>
+    </article>
+
+    <article class="mrow">
+      <div>
+        <h3>首尾帧生成视频</h3>
+        <p class="give">你给：<b>首帧、尾帧两张图</b> + 描述。<br>中间的运动按描述补全。</p>
+      </div>
+      <div class="viz">
+        <div class="viz-thumb"><div class="media"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="首帧示例图片"></div><small>首帧 · 示例</small></div>
+        <div class="viz-arrow"><svg class="ic"><use href="#i-arrow"/></svg><span>按描述补全运动</span></div>
+        <div class="viz-thumb"><div class="media"><img src="../../../frontend/public/brand/auth/creator-studio-last.jpg" alt="尾帧示例图片"></div><small>尾帧 · 示例</small></div>
+      </div>
+      <button type="button" class="text-link" data-goto="create" data-mode="frames">用这种方式开始<svg class="ic ic-sm"><use href="#i-arrow"/></svg></button>
+    </article>
+
+    <article class="mrow">
+      <div>
+        <h3>多图生成视频</h3>
+        <p class="give">你给：<b>至少 1 张图片</b> + 描述。<br>用多张图约定人物、场景与风格。</p>
+      </div>
+      <div class="viz viz-multi">
+        <div class="viz-thumb"><div class="media"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="示例图片 1"></div><small>图 1 · 示例</small></div>
+        <div class="viz-thumb"><div class="media"><img src="../../../frontend/public/brand/auth/iceland-coast.jpg" alt="示例图片 2"></div><small>图 2 · 示例</small></div>
+        <div class="viz-add">可继续添加</div>
+      </div>
+      <button type="button" class="text-link" data-goto="create" data-mode="multi">用这种方式开始<svg class="ic ic-sm"><use href="#i-arrow"/></svg></button>
+    </article>
+    <p class="modes-foot">图片为品牌示例素材，不是生成结果。价格在创作页估价后显示。</p>
+  </section>
+
+  <footer class="site-foot">
+    <span class="wordmark">Sub<i>2</i>Video</span>
+    <nav aria-label="页脚">
+      <a href="#" data-toast="教程页不在本轮范围">教程</a>
+      <a href="#" data-toast="帮助与工单在第二批">帮助与工单</a>
+      <a href="#" data-toast="法律页面不在本轮范围">用户协议</a>
+      <a href="#" data-toast="法律页面不在本轮范围">隐私政策</a>
+    </nav>
+    <span>© 2026 Sub2Video</span>
+  </footer>
+</section>
+
+<!-- =================== 创作 /app/create =================== -->
+<section class="view" data-view="create" hidden aria-label="创作">
+  <div class="app">
+    <aside class="side" aria-label="主导航">
+      <button type="button" class="wordmark" data-goto="home" aria-label="回到官网">Sub<i>2</i>Video</button>
+      <ul>
+        <li><button type="button" class="nav-item" data-toast="首页概览在第二批"><svg class="ic"><use href="#i-home"/></svg>首页概览</button></li>
+        <li><button type="button" class="nav-item" aria-current="page"><svg class="ic"><use href="#i-create"/></svg>创作</button></li>
+        <li><button type="button" class="nav-item" data-toast="广场不在本轮范围"><svg class="ic"><use href="#i-plaza"/></svg>广场</button></li>
+        <li><button type="button" class="nav-item" data-toast="任务页不在本轮范围"><svg class="ic"><use href="#i-tasks"/></svg>任务</button></li>
+        <li><button type="button" class="nav-item" data-toast="资产页不在本轮范围"><svg class="ic"><use href="#i-assets"/></svg>资产</button></li>
+        <li><button type="button" class="nav-item" data-toast="回收站不在本轮范围"><svg class="ic"><use href="#i-trash"/></svg>回收站</button></li>
+        <li><button type="button" class="nav-item" data-toast="钱包在第二批"><svg class="ic"><use href="#i-wallet"/></svg>钱包</button></li>
+        <li><button type="button" class="nav-item" data-toast="帮助与工单在第二批"><svg class="ic"><use href="#i-help"/></svg>帮助与工单</button></li>
+      </ul>
+    </aside>
+
+    <div class="main" id="main">
+      <header class="topbar">
+        <h1>创作</h1>
+        <div class="top-right">
+          <button type="button" class="balance" data-toast="钱包在第二批"><span class="wide-only">余额</span><b>¥128.40</b><span class="tag">示例</span></button>
+          <button type="button" class="avatar" aria-label="个人资料" data-toast="个人资料在第二批">林</button>
+        </div>
+      </header>
+
+      <div class="create" id="create" data-mtab="edit">
+        <div class="mtabs">
+          <div class="tabs" role="tablist" aria-label="创作视图">
+            <button type="button" role="tab" data-mtab="edit" aria-selected="true">编辑</button>
+            <button type="button" role="tab" data-mtab="preview" aria-selected="false">预览</button>
+          </div>
+        </div>
+
+        <div class="create-grid">
+          <div class="compose" aria-label="创作容器">
+            <!-- 对话 -->
+            <div class="blk">
+              <div class="blk-head">
+                <h2 class="blk-title">描述镜头</h2>
+                <span class="blk-note">对话与整理不扣费，也不会创建任务</span>
+              </div>
+              <ol class="msgs" id="msgs" aria-live="polite"></ol>
+              <form class="chat-input" id="chatForm">
+                <label for="chatText" class="sr-only">继续描述或修改镜头</label>
+                <textarea id="chatText" rows="2" placeholder="继续描述或修改，比如：镜头更慢一点，结尾停在湖面"></textarea>
+                <button type="submit" class="send" id="sendBtn" aria-label="发送" disabled><svg class="ic"><use href="#i-send"/></svg></button>
+              </form>
+              <div class="chat-meta"><span class="kbd-hint">Enter 发送，Shift + Enter 换行</span><span>整理结果需点「采用这条」才会用于生成</span></div>
+            </div>
+
+            <!-- 采用稿 -->
+            <div class="blk adopt-area">
+              <div class="blk-head">
+                <label class="blk-title" for="draft">当前采用的镜头描述</label>
+                <span class="blk-note">生成时只提交这段，不提交聊天原文</span>
+              </div>
+              <textarea id="draft" aria-describedby="draftMeta"></textarea>
+              <div class="adopt-meta" id="draftMeta"><span id="draftSource"></span><span id="draftCount"></span></div>
+            </div>
+
+            <!-- 方式 / 素材 / 参数 -->
+            <div class="blk">
+              <fieldset class="mode-pick" id="modePick">
+                <legend class="blk-title">创作方式</legend>
+                <label class="mode-opt"><input type="radio" name="mode" value="text" aria-label="文生视频"><span class="mode-card"><svg class="ic ic-lg"><use href="#i-text"/></svg><span><b>文生视频</b><small>只需镜头描述</small></span></span></label>
+                <label class="mode-opt"><input type="radio" name="mode" value="frames" aria-label="首尾帧生成视频"><span class="mode-card"><svg class="ic ic-lg"><use href="#i-frames"/></svg><span><b>首尾帧</b><small>首帧 + 尾帧</small></span></span></label>
+                <label class="mode-opt"><input type="radio" name="mode" value="multi" aria-label="多图生成视频"><span class="mode-card"><svg class="ic ic-lg"><use href="#i-images"/></svg><span><b>多图</b><small>至少 1 张图片</small></span></span></label>
+              </fieldset>
+
+              <div class="mats" id="mats"></div>
+
+              <button type="button" class="params-toggle" id="paramsToggle" aria-expanded="false" aria-controls="params">
+                <span id="paramsSummary"></span><svg class="ic ic-sm"><use href="#i-down"/></svg>
+              </button>
+              <div class="params" id="params" data-open="false">
+                <label class="field">
+                  <span>承运商 / 模型</span>
+                  <span class="select">
+                    <select name="carrier">
+                      <option value="auto">智能推荐（默认）</option>
+                      <option value="a">示例原厂 A · 标准模型</option>
+                      <option value="b">示例原厂 B · 高画质模型</option>
+                    </select>
+                    <svg class="ic ic-sm"><use href="#i-down"/></svg>
+                  </span>
+                </label>
+                <div class="field" role="radiogroup" aria-label="时长">
+                  <span class="lbl">时长</span>
+                  <div class="seg">
+                    <label><input type="radio" name="duration" value="5"><span>5 秒</span></label>
+                    <label><input type="radio" name="duration" value="10"><span>10 秒</span></label>
+                  </div>
+                </div>
+                <div class="field" role="radiogroup" aria-label="分辨率">
+                  <span class="lbl">分辨率</span>
+                  <div class="seg">
+                    <label><input type="radio" name="res" value="720p"><span>720p</span></label>
+                    <label><input type="radio" name="res" value="1080p"><span>1080p</span></label>
+                  </div>
+                </div>
+                <div class="field" role="radiogroup" aria-label="画幅">
+                  <span class="lbl">画幅</span>
+                  <div class="seg">
+                    <label><input type="radio" name="ratio" value="16:9"><span>16:9</span></label>
+                    <label><input type="radio" name="ratio" value="9:16"><span>9:16</span></label>
+                    <label><input type="radio" name="ratio" value="1:1"><span>1:1</span></label>
+                  </div>
+                </div>
+                <div class="field">
+                  <span class="lbl" id="audioLbl">自动生成音频</span>
+                  <button type="button" class="switch" role="switch" id="audio" aria-labelledby="audioLbl" aria-checked="true"><span class="switch-track"></span><span id="audioText">开</span></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 估价 + 生成 -->
+            <div class="actionbar">
+              <div class="est" id="est" aria-live="polite"></div>
+              <button type="button" class="btn btn-secondary" id="estBtn">估价</button>
+              <button type="button" class="btn btn-primary" id="genBtn" aria-describedby="est">生成</button>
+            </div>
+          </div>
+
+          <aside class="preview" aria-label="预览">
+            <div class="pv-head">
+              <div class="tabs" role="tablist" aria-label="预览内容">
+                <button type="button" role="tab" data-pv="delivery" aria-selected="true">交付预览</button>
+                <button type="button" role="tab" data-pv="reference" aria-selected="false">参考画面</button>
+              </div>
+            </div>
+            <div id="pvBody"></div>
+          </aside>
+        </div>
+
+        <section class="inspire" aria-labelledby="insp-title">
+          <div class="inspire-head"><h2 id="insp-title">灵感参考</h2><span>示例图片，只作构图参考，不是生成作品</span></div>
+          <ul>
+            <li class="insp"><div class="media"><img src="../../../frontend/public/brand/auth/iceland-coast.jpg" alt="海岸参考图（示例）"></div><div><p>阴天的黑沙海岸，航拍从高处沿海浪线缓慢横移。</p><button type="button" class="btn btn-ghost" data-inspire="阴天的黑沙海岸，航拍从高处沿海浪线缓慢横移。">用这句开始</button></div></li>
+            <li class="insp"><div class="media"><img src="../../../frontend/public/brand/auth/creator-studio-last.jpg" alt="工作室参考图（示例）"></div><div><p>暖色台灯下的特写，手转动镜头对焦环，背景城市灯火虚化。</p><button type="button" class="btn btn-ghost" data-inspire="暖色台灯下的特写，手转动镜头对焦环，背景城市灯火虚化。">用这句开始</button></div></li>
+            <li class="insp"><div class="media"><img src="../../../frontend/public/brand/auth/creator-studio-poster.jpg" alt="夜景参考图（示例）"></div><div><p>从窗外夜景缓慢拉回室内，人物在前景低头工作。</p><button type="button" class="btn btn-ghost" data-inspire="从窗外夜景缓慢拉回室内，人物在前景低头工作。">用这句开始</button></div></li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+    <nav class="bnav" aria-label="底部导航">
+      <button type="button" data-toast="首页概览在第二批"><svg class="ic"><use href="#i-home"/></svg>首页概览</button>
+      <button type="button" aria-current="page"><svg class="ic"><use href="#i-create"/></svg>创作</button>
+      <button type="button" data-toast="任务页不在本轮范围"><svg class="ic"><use href="#i-tasks"/></svg>任务</button>
+      <button type="button" data-toast="资产页不在本轮范围"><svg class="ic"><use href="#i-assets"/></svg>资产</button>
+      <button type="button" id="moreBtn" aria-haspopup="dialog" aria-expanded="false"><svg class="ic"><use href="#i-more"/></svg>更多</button>
+    </nav>
+
+    <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-label="更多">
+      <div class="sheet-panel">
+        <div class="sheet-head"><span>更多</span><button type="button" class="btn btn-ghost" id="sheetClose" aria-label="关闭"><svg class="ic"><use href="#i-x"/></svg></button></div>
+        <button type="button" class="nav-item" data-toast="广场不在本轮范围"><svg class="ic"><use href="#i-plaza"/></svg>广场</button>
+        <button type="button" class="nav-item" data-toast="回收站不在本轮范围"><svg class="ic"><use href="#i-trash"/></svg>回收站</button>
+        <button type="button" class="nav-item" data-toast="钱包在第二批"><svg class="ic"><use href="#i-wallet"/></svg>钱包</button>
+        <button type="button" class="nav-item" data-toast="帮助与工单在第二批"><svg class="ic"><use href="#i-help"/></svg>帮助与工单</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" hidden></div>
+</div>
+</div>
+
+<script>
+(() => {
+  const BASE = '../../../frontend/public/brand/auth/';
+  const IMG = { first: BASE + 'creator-studio-poster.jpg', last: BASE + 'creator-studio-last.jpg', coast: BASE + 'iceland-coast.jpg' };
+  const MULTI_POOL = [IMG.first, IMG.coast, IMG.last, IMG.first];
+  const RATE = { '720p': 0.6, '1080p': 1.0 };
+  const MODE_NAME = { text: '文生视频', frames: '首尾帧生成视频', multi: '多图生成视频' };
+  const FIRST_DRAFT = '夜晚的创作工作室，窗外是城市灯火与远山。短发女生低头转动桌上的大镜头，暖色台灯照亮她的侧脸。镜头从中景缓慢推近，最终停在镜片里映出的湖面与山影。';
+
+  const initial = () => ({
+    view: 'create',
+    mode: 'frames',
+    mat: { frames: { first: IMG.first, last: null }, multi: [] },
+    params: { carrier: 'auto', duration: '5', res: '720p', ratio: '16:9', audio: true },
+    draft: FIRST_DRAFT,
+    adoptedFrom: 1,
+    draftEdited: false,
+    est: { status: 'none', price: null, rate: null, duration: null, reason: '' },
+    msgs: [
+      { role: 'user', text: '工作室里一个女生在调镜头，最后镜头推到镜片里映出的夜景湖面。' },
+      { role: 'assistant', text: '整理成一段镜头描述，你可以直接采用，也可以继续说想改哪里。', draft: FIRST_DRAFT }
+    ],
+    pv: 'delivery',
+    mtab: 'edit',
+    paramsOpen: false
+  });
+
+  let S = initial();
+  let vp = 'desktop';
+  let estToken = 0;
+  let lastEstHtml = '';
+  let newMsgIndex = -1;
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const icon = (id, cls = '') => `<svg class="ic ${cls}"><use href="#i-${id}"/></svg>`;
+  const frame = $('#frame');
+  const stage = $('#stage');
+
+  const syncFrameHeight = () => frame.style.setProperty('--fh', frame.clientHeight + 'px');
+  new ResizeObserver(syncFrameHeight).observe(frame);
+
+  function missing() {
+    const m = [];
+    if (!S.draft.trim()) m.push('镜头描述');
+    if (S.mode === 'frames') {
+      if (!S.mat.frames.first) m.push('首帧');
+      if (!S.mat.frames.last) m.push('尾帧');
+    }
+    if (S.mode === 'multi' && S.mat.multi.length < 1) m.push('至少 1 张图片');
+    return m;
+  }
+
+  function invalidate(reason) {
+    if (S.est.status === 'ready' || S.est.status === 'calculating') {
+      estToken++;
+      S.est = { status: 'stale', price: null, rate: null, duration: null, reason };
+    } else if (S.est.status === 'stale') {
+      S.est.reason = reason;
+    }
+  }
+
+  function runEstimate() {
+    if (missing().length) return;
+    const token = ++estToken;
+    S.est = { status: 'calculating', price: null, rate: null, duration: null, reason: '' };
+    renderEst();
+    setTimeout(() => {
+      if (token !== estToken) return;
+      const rate = RATE[S.params.res];
+      const duration = Number(S.params.duration);
+      S.est = { status: 'ready', price: rate * duration, rate, duration, reason: '' };
+      renderEst(); renderPreview();
+    }, 900);
+  }
+
+  /* ---------- render ---------- */
+  function renderView() {
+    $$('.view').forEach((v) => { v.hidden = v.dataset.view !== S.view; });
+    $$('[data-goto]', $('.review-bar')).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.goto === S.view)));
+    frame.scrollTop = 0;
+    const main = $('#main'); if (main) main.scrollTop = 0;
+    syncFrameHeight();
+  }
+
+  function renderMsgs() {
+    const list = $('#msgs');
+    list.innerHTML = S.msgs.map((m, i) => {
+      const fresh = i === newMsgIndex ? ' is-new' : '';
+      if (m.typing) return `<li class="typing${fresh}">正在整理镜头描述…（不扣费）</li>`;
+      if (m.role === 'user') return `<li class="msg msg-u${fresh}">${esc(m.text)}</li>`;
+      const adopted = S.adoptedFrom === i;
+      const state = adopted
+        ? `<span class="state">${icon('check', 'ic-sm')}${S.draftEdited ? '已采用，下方稿件已被你修改' : '已采用'}</span>`
+        : `<button type="button" class="btn btn-ghost" data-adopt="${i}">采用这条</button>`;
+      return `<li class="msg msg-a${fresh}"><div class="msg-who">镜头整理</div><p>${esc(m.text)}</p>${m.draft ? `<blockquote class="shot${adopted ? ' is-adopted' : ''}">${esc(m.draft)}</blockquote><div class="msg-actions">${state}</div>` : ''}</li>`;
+    }).join('');
+    list.scrollTop = list.scrollHeight;
+    newMsgIndex = -1;
+  }
+
+  function renderDraftMeta() {
+    $('#draftCount').textContent = `${S.draft.trim().length} 字`;
+    $('#draftSource').textContent = S.adoptedFrom == null
+      ? '手动填写'
+      : `采用自第 ${S.adoptedFrom + 1} 条整理回复${S.draftEdited ? ' · 已手动修改' : ''}`;
+  }
+
+  function slotFilled(src, label, key) {
+    return `<figure class="slot is-filled media"><img src="${src}" alt="${label}（示例图片）"><figcaption>${label}<span class="tag">示例</span></figcaption><button type="button" class="slot-x" data-remove="${key}" aria-label="移除${label}">${icon('x', 'ic-sm')}</button></figure>`;
+  }
+  function slotEmpty(label, key, isMissing) {
+    return `<button type="button" class="slot${isMissing ? ' is-missing' : ''}" data-fill="${key}">${icon('upload')}<b>${isMissing ? '还缺' + label : '上传' + label}</b><small>必填 · 设计稿中点击填入示例图</small></button>`;
+  }
+
+  function renderMats() {
+    const box = $('#mats');
+    if (S.mode === 'text') {
+      box.innerHTML = `<div class="mats-label"><span>素材</span></div><div class="mat-none">${icon('info')}文生视频只用上方「当前采用的镜头描述」，不需要上传图片。</div>`;
+      return;
+    }
+    if (S.mode === 'frames') {
+      const f = S.mat.frames;
+      box.innerHTML = `<div class="mats-label"><span>素材 · 首帧和尾帧都必填</span><span>${(f.first ? 1 : 0) + (f.last ? 1 : 0)} / 2</span></div>
+        <div class="slots-2">
+          ${f.first ? slotFilled(f.first, '首帧', 'first') : slotEmpty('首帧', 'first', true)}
+          <div class="link" aria-hidden="true">${icon('arrow')}<span>补全运动</span></div>
+          ${f.last ? slotFilled(f.last, '尾帧', 'last') : slotEmpty('尾帧', 'last', true)}
+        </div>`;
+      return;
+    }
+    const imgs = S.mat.multi;
+    const cells = imgs.map((src, i) => slotFilled(src, `图 ${i + 1}`, 'm' + i));
+    if (imgs.length < 4) cells.push(`<button type="button" class="slot${imgs.length === 0 ? ' is-missing' : ''}" data-fill="multi">${icon('upload')}<b>${imgs.length === 0 ? '还缺图片' : '添加图片'}</b><small>${imgs.length === 0 ? '至少 1 张 · ' : ''}最多 4 张</small></button>`);
+    box.innerHTML = `<div class="mats-label"><span>素材 · 至少 1 张图片</span><span>${imgs.length} / 4</span></div><div class="slots-n">${cells.join('')}</div>`;
+  }
+
+  function renderParams() {
+    const p = S.params;
+    $('select[name="carrier"]').value = p.carrier;
+    ['duration', 'res', 'ratio'].forEach((n) => { const el = $(`input[name="${n}"][value="${p[n]}"]`); if (el) el.checked = true; });
+    $('#audio').setAttribute('aria-checked', String(p.audio));
+    $('#audioText').textContent = p.audio ? '开' : '关';
+    const carrierText = $('select[name="carrier"]').selectedOptions[0].textContent.replace('（默认）', '');
+    $('#paramsSummary').textContent = `参数 · ${carrierText} · ${p.duration} 秒 · ${p.res} · ${p.ratio} · 音频${p.audio ? '开' : '关'}`;
+    $('#paramsToggle').setAttribute('aria-expanded', String(S.paramsOpen));
+    $('#params').dataset.open = String(S.paramsOpen);
+  }
+
+  function renderEst() {
+    const miss = missing();
+    const e = S.est;
+    let html; let canEst = false; let canGen = false; let estLabel = '估价';
+    if (e.status === 'calculating') {
+      html = `<div class="est-body"><div><div class="est-main">正在估价…</div><div class="est-bar" aria-hidden="true"></div></div></div>`;
+      estLabel = '估价中';
+    } else if (miss.length) {
+      const cleared = e.status === 'stale' ? `旧估价已清除（你修改了${e.reason}）· ` : '';
+      html = `<div class="est-body">${icon('info')}<div><div class="est-main">还缺${miss.join('、')}</div><div class="est-sub">${cleared}补齐后才能估价和生成</div></div></div>`;
+    } else if (e.status === 'ready') {
+      canGen = true; estLabel = '已估价';
+      html = `<div class="est-body"><div><div class="est-main"><span class="est-label">预估</span><span class="est-price">¥${e.price.toFixed(2)}</span><span class="tag">示例价格</span></div><div class="est-sub">${e.duration} 秒 × ¥${e.rate.toFixed(2)}/秒 · 改动描述、方式、素材或参数会清除此估价</div></div></div>`;
+    } else if (e.status === 'stale') {
+      canEst = true; estLabel = '重新估价';
+      html = `<div class="est-body">${icon('refresh')}<div><div class="est-main">旧估价已清除</div><div class="est-sub">你修改了${e.reason}，请重新估价后再生成</div></div></div>`;
+    } else {
+      canEst = true;
+      html = `<div class="est-body"><div><div class="est-main">素材已齐，先估价</div><div class="est-sub">估价不扣费；生成前必须有当前估价</div></div></div>`;
+    }
+    const box = $('#est');
+    if (html !== lastEstHtml) {
+      box.innerHTML = html;
+      box.classList.toggle('is-cleared', e.status === 'stale' && !miss.length);
+      lastEstHtml = html;
+    }
+    const estBtn = $('#estBtn');
+    estBtn.disabled = !canEst;
+    estBtn.textContent = estLabel;
+    $('#genBtn').disabled = !canGen;
+  }
+
+  function steps() {
+    const list = [{ label: '镜头描述（采用稿）', done: !!S.draft.trim() }];
+    if (S.mode === 'frames') {
+      list.push({ label: '首帧', done: !!S.mat.frames.first });
+      list.push({ label: '尾帧', done: !!S.mat.frames.last });
+    }
+    if (S.mode === 'multi') list.push({ label: '至少 1 张图片', done: S.mat.multi.length > 0 });
+    list.push({ label: '估价', done: S.est.status === 'ready' });
+    list.push({ label: '生成', done: false });
+    return list;
+  }
+
+  function renderPreview() {
+    $$('[data-pv]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.pv === S.pv)));
+    const ar = { '16:9': 'ar-169', '9:16': 'ar-916', '1:1': 'ar-11' }[S.params.ratio];
+    const st = steps();
+    const next = st.find((s) => !s.done);
+    const stepsHtml = `<ol class="steps" aria-label="生成前还差">${st.map((s) => `<li class="${s.done ? 'done' : s === next ? 'next' : ''}"><span class="dot">${s.done ? icon('check') : ''}</span>${s.label}${s === next ? ' · 下一步' : ''}</li>`).join('')}</ol>`;
+    let body;
+    if (S.pv === 'delivery') {
+      const nextText = next.label === '生成' ? '点击「生成」，完成后在这里播放' : `下一步：${next.label === '估价' ? '估价' : '补上' + next.label}`;
+      body = `<div class="pv-stage ${ar}"><div class="pv-empty">${icon('play')}<b>还没有成片</b><span>${nextText}</span></div></div>
+        <p class="pv-cap">画幅 ${S.params.ratio} · 成片完成后在此播放，并出现在任务中</p>${stepsHtml}`;
+    } else {
+      const refs = S.mode === 'frames'
+        ? [[S.mat.frames.first, '首帧'], [S.mat.frames.last, '尾帧']].filter((r) => r[0])
+        : S.mode === 'multi' ? S.mat.multi.map((src, i) => [src, `图 ${i + 1}`]) : [];
+      if (!refs.length) {
+        body = `<div class="pv-stage ${ar}"><div class="pv-empty">${icon('upload')}<b>没有参考画面</b><span>${S.mode === 'text' ? '文生视频不使用图片，参考画面为空是正常的' : '上传素材后会在这里显示'}</span></div></div>`;
+      } else {
+        const [src, label] = refs[0];
+        body = `<div class="pv-stage ${ar} media"><img src="${src}" alt="参考画面：${label}（示例图片）"></div>
+          <p class="pv-cap">参考画面 · 你上传的${label}<span class="tag">示例图片</span>${refs.length > 1 ? `· 另有 ${refs.length - 1} 张` : ''}</p>
+          <p class="pv-note">参考画面是你提供的素材，不是生成结果。</p>`;
+      }
+    }
+    $('#pvBody').innerHTML = body;
+  }
+
+  function renderModes() {
+    $(`input[name="mode"][value="${S.mode}"]`).checked = true;
+  }
+
+  function renderCreate() {
+    $('#draft').value = S.draft;
+    $('#create').dataset.mtab = S.mtab;
+    $$('[data-mtab]', $('.mtabs')).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mtab === S.mtab)));
+    renderModes(); renderMsgs(); renderDraftMeta(); renderMats(); renderParams(); renderEst(); renderPreview();
+  }
+
+  function afterChange(reason) {
+    invalidate(reason);
+    renderEst(); renderPreview();
+  }
+
+  let toastTimer;
+  function toast(text) {
+    const t = $('#toast');
+    t.textContent = text; t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  }
+
+  function setVp(next) {
+    vp = next;
+    stage.dataset.vp = vp;
+    $$('[data-vp]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vp === vp)));
+    requestAnimationFrame(syncFrameHeight);
+  }
+
+  function go(view, mode) {
+    S.view = view;
+    if (mode && mode !== S.mode) { S.mode = mode; invalidate('创作方式'); }
+    renderView();
+    if (view === 'create') renderCreate();
+  }
+
+  function sendChat() {
+    const input = $('#chatText');
+    const text = input.value.trim();
+    if (!text) return;
+    S.msgs.push({ role: 'user', text });
+    newMsgIndex = S.msgs.length - 1;
+    S.msgs.push({ role: 'assistant', typing: true });
+    input.value = ''; $('#sendBtn').disabled = true;
+    renderMsgs();
+    setTimeout(() => {
+      const base = (S.draft.trim() || '').replace(/[。.]$/, '');
+      const extra = text.replace(/[。.！!]$/, '');
+      const revised = base ? `${base}。补充：${extra}。` : `${extra}。`;
+      S.msgs.pop();
+      S.msgs.push({ role: 'assistant', text: '按你的要求重新整理了。确认后点「采用这条」，才会替换下方的采用稿。', draft: revised });
+      newMsgIndex = S.msgs.length - 1;
+      renderMsgs();
+    }, 800);
+  }
+
+  /* ---------- events ---------- */
+  document.addEventListener('click', (ev) => {
+    const t = ev.target.closest('button, a');
+    if (!t) return;
+    if (t.dataset.goto) { ev.preventDefault(); go(t.dataset.goto, t.dataset.mode); return; }
+    if (t.dataset.vp) { setVp(t.dataset.vp); return; }
+    if (t.hasAttribute('data-reset')) { S = initial(); estToken++; lastEstHtml = ''; go('create'); return; }
+    if (t.dataset.scroll) { ev.preventDefault(); $('#' + t.dataset.scroll).scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); return; }
+    if (t.dataset.toast) { ev.preventDefault(); toast(t.dataset.toast + '（设计稿）'); return; }
+    if (t.dataset.adopt) {
+      const i = Number(t.dataset.adopt);
+      S.draft = S.msgs[i].draft; S.adoptedFrom = i; S.draftEdited = false;
+      $('#draft').value = S.draft;
+      renderMsgs(); renderDraftMeta(); afterChange('镜头描述');
+      return;
+    }
+    if (t.dataset.fill) {
+      const k = t.dataset.fill;
+      if (k === 'first') S.mat.frames.first = IMG.first;
+      else if (k === 'last') S.mat.frames.last = IMG.last;
+      else if (k === 'multi') S.mat.multi.push(MULTI_POOL[S.mat.multi.length]);
+      renderMats(); afterChange('素材');
+      return;
+    }
+    if (t.dataset.remove) {
+      const k = t.dataset.remove;
+      if (k === 'first' || k === 'last') S.mat.frames[k] = null;
+      else S.mat.multi.splice(Number(k.slice(1)), 1);
+      renderMats(); afterChange('素材');
+      return;
+    }
+    if (t.dataset.pv) { S.pv = t.dataset.pv; renderPreview(); return; }
+    if (t.dataset.mtab) { S.mtab = t.dataset.mtab; renderCreate(); $('#main').scrollTop = 0; return; }
+    if (t.dataset.inspire) {
+      const input = $('#chatText');
+      input.value = t.dataset.inspire; $('#sendBtn').disabled = false;
+      S.mtab = 'edit'; $('#create').dataset.mtab = 'edit';
+      input.focus();
+      toast('已放入对话输入框。参考图不会作为素材上传。');
+      return;
+    }
+    if (t.id === 'paramsToggle') { S.paramsOpen = !S.paramsOpen; renderParams(); return; }
+    if (t.id === 'audio') { S.params.audio = !S.params.audio; renderParams(); afterChange('自动音频'); return; }
+    if (t.id === 'estBtn') { runEstimate(); return; }
+    if (t.id === 'genBtn') {
+      toast(`设计稿不会提交。实际产品会用「当前采用的镜头描述」与${MODE_NAME[S.mode]}参数创建任务，预估 ¥${S.est.price.toFixed(2)}（示例）。`);
+      return;
+    }
+    if (t.id === 'moreBtn') { $('#sheet').hidden = false; t.setAttribute('aria-expanded', 'true'); $('#sheetClose').focus(); return; }
+    if (t.id === 'sheetClose') { closeSheet(); return; }
+  });
+
+  function closeSheet() {
+    $('#sheet').hidden = true;
+    const more = $('#moreBtn'); more.setAttribute('aria-expanded', 'false'); more.focus();
+  }
+  $('#sheet').addEventListener('click', (ev) => { if (ev.target.id === 'sheet') closeSheet(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+
+  $('#modePick').addEventListener('change', (ev) => {
+    S.mode = ev.target.value;
+    renderMats(); afterChange('创作方式');
+  });
+
+  const PARAM_NAME = { carrier: '承运商 / 模型', duration: '时长', res: '分辨率', ratio: '画幅' };
+  $('#params').addEventListener('change', (ev) => {
+    const n = ev.target.name;
+    if (!PARAM_NAME[n]) return;
+    S.params[n] = ev.target.value;
+    renderParams(); afterChange(PARAM_NAME[n]);
+  });
+
+  $('#draft').addEventListener('input', (ev) => {
+    S.draft = ev.target.value;
+    if (S.adoptedFrom != null) S.draftEdited = true;
+    renderDraftMeta(); renderMsgs(); renderMats(); afterChange('镜头描述');
+  });
+
+  const chatText = $('#chatText');
+  chatText.addEventListener('input', () => { $('#sendBtn').disabled = !chatText.value.trim(); });
+  chatText.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sendChat(); }
+  });
+  $('#chatForm').addEventListener('submit', (ev) => { ev.preventDefault(); sendChat(); });
+
+  document.addEventListener('error', (ev) => {
+    if (ev.target.tagName === 'IMG') ev.target.closest('.media')?.classList.add('is-failed');
+  }, true);
+
+  const startView = new URLSearchParams(location.search).get('view');
+  const startVp = new URLSearchParams(location.search).get('vp');
+  if (startVp === 'mobile') setVp('mobile');
+  go(['home', 'create', 'direction'].includes(startView) ? startView : 'home');
+})();
+</script>
+</body>
+</html>

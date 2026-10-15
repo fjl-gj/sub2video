@@ -13,8 +13,8 @@ const { data, loading, error, modes, workspaceName, load } = useStudioOverview()
 
 <template>
   <section class="s2v-page">
-    <S2VPageHeader :title="`欢迎回来，${workspaceName}`">
-      <template #description>继续上一次的创作，或从新的画面开始。</template>
+    <S2VPageHeader title="首页概览">
+      <template #description>余额、进行中任务、最近结果，以及三种创作入口。{{ workspaceName ? ` · ${workspaceName}` : '' }}</template>
       <template #actions>
         <S2VButton @click="router.push('/app/works')">查看任务 <ArrowRight class="h-3.5 w-3.5" /></S2VButton>
         <S2VButton variant="primary" @click="router.push('/app/create')">

@@ -100,7 +100,7 @@ onMounted(() => {
 <template>
   <section class="s2v-page">
     <S2VPageHeader title="钱包">
-      <template #description>查看创作余额、兑换码与消费退款记录。在线充值暂未开放。</template>
+      <template #description>真实余额与流水。不提供订阅或 API 套餐。在线充值尚未开放。</template>
       <template #actions>
         <div class="text-right">
           <span class="text-xs text-s2v-muted">{{ displayWalletError && walletLoaded ? '上次读取余额:' : '可用余额:' }}</span>

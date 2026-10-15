@@ -186,7 +186,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     await page.getByRole('button', { name: '应用教程设置', exact: true }).click()
     await expect(prompt).not.toHaveValue('这是尚未完成的商品镜头，请保留')
     await expect(prompt).not.toHaveValue('')
-    await expect(page.getByRole('button', { name: '文生视频', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByLabel('创作模式', { exact: true }).getByRole('button', { name: '文生视频', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByLabel('视频时长', { exact: true })).toHaveValue('5')
   })
 
@@ -197,7 +197,7 @@ test.describe('five-page creator journey (mocked frontend only)', () => {
     })
     await page.goto(createPath, { waitUntil: 'networkidle' })
     await expect(page.getByText('教程推荐参数已按当前可用能力调整，请核对后提交。', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: '文生视频', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByLabel('创作模式', { exact: true }).getByRole('button', { name: '文生视频', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByLabel('视频时长', { exact: true })).toHaveValue('10')
     await expect(page.getByLabel('输出分辨率', { exact: true })).toHaveValue('1080P')
     await expect(page.getByLabel('画幅比例', { exact: true })).toHaveValue('9:16')

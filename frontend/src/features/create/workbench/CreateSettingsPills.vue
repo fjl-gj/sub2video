@@ -43,8 +43,8 @@ function onReferenceAudioChange(event: Event) {
 </script>
 
 <template>
-  <section class="s2v-studio-section" aria-label="生成设置">
-    <div class="s2v-studio-field-heading"><h2>生成设置</h2></div>
+  <section class="s2v-studio-section" aria-label="创作偏好">
+    <div class="s2v-studio-field-heading"><h2>创作偏好</h2></div>
     <div class="s2v-studio-fields">
       <label class="s2v-studio-field"><span>承运商</span>
         <select aria-label="承运商" :value="carrierId" @change="emit('update:carrierId', ($event.target as HTMLSelectElement).value)">

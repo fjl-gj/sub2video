@@ -2,8 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { seedSurfaceData } from './fixtures/surface-data'
 
 const cases = [
-  { name: 'client-overview', path: '/app/overview', heading: '欢迎回来，李维工作室', auth: true },
-  { name: 'client-create', path: '/app/create', heading: '创作', auth: true },
+  { name: 'client-overview', path: '/app/overview', heading: '首页概览', auth: true },
+  { name: 'client-create', path: '/app/create', heading: '和 Sub2Video 聊聊这一镜', auth: true },
   { name: 'client-garden', path: '/app/garden', heading: '广场', auth: true },
   { name: 'client-works', path: '/app/works', heading: '任务', auth: true },
   { name: 'client-assets', path: '/app/assets', heading: '资产', auth: true },
@@ -22,7 +22,7 @@ const cases = [
 
 const populatedContent: Record<string, string> = {
   'client-overview': '海岸清晨 · 镜头 03',
-  'client-create': '预估费用',
+  'client-create': '灵感参考',
   'client-works': '海岸清晨 · 镜头 03',
   'client-assets': '海岸清晨',
   'client-trash': '初版镜头草稿',

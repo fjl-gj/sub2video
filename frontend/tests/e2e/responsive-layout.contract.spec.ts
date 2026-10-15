@@ -68,7 +68,7 @@ async function expectNoHorizontalOverflow(page: Page) {
   }
 }
 
-async function expectWorkspaceAxes(page: Page, content: Locator) {
+async function expectWorkspaceAxes(page: Page, content: Locator, options?: { centeredHeading?: boolean }) {
   const [main, frame, heading, body] = await Promise.all([
     rect(page.locator('main.s2v-content')),
     rect(page.locator('main > .s2v-page')),
@@ -80,7 +80,13 @@ async function expectWorkspaceAxes(page: Page, content: Locator) {
   expect(leftSpace, 'The page stays inside its workspace.').toBeGreaterThanOrEqual(0)
   expect(rightSpace, 'The page stays inside its workspace.').toBeGreaterThanOrEqual(0)
   expect(Math.abs(leftSpace - rightSpace), 'The page is centered in the area after the sidebar.').toBeLessThanOrEqual(2)
-  expect(Math.abs(heading.left - body.left), 'The heading and main content share a left axis.').toBeLessThanOrEqual(2)
+  if (options?.centeredHeading) {
+    const headingCenter = (heading.left + heading.right) / 2
+    const frameCenter = (frame.left + frame.right) / 2
+    expect(Math.abs(headingCenter - frameCenter), 'The create hero stays centered in the page frame.').toBeLessThanOrEqual(4)
+  } else {
+    expect(Math.abs(heading.left - body.left), 'The heading and main content share a left axis.').toBeLessThanOrEqual(2)
+  }
   expect(Math.abs(frame.right - body.right), 'The main content fills the page frame.').toBeLessThanOrEqual(2)
   if (page.viewportSize()!.width === 1920) {
     expect(frame.width, 'A wide workspace must use the available screen instead of leaving large empty rails.').toBeGreaterThanOrEqual(1500)
@@ -191,21 +197,23 @@ test.describe('Responsive geometry with mocked display data', () => {
         await page.goto('/app/create?mode=text', { waitUntil: 'networkidle' })
         await expect(page.getByRole('combobox', { name: '视频时长', exact: true })).toBeVisible()
         await page.evaluate(() => document.fonts.ready)
-        await expectWorkspaceAxes(page, page.locator('.s2v-studio-layout'))
+        await expectWorkspaceAxes(page, page.locator('.s2v-studio-layout'), { centeredHeading: width > 600 })
         if (width <= 390) {
+          const modeGroup = page.getByLabel('创作模式', { exact: true })
           for (const mode of modes) {
-            const button = page.getByRole('button', { name: mode.name, exact: true })
+            const button = modeGroup.getByRole('button', { name: mode.name, exact: true })
             await expectReachable(page, button)
             await button.click()
             await expect(button).toHaveAttribute('aria-pressed', 'true')
           }
-          await page.getByRole('button', { name: '文生视频', exact: true }).click()
+          await modeGroup.getByRole('button', { name: '文生视频', exact: true }).click()
           const prompt = page.getByRole('textbox', { name: '画面描述', exact: true })
           await expectReachable(page, prompt)
           await prompt.fill('清晨海岸，镜头缓慢向前移动。')
           await expectReachable(page, page.getByRole('combobox', { name: '视频时长', exact: true }))
           await expect(page.getByRole('button', { name: '提交生成任务', exact: true })).toBeEnabled()
           await expectReachable(page, page.getByRole('button', { name: '提交生成任务', exact: true }))
+          await expectReachable(page, page.getByRole('button', { name: '上传素材', exact: true }))
           await expectNoHorizontalOverflow(page)
         }
       })
@@ -214,7 +222,7 @@ test.describe('Responsive geometry with mocked display data', () => {
         // Keep the first viewport comparable after the mobile reachability
         // checks have scrolled the mocked workspace to its submit controls.
         await page.locator('main.s2v-content').evaluate((element) => element.scrollTo(0, 0))
-        await expect(page.getByRole('heading', { name: '创作', exact: true })).toBeInViewport()
+        await expect(page.getByRole('heading', { name: /和 Sub2Video 聊聊/ })).toBeInViewport()
         await expect(page).toHaveScreenshot(`responsive-create-${width}.png`, {
           fullPage: false, animations: 'disabled', caret: 'hide', scale: 'css', maxDiffPixelRatio: 0.02,
         })
@@ -222,7 +230,7 @@ test.describe('Responsive geometry with mocked display data', () => {
 
       await test.step('Overview cards fit the available space', async () => {
         await page.goto('/app/overview', { waitUntil: 'networkidle' })
-        await expect(page.getByRole('heading', { name: '欢迎回来，李维工作室', exact: true })).toBeVisible()
+        await expect(page.getByRole('heading', { name: '首页概览', exact: true })).toBeVisible()
         await expectWorkspaceAxes(page, page.locator('.s2v-studio-overview'))
         await expectReadableCards(page.locator('.s2v-studio-overview .s2v-studio-modes'), page.locator('.s2v-studio-overview .s2v-studio-mode'))
       })
